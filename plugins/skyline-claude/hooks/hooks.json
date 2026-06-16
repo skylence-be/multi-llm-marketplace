@@ -1,16 +1,5 @@
 {
-  "description": "SessionStart steer to prefer skyline MCP tools over built-in file tools, plus PreToolUse enforcement that redirects Read/Edit/Write to skyline equivalents when the daemon is running (fail-open when it is not).",
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\""
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "Read",
