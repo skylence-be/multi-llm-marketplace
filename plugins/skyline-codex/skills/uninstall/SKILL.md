@@ -1,14 +1,49 @@
 ---
-description: Uninstall skyline — removes MCP wiring, hooks, instructions, and daemon autostart from all agents. Use when the user wants to remove skyline.
+description: Fully uninstall skyline — removes MCP wiring, hooks, instructions, daemon autostart, installed plugins, helper processes, dispatchers, and the global skyline package. Use when the user wants to remove skyline.
 ---
 
-Run these commands in order using the shell:
+Run the full uninstall flow with the shell. Prefer the bundled script when available:
 
-1. `skyline agent uninstall --target=all --yes` — strips MCP config, hooks, and instructions from all agents.
-2. `skyline daemon stop --port 7333` — stop the running daemon (ignore errors if not running).
-3. `skyline daemon uninstall --port 7333` — remove the autostart service.
+```bash
+if [ -n "${CODEX_PLUGIN_ROOT:-}" ] && [ -f "$CODEX_PLUGIN_ROOT/scripts/uninstall.sh" ]; then
+  bash "$CODEX_PLUGIN_ROOT/scripts/uninstall.sh"
+else
+  # 1. Remove MCP wiring, hooks, and instructions from all agents.
+  if command -v skyline >/dev/null 2>&1; then
+    skyline agent uninstall --target=all --yes || true
+    skyline daemon stop --port 7333 2>/dev/null || true
+    skyline daemon uninstall --port 7333 2>/dev/null || true
+    skyline uninstall --bindir "$HOME/.local/bin" 2>/dev/null || true
+  fi
 
-Then tell the user to complete removal manually:
-- `codex plugin remove skyline-codex`
-- `claude plugin uninstall skyline-claude`
-- `npm uninstall -g @skylence-ai/skyline` (or the matching `pnpm`/`yarn`/`bun` global remove command)
+  # 2. End stale Claude plugin watchdogs before removing the plugin cache.
+  pgrep -f '/skyline-claude/.*/monitors/daemon-watchdog.sh' 2>/dev/null | while read -r pid; do kill "$pid" 2>/dev/null || true; done
+
+  # 3. Remove agent plugins. Codex requires the marketplace-qualified name.
+  claude plugin uninstall skyline-claude --scope user 2>/dev/null || claude plugin uninstall skyline-claude 2>/dev/null || true
+  codex plugin remove skyline-codex@multi-llm-marketplace 2>/dev/null || codex plugin remove skyline-codex --marketplace multi-llm-marketplace 2>/dev/null || true
+
+  # 4. Remove the globally installed package with whichever supported package manager owns it.
+  npm uninstall -g @skylence-ai/skyline 2>/dev/null || true
+  pnpm remove -g @skylence-ai/skyline 2>/dev/null || true
+  yarn global remove @skylence-ai/skyline 2>/dev/null || true
+  bun remove -g @skylence-ai/skyline 2>/dev/null || true
+
+  # 5. Remove a stale skyline-owned dispatcher if package uninstall left it behind.
+  if [ -e "$HOME/.local/bin/sky" ] && strings "$HOME/.local/bin/sky" 2>/dev/null | grep -Eqi 'skyline|sky-hash|skylence'; then
+    rm -f "$HOME/.local/bin/sky"
+  fi
+fi
+```
+
+After running it, verify and report facts, not assumptions:
+
+```bash
+command -v skyline || true
+command -v sky-hash || true
+command -v sky || true
+pgrep -af 'skyline|sky-hash' || true
+test ! -f "$HOME/Library/LaunchAgents/ai.skylence.skyline.daemon.7333.plist" && echo 'launchd plist absent' || echo 'launchd plist still exists'
+```
+
+A missing command or already-removed daemon is success. Do not tell the user there are manual cleanup steps unless one of the verification commands still shows a concrete remaining artifact.

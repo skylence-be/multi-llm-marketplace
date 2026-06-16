@@ -1,6 +1,6 @@
 {
   "name": "skyline-codex",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Wires the skyline MCP daemon into Codex: one HTTP MCP server and a SessionStart hook that steers sessions toward skyline-first tooling.",
   "author": {
     "name": "Skylence",
