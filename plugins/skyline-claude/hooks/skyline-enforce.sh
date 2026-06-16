@@ -20,6 +20,5 @@ case "$MODE" in
   glob) printf "skyline_find/skyline_tree replace Glob. %s\n" "$SWITCH_ORIENT" >&2; exit 2 ;;
   bash) printf "skyline_grep/skyline_find/skyline_git/skyline_run/skyline_test replace Bash. %s\n" "$SWITCH_EDIT" >&2; exit 2 ;;
 esac
-esac
 
 exit 0
