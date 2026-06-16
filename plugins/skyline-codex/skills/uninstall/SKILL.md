@@ -11,4 +11,4 @@ Run these commands in order using the shell:
 Then tell the user to complete removal manually:
 - `codex plugin remove skyline-codex`
 - `claude plugin uninstall skyline-claude`
-- `npm uninstall -g @skylence-ai/skyline`
+- `npm uninstall -g @skylence-ai/skyline` (or the matching `pnpm`/`yarn`/`bun` global remove command)
