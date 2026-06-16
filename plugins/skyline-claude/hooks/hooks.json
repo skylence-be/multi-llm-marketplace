@@ -20,6 +20,36 @@
             "statusMessage": "Checking skyline..."
           }
         ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.sh\" grep",
+            "statusMessage": "Checking skyline..."
+          }
+        ]
+      },
+      {
+        "matcher": "Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.sh\" glob",
+            "statusMessage": "Checking skyline..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.sh\" bash",
+            "statusMessage": "Checking skyline..."
+          }
+        ]
       }
     ]
   }
