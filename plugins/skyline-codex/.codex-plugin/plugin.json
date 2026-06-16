@@ -1,0 +1,19 @@
+{
+  "name": "skyline-codex",
+  "version": "1.0.0",
+  "description": "Wires the skyline MCP daemon into Codex: one HTTP MCP server and a SessionStart hook that steers sessions toward skyline-first tooling.",
+  "author": {
+    "name": "Skylence",
+    "url": "https://github.com/skylence-be"
+  },
+  "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
+  "repository": "https://github.com/skylence-be/multi-llm-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "skylence",
+    "skyline",
+    "mcp",
+    "codex"
+  ],
+  "mcpServers": "./.mcp.json"
+}
