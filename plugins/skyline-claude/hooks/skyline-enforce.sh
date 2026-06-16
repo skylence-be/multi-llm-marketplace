@@ -15,7 +15,7 @@ case "$MODE" in
   edit) printf "use skyline_edit/skyline_create, not Edit/Write.\n"; exit 2 ;;
   grep) printf "use skyline_grep/skyline_sgrep, not Grep.\n"; exit 2 ;;
   glob) printf "use skyline_find/skyline_tree, not Glob.\n"; exit 2 ;;
-  bash) printf "not Bash: skyline_grep/sgrep. skyline_find/tree. skyline_git. skyline_run. skyline_test. skyline_conflicts.\n"; exit 2 ;;
+  bash) printf "use skyline_grep/sgrep, skyline_find/tree, skyline_git, skyline_run, skyline_test, skyline_conflicts — not Bash.\n"; exit 2 ;;
 esac
 
 exit 0
