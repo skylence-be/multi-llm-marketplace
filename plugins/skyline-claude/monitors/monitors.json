@@ -13,5 +13,10 @@
     "name": "skyline-audit",
     "command": "bash \"${CLAUDE_PLUGIN_ROOT}/monitors/audit-stream.sh\"",
     "description": "Streams AUDIT file mutation events in real time (only active when audit is enabled)"
+  },
+  {
+    "name": "skyline-bench",
+    "command": "bash \"${CLAUDE_PLUGIN_ROOT}/monitors/bench-stream.sh\"",
+    "description": "Streams BENCH timing samples in real time (only active when bench is enabled)"
   }
 ]
