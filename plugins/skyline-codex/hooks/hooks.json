@@ -11,6 +11,28 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${CODEX_PLUGIN_ROOT}\"; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" read",
+            "statusMessage": "Checking skyline..."
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${CODEX_PLUGIN_ROOT}\"; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" edit",
+            "statusMessage": "Checking skyline..."
+          }
+        ]
+      }
     ]
   }
 }
