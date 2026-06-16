@@ -1,5 +1,6 @@
 {
   "name": "multi-llm-marketplace",
+  "description": "Skyline plugins for Claude Code, including MCP daemon wiring and agent-side enforcement hooks.",
   "owner": {
     "name": "Skylence",
     "contact": "github.com/skylence-be"

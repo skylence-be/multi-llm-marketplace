@@ -13,9 +13,10 @@ npm install -g @skylence-ai/skyline
 skyline setup
 ```
 
-`skyline setup` installs the shared HTTP daemon on port 7333 and wires supported
-agents to `http://127.0.0.1:7333/mcp`. The plugins in this repo assume that
-default endpoint.
+`skyline setup` installs the shared HTTP daemon on port 7333 and installs the
+optional marketplace plugins when supported agent CLIs are available. The Claude
+and Codex plugins in this repo carry their own MCP configuration; global MCP
+wiring is only needed when explicitly requested with `skyline agent install`.
 
 ## Claude Code
 
@@ -37,10 +38,10 @@ Restart Codex after installing the plugin.
 
 ## Included plugins
 
-- `skyline-claude`: HTTP MCP config, SessionStart steering, PreToolUse
-  enforcement, daemon watchdog monitor, and `upgrade` / `uninstall` commands.
-- `skyline-codex`: HTTP MCP config, SessionStart steering skill, PreToolUse
-  enforcement hooks, and `upgrade` / `uninstall` skills.
+- `skyline-claude`: plugin-local HTTP MCP config, PreToolUse enforcement,
+  daemon watchdog monitor, and `upgrade` / `uninstall` commands.
+- `skyline-codex`: plugin-local HTTP MCP config, SessionStart steering skill,
+  PreToolUse enforcement hooks, and `upgrade` / `uninstall` skills.
 
 ## Verify
 

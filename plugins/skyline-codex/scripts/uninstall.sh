@@ -44,12 +44,21 @@ if [ -e "$HOME/.local/bin/sky" ] && strings "$HOME/.local/bin/sky" 2>/dev/null |
   rm -f "$HOME/.local/bin/sky"
 fi
 
+# Remove Skyline-owned per-user state left by setup, daemon records, caches,
+# snapshots, journals, and observability streams.
+rm -rf \
+  "${XDG_CONFIG_HOME:-$HOME/.config}/skyline" \
+  "${XDG_CACHE_HOME:-$HOME/.cache}/skyline" \
+  "$HOME/Library/Application Support/skyline" \
+  "$HOME/Library/Caches/skyline"
+
 # Verification output for the agent/user.
 echo "skyline uninstall verification:"
 printf 'skyline: '; command -v skyline || true
 printf 'sky-hash: '; command -v sky-hash || true
 printf 'sky: '; command -v sky || true
 pgrep -af 'skyline|sky-hash' || true
+test ! -e "$HOME/Library/Application Support/skyline" && echo "application support state absent" || echo "application support state still exists: $HOME/Library/Application Support/skyline"
 if [ -f "$HOME/Library/LaunchAgents/ai.skylence.skyline.daemon.7333.plist" ]; then
   echo "launchd plist still exists: $HOME/Library/LaunchAgents/ai.skylence.skyline.daemon.7333.plist"
 else

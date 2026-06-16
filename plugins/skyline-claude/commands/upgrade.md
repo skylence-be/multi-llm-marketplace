@@ -1,3 +1,7 @@
+---
+description: Update Skyline, restart the daemon, and print plugin refresh steps.
+---
+
 Run the skyline upgrade script to update the binary to the latest release and restart the daemon:
 
 ```

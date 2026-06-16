@@ -1,3 +1,7 @@
+---
+description: Fully uninstall Skyline wiring, daemon services, plugins, and package files.
+---
+
 Run the skyline uninstall script to remove MCP wiring, hooks, instructions, daemon autostart, installed plugins, helper processes, dispatchers, and the global skyline package:
 
 ```

@@ -33,6 +33,13 @@ else
   if [ -e "$HOME/.local/bin/sky" ] && strings "$HOME/.local/bin/sky" 2>/dev/null | grep -Eqi 'skyline|sky-hash|skylence'; then
     rm -f "$HOME/.local/bin/sky"
   fi
+
+  # 6. Remove Skyline-owned per-user state.
+  rm -rf \
+    "${XDG_CONFIG_HOME:-$HOME/.config}/skyline" \
+    "${XDG_CACHE_HOME:-$HOME/.cache}/skyline" \
+    "$HOME/Library/Application Support/skyline" \
+    "$HOME/Library/Caches/skyline"
 fi
 ```
 
@@ -43,6 +50,7 @@ command -v skyline || true
 command -v sky-hash || true
 command -v sky || true
 pgrep -af 'skyline|sky-hash' || true
+test ! -e "$HOME/Library/Application Support/skyline" && echo 'application support state absent' || echo 'application support state still exists'
 test ! -f "$HOME/Library/LaunchAgents/ai.skylence.skyline.daemon.7333.plist" && echo 'launchd plist absent' || echo 'launchd plist still exists'
 ```
 
