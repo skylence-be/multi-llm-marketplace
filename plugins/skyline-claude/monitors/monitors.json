@@ -3,20 +3,5 @@
     "name": "skyline-daemon",
     "command": "bash \"${CLAUDE_PLUGIN_ROOT}/monitors/daemon-watchdog.sh\"",
     "description": "Alerts Claude when the skyline daemon goes down or comes back up — prevents silent fallback to native tools"
-  },
-  {
-    "name": "skyline-devlog",
-    "command": "bash \"${CLAUDE_PLUGIN_ROOT}/monitors/devlog-stream.sh\"",
-    "description": "Streams DEVLOG diagnostic messages in real time (only active when devlog is enabled)"
-  },
-  {
-    "name": "skyline-audit",
-    "command": "bash \"${CLAUDE_PLUGIN_ROOT}/monitors/audit-stream.sh\"",
-    "description": "Streams AUDIT file mutation events in real time (only active when audit is enabled)"
-  },
-  {
-    "name": "skyline-bench",
-    "command": "bash \"${CLAUDE_PLUGIN_ROOT}/monitors/bench-stream.sh\"",
-    "description": "Streams BENCH timing samples in real time (only active when bench is enabled)"
   }
 ]
