@@ -16,7 +16,7 @@ while true; do
     if [ "$IS_UP" = "0" ]; then
       echo "skyline MCP unavailable. Run: skyline daemon install --port 7333, demand user reconnect MCP and tell you."
     else
-      echo "SKYLINE DAEMON RESTORED: port 7333 is responding. skyline MCP tools are available — resume using skyline_read, skyline_edit, etc."
+      echo "skyline MCP available, resume."
     fi
     WAS_UP=$IS_UP
   fi
