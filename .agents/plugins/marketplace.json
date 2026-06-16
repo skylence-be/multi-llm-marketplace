@@ -1,0 +1,19 @@
+{
+  "name": "multi-llm-marketplace",
+  "interface": {
+    "displayName": "Skyline Marketplace"
+  },
+  "plugins": [
+    {
+      "name": "skyline-codex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/skyline-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
