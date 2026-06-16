@@ -10,12 +10,14 @@ else
   exit 0
 fi
 
+CORE="select:mcp__plugin_skyline-claude_skyline__skyline_read,mcp__plugin_skyline-claude_skyline__skyline_edit,mcp__plugin_skyline-claude_skyline__skyline_create,mcp__plugin_skyline-claude_skyline__skyline_grep,mcp__plugin_skyline-claude_skyline__skyline_tree,mcp__plugin_skyline-claude_skyline__skyline_find,mcp__plugin_skyline-claude_skyline__skyline_git,mcp__plugin_skyline-claude_skyline__skyline_run"
+SWITCH="Skyline is active. Switch to skyline tools for this session: run ToolSearch(\"$CORE\") then skyline_guide, then retry."
 case "$MODE" in
-  read) printf "use skyline_read, not Read.\n" >&2; exit 2 ;;
-  edit) printf "use skyline_edit/skyline_create, not Edit/Write.\n" >&2; exit 2 ;;
-  grep) printf "use skyline_grep/skyline_sgrep, not Grep.\n" >&2; exit 2 ;;
-  glob) printf "use skyline_find/skyline_tree, not Glob.\n" >&2; exit 2 ;;
-  bash) printf "use skyline_grep/skyline_sgrep, skyline_find/skyline_tree, skyline_git, skyline_run, skyline_test, skyline_conflicts — not Bash.\n" >&2; exit 2 ;;
+  read) printf "skyline_read replaces Read. %s\n" "$SWITCH" >&2; exit 2 ;;
+  edit) printf "skyline_edit/skyline_create replace Edit/Write. %s\n" "$SWITCH" >&2; exit 2 ;;
+  grep) printf "skyline_grep/skyline_sgrep replace Grep. %s\n" "$SWITCH" >&2; exit 2 ;;
+  glob) printf "skyline_find/skyline_tree replace Glob. %s\n" "$SWITCH" >&2; exit 2 ;;
+  bash) printf "skyline_grep/skyline_find/skyline_git/skyline_run/skyline_test replace Bash. %s\n" "$SWITCH" >&2; exit 2 ;;
 esac
 
 exit 0
