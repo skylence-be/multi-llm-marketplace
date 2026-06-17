@@ -1,5 +1,5 @@
 ---
-name: purge-claude-user-scope-skill
+name: purge-claude-user-scope
 description: Wipe all Claude Code user-scope files (~/.claude) while leaving the claude binary installed. Less destructive than uninstall.
 disable-model-invocation: true
 ---
