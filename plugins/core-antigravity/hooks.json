@@ -1,0 +1,32 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "run_command",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-${ANTIGRAVITY_PLUGIN_ROOT:-${GEMINI_PLUGIN_ROOT:-}}}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/judge-hook.sh\" ]; then printf '{\"decision\":\"allow\"}\\n'; exit 0; fi; sh \"$PLUGIN_ROOT/hooks/judge-hook.sh\""
+        }
+      ]
+    },
+    {
+      "matcher": "write_to_file|replace_file_content|multi_replace_file_content",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-${ANTIGRAVITY_PLUGIN_ROOT:-${GEMINI_PLUGIN_ROOT:-}}}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/writing-guard.sh\" ]; then printf '{\"decision\":\"allow\"}\\n'; exit 0; fi; sh \"$PLUGIN_ROOT/hooks/writing-guard.sh\""
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-${ANTIGRAVITY_PLUGIN_ROOT:-${GEMINI_PLUGIN_ROOT:-}}}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/research-nudge.sh\" ]; then printf '{\"decision\":\"allow\"}\\n'; exit 0; fi; sh \"$PLUGIN_ROOT/hooks/research-nudge.sh\""
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "core-antigravity",
+  "version": "0.1.0",
+  "description": "Google Antigravity port of the core baseline. Ships the judge-hook (PreToolUse rules engine, deny/allow JSON, escalates via gemini), the writing-guard (pre-write AI-tells guard on the write tools), the research-nudge (Stop hook to verify hedged factual claims), and the core guidelines for ~/.gemini/AGENTS.md. /core-antigravity:setup seeds ~/.gemini/judge-rules.json and writes the guidelines block.",
+  "author": {
+    "name": "Skylence",
+    "url": "https://github.com/skylence-be"
+  },
+  "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
+  "repository": "https://github.com/skylence-be/multi-llm-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "core",
+    "antigravity",
+    "gemini",
+    "judge-hook",
+    "writing-guard",
+    "research-nudge",
+    "guidelines"
+  ]
+}
