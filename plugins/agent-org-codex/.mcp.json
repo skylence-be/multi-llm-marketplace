@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "solo": {
+      "type": "stdio",
+      "command": "/Applications/Solo.app/Contents/MacOS/mcp"
+    }
+  }
+}
