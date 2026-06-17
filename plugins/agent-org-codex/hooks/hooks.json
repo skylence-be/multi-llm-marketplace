@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${CODEX_PLUGIN_ROOT:-/Users/jv/Code/skylence/marketplaces/multi-llm-marketplace/plugins/agent-org-codex}\"; sh \"$PLUGIN_ROOT/hooks/agent-org-session-start.sh\"",
+            "command": "PLUGIN_ROOT=\"${CODEX_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/agent-org-session-start.sh\" ]; then exit 0; fi; sh \"$PLUGIN_ROOT/hooks/agent-org-session-start.sh\"",
             "statusMessage": "Loading agent-org Codex guidance"
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${CODEX_PLUGIN_ROOT:-/Users/jv/Code/skylence/marketplaces/multi-llm-marketplace/plugins/agent-org-codex}\"; python3 \"$PLUGIN_ROOT/hooks/build-slot-guard.py\"",
+            "command": "PLUGIN_ROOT=\"${CODEX_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/build-slot-guard.py\" ]; then exit 0; fi; python3 \"$PLUGIN_ROOT/hooks/build-slot-guard.py\"",
             "statusMessage": "Checking agent-org build-slot policy"
           }
         ]
