@@ -1,6 +1,6 @@
 ---
 name: setup
-description: One-shot, no-prompt installer for the core Claude Code baseline. Copies the judge-hook and writing-guard hooks plus the core-hud statusline into ~/.claude, seeds judge-rules.json, wires settings.json to a full-bypass permission posture gated by the judge-hook, and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) into the user-scope CLAUDE.md. Invoke as /core:setup on a new machine.
+description: One-shot, no-prompt installer for the core Claude Code baseline. Copies the judge-hook (PreToolUse), writing-guard (PostToolUse), and research-nudge (Stop) hooks plus the core-hud statusline into ~/.claude, seeds judge-rules.json, wires settings.json to a full-bypass permission posture gated by the judge-hook with dynamic workflows disabled, and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) into the user-scope CLAUDE.md. Invoke as /core:setup on a new machine.
 ---
 
 # /core:setup
@@ -17,8 +17,9 @@ All source files live under `$CLAUDE_PLUGIN_ROOT` (the root of this plugin). Run
 mkdir -p ~/.claude
 cp "$CLAUDE_PLUGIN_ROOT/hooks/judge-hook.sh" \
    "$CLAUDE_PLUGIN_ROOT/hooks/writing-guard.sh" \
+   "$CLAUDE_PLUGIN_ROOT/hooks/research-nudge.sh" \
    "$CLAUDE_PLUGIN_ROOT/statusline/core-hud.sh" ~/.claude/
-chmod +x ~/.claude/judge-hook.sh ~/.claude/writing-guard.sh ~/.claude/core-hud.sh
+chmod +x ~/.claude/judge-hook.sh ~/.claude/writing-guard.sh ~/.claude/research-nudge.sh ~/.claude/core-hud.sh
 ```
 
 ## Step 2: seed the judge rules (only if absent)
@@ -36,7 +37,7 @@ fi
 
 ## Step 3: wire settings.json (backup first; idempotent)
 
-Adds the two hooks, the statusline, and the full-bypass posture. Re-running strips the prior core hook entries before re-adding, so it never stacks duplicates. Existing unrelated hooks and the deny list are preserved.
+Adds the three hooks, the statusline, the full-bypass posture, and `disableWorkflows: true`. Re-running strips the prior core hook entries before re-adding, so it never stacks duplicates. Existing unrelated hooks and the deny list are preserved.
 
 ```bash
 SETTINGS=~/.claude/settings.json
@@ -46,6 +47,7 @@ cp "$SETTINGS" "$SETTINGS.bak.$(date +%Y%m%d%H%M%S)"
 tmp=$(mktemp)
 jq '
   .statusLine = {type: "command", command: "bash ~/.claude/core-hud.sh"}
+  | .disableWorkflows = true
   | .permissions = (.permissions // {})
   | .permissions.defaultMode = "bypassPermissions"
   | .hooks = (.hooks // {})
@@ -57,8 +59,12 @@ jq '
       ((.hooks.PostToolUse // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("writing-guard.sh") | not)))
       + [{matcher: "Write|Edit", hooks: [{type: "command", command: "bash ~/.claude/writing-guard.sh", statusMessage: "writing-guard"}]}]
     )
+  | .hooks.Stop = (
+      ((.hooks.Stop // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("research-nudge.sh") | not)))
+      + [{hooks: [{type: "command", command: "bash ~/.claude/research-nudge.sh", statusMessage: "research-nudge"}]}]
+    )
 ' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
-echo "settings.json wired: judge-hook, writing-guard, core-hud, bypassPermissions"
+echo "settings.json wired: judge-hook, writing-guard, research-nudge, core-hud, bypassPermissions, disableWorkflows"
 ```
 
 ## Step 4: write the CLAUDE.md guidelines (backup first; idempotent)
@@ -95,9 +101,10 @@ core:setup
 ----------
 ~/.claude/judge-hook.sh        installed
 ~/.claude/writing-guard.sh     installed
+~/.claude/research-nudge.sh    installed
 ~/.claude/core-hud.sh          installed (statusline)
 ~/.claude/judge-rules.json     seeded | existing
-~/.claude/settings.json        wired (bypassPermissions)
+~/.claude/settings.json        wired (bypassPermissions, disableWorkflows, judge+writing+research hooks)
 ~/.claude/CLAUDE.md            guidelines section written
 ```
 
