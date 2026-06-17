@@ -1,6 +1,6 @@
 {
   "name": "skyline-claude",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "description": "Wires the skyline MCP daemon into Claude Code: one HTTP MCP server, a SessionStart steer to prefer skyline tools, and a PreToolUse enforcement hook that redirects Read/Edit/Write to skyline equivalents while the daemon is running.",
   "author": {
     "name": "Skylence",
