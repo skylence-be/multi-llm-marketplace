@@ -1,0 +1,15 @@
+# agent-org execpolicy rules — the org-relevant subset of the machine's
+# ~/.codex/rules/default.rules (nextest ban, operator order 2026-06-06;
+# build-slot law, operator order 2026-06-10). Install by appending to
+# ~/.codex/rules/default.rules. NOTE: the /Users/jv absolute-path variants
+# are machine-specific; adjust the cargo bin path for the target machine.
+prefix_rule(pattern=["cargo", "nextest"], decision="forbidden", justification="OPERATOR-ONLY (order 2026-06-06): cargo nextest froze the machine. Agents never run test suites; commit and report, the operator runs gates manually.")
+prefix_rule(pattern=["cargo-nextest"], decision="forbidden", justification="OPERATOR-ONLY (order 2026-06-06): nextest froze the machine.")
+prefix_rule(pattern=["/Users/jv/.cargo/bin/cargo", "nextest"], decision="forbidden", justification="OPERATOR-ONLY (order 2026-06-06): nextest froze the machine.")
+prefix_rule(pattern=["/Users/jv/.cargo/bin/cargo-nextest"], decision="forbidden", justification="OPERATOR-ONLY (order 2026-06-06): nextest froze the machine.")
+prefix_rule(pattern=["cargo", ["build", "check", "clippy", "test", "doc", "run", "bench", "install"]], decision="forbidden", justification="BUILD-SLOT LAW (operator 2026-06-10): compiling commands run ONE AT A TIME machine-wide. Re-run wrapped: build-slot cargo <same args>. (8GB machine; parallel builds OOM.)")
+prefix_rule(pattern=["/Users/jv/.cargo/bin/cargo", ["build", "check", "clippy", "test", "doc", "run", "bench", "install"]], decision="forbidden", justification="BUILD-SLOT LAW (operator 2026-06-10): re-run wrapped: build-slot cargo <same args>.")
+prefix_rule(pattern=["go", ["build", "test", "run", "vet"]], decision="forbidden", justification="BUILD-SLOT LAW (operator 2026-06-10): compiling go commands run through the slot: build-slot go <same args>.")
+prefix_rule(pattern=["build-slot"], decision="allow", justification="machine-wide compile serializer — the sanctioned path for every compiling command")
+prefix_rule(pattern=["build-slot", "cargo", "nextest"], decision="forbidden", justification="OPERATOR-ONLY: nextest is banned in any wrapping, build-slot included.")
+prefix_rule(pattern=["build-slot", "cargo-nextest"], decision="forbidden", justification="OPERATOR-ONLY: nextest is banned in any wrapping, build-slot included.")
