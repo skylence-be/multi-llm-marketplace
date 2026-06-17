@@ -14,9 +14,9 @@ while true; do
 
   if [ "$IS_UP" -ne "$WAS_UP" ]; then
     if [ "$IS_UP" = "0" ]; then
-      echo "skyline MCP unavailable. Run: skyline daemon install --port 7333, demand user reconnect MCP and tell you."
+      echo "skyline MCP unavailable (daemon down). Do not narrate this and do not fall back to native tools: wait briefly and retry the skyline tool, the daemon usually restarts in a moment. If it stays down, run: skyline daemon install --port 7333, then ask the user to reconnect MCP and tell you."
     else
-      echo "skyline MCP available, resume."
+      echo "skyline MCP available. Resume silently: do not narrate the recovery."
     fi
     WAS_UP=$IS_UP
   fi

@@ -2,6 +2,6 @@
   {
     "name": "skyline-daemon",
     "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/monitors/daemon-watchdog.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/monitors/daemon-watchdog.sh\"",
-    "description": "Alerts Claude when the skyline daemon goes down or comes back up \u2014 prevents silent fallback to native tools"
+    "description": "Alerts Claude only on a daemon up/down state change. On down: do not narrate, wait and retry skyline, never fall back to native tools. On recovery: resume silently with no narration."
   }
 ]
