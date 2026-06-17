@@ -37,7 +37,7 @@ fi
 
 ## Step 3: wire settings.json (backup first; idempotent)
 
-Adds the three hooks, the statusline, the full-bypass posture, and the `env` flags `CLAUDE_CODE_DISABLE_WORKFLOWS=1` and `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1`. Re-running strips the prior core hook entries before re-adding, so it never stacks duplicates. Existing unrelated hooks and the deny list are preserved.
+Adds the three hooks, the statusline, the full-bypass posture, and `disableWorkflows: true` (the dedicated settings key, not the buggy `env` block). Adaptive thinking has no settings key, so it goes in `env` AND is pinned in the shell profile (next block). Re-running strips the prior core hook entries before re-adding, so it never stacks duplicates. Existing unrelated hooks and the deny list are preserved.
 
 ```bash
 SETTINGS=~/.claude/settings.json
@@ -47,9 +47,9 @@ cp "$SETTINGS" "$SETTINGS.bak.$(date +%Y%m%d%H%M%S)"
 tmp=$(mktemp)
 jq '
   .statusLine = {type: "command", command: "bash ~/.claude/core-hud.sh"}
+  | .disableWorkflows = true
   | .env = (.env // {})
   | .env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING = "1"
-  | .env.CLAUDE_CODE_DISABLE_WORKFLOWS = "1"
   | .permissions = (.permissions // {})
   | .permissions.defaultMode = "bypassPermissions"
   | .hooks = (.hooks // {})
@@ -66,7 +66,22 @@ jq '
       + [{hooks: [{type: "command", command: "bash ~/.claude/research-nudge.sh", statusMessage: "research-nudge"}]}]
     )
 ' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
-echo "settings.json wired: judge-hook, writing-guard, research-nudge, core-hud, bypassPermissions, workflows off, adaptive-thinking off"
+
+# Adaptive thinking has no settings.json *key* — only the env var
+# CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING. The settings `env` block is read at
+# startup but has had reliability bugs (anthropics/claude-code #5202, #8500,
+# #20112), and a shell export wins over it regardless, so also pin it in the
+# shell profile. Idempotent: a fenced block, replaced on re-run.
+PROFILE="$HOME/.zshrc"
+case "${SHELL:-}" in *bash) PROFILE="$HOME/.bashrc" ;; esac
+touch "$PROFILE"
+cp "$PROFILE" "$PROFILE.bak.$(date +%Y%m%d%H%M%S)"
+ptmp=$(mktemp)
+awk '/# >>> core:env >>>/{s=1} !s{print} /# <<< core:env <<</{s=0; next}' "$PROFILE" > "$ptmp"
+{ cat "$ptmp"; printf '\n# >>> core:env >>>\nexport CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1\n# <<< core:env <<<\n'; } > "$PROFILE"
+rm -f "$ptmp"
+echo "settings.json wired: judge-hook, writing-guard, research-nudge, core-hud, bypassPermissions, disableWorkflows, adaptive-thinking off"
+echo "shell profile pinned: CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 ($PROFILE)"
 ```
 
 ## Step 4: write the CLAUDE.md guidelines (backup first; idempotent)
@@ -106,7 +121,8 @@ core:setup
 ~/.claude/research-nudge.sh    installed
 ~/.claude/core-hud.sh          installed (statusline)
 ~/.claude/judge-rules.json     seeded | existing
-~/.claude/settings.json        wired (bypassPermissions, workflows off, adaptive-thinking off, judge+writing+research hooks)
+~/.claude/settings.json        wired (bypassPermissions, disableWorkflows, adaptive-thinking off, judge+writing+research hooks)
+~/.zshrc | ~/.bashrc           pinned CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 (shell beats the settings env block)
 ~/.claude/CLAUDE.md            guidelines section written
 ```
 
