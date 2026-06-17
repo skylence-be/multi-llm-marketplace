@@ -1,0 +1,26 @@
+{
+  "description": "Agent-org session discipline: org-lane-mark marks any session that dispatches Solo workers or arms Solo timers (PreToolUse on the spawn/timer tools); org-stop-gate blocks that session's FIRST stop with the anti-idle checklist (read finished workers, arm wakes, surface blocking questions) — stop_hook_active passes the second stop, so it costs one turn, never a loop. Both are inert in sessions that never spawn workers.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__solo__spawn_agent|mcp__solo__spawn_process|mcp__solo__timer_set|mcp__solo__timer_fire_when_idle_any|mcp__solo__timer_fire_when_idle_all",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/org-lane-mark.sh\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/org-stop-gate.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

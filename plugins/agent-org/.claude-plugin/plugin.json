@@ -1,0 +1,19 @@
+{
+  "name": "agent-org",
+  "version": "1.1.0",
+  "description": "Skylence agent-org v2 in a box (operator redesign 2026-06-10): 4 role skills (orchestrator, solo-worker, replacer, org-audit), 2 session-discipline hooks (org-lane-mark PreToolUse marker on Solo spawn/timer tools + org-stop-gate anti-idle Stop gate), the build-slot machine-wide compile serializer, a ghost-probe script implementing the field-validated ghost-text-vs-live-typing PTY check (no-fusion law), and the Codex-side conduct pack (AGENTS.md, execpolicy org rules, solo-worker Codex skill).",
+  "author": {
+    "name": "Skylence"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agent-org",
+    "solo",
+    "orchestrator",
+    "multi-agent",
+    "codex",
+    "hooks",
+    "no-fusion",
+    "build-slot"
+  ]
+}
