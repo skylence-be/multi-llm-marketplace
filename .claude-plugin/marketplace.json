@@ -27,6 +27,17 @@
         "ref": "main"
       },
       "homepage": "https://github.com/skylence-be/multi-llm-marketplace"
+    },
+    {
+      "name": "agent-org",
+      "description": "Skylence agent-org v2 in a box (operator redesign 2026-06-10). 4 role skills: orchestrator, solo-worker, replacer, org-audit. 2 session-discipline hooks: org-lane-mark (PreToolUse marker on Solo spawn/timer tools) + org-stop-gate (Stop gate blocking final Stop until workers report done). Includes build-slot compile serializer, ghost-probe PTY check (no-fusion law), and the Codex-side conduct pack.",
+      "source": {
+        "source": "git-subdir",
+        "url": "skylence-be/marketplace",
+        "path": "plugins/agent-org",
+        "ref": "main"
+      },
+      "homepage": "https://github.com/skylence-be/marketplace"
     }
   ]
 }

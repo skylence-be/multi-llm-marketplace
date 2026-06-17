@@ -9,7 +9,7 @@ Run once on a new machine. Installs the core baseline with no prompts. Every ste
 
 All source files live under `$CLAUDE_PLUGIN_ROOT` (the root of this plugin). Run each block exactly as written.
 
-> Posture note: this skill sets `permissions.defaultMode` to `bypassPermissions` and `permissions.allow` to `["*"]`. Per-call permission prompts go away; the judge-hook (PreToolUse) plus its rules become the safety gate. PreToolUse hooks still run under bypass mode, so the gate stays live.
+> Posture note: this skill sets `permissions.defaultMode` to `bypassPermissions`. Per-call permission prompts go away; the judge-hook (PreToolUse) plus its rules become the safety gate. PreToolUse hooks still run under bypass mode, so the gate stays live.
 
 ## Step 1: install the hook and statusline scripts
 
@@ -48,7 +48,6 @@ jq '
   .statusLine = {type: "command", command: "bash ~/.claude/core-hud.sh"}
   | .permissions = (.permissions // {})
   | .permissions.defaultMode = "bypassPermissions"
-  | .permissions.allow = ["*"]
   | .hooks = (.hooks // {})
   | .hooks.PreToolUse = (
       ((.hooks.PreToolUse // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("judge-hook.sh") | not)))
@@ -59,7 +58,7 @@ jq '
       + [{matcher: "Write|Edit", hooks: [{type: "command", command: "bash ~/.claude/writing-guard.sh", statusMessage: "writing-guard"}]}]
     )
 ' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
-echo "settings.json wired: judge-hook, writing-guard, core-hud, bypassPermissions, allow [*]"
+echo "settings.json wired: judge-hook, writing-guard, core-hud, bypassPermissions"
 ```
 
 ## Step 4: write the CLAUDE.md guidelines (backup first; idempotent)
@@ -98,7 +97,7 @@ core:setup
 ~/.claude/writing-guard.sh     installed
 ~/.claude/core-hud.sh          installed (statusline)
 ~/.claude/judge-rules.json     seeded | existing
-~/.claude/settings.json        wired (bypassPermissions, allow [*])
+~/.claude/settings.json        wired (bypassPermissions)
 ~/.claude/CLAUDE.md            guidelines section written
 ```
 
