@@ -37,7 +37,7 @@ fi
 
 ## Step 3: wire settings.json (backup first; idempotent)
 
-Adds the three hooks, the statusline, the full-bypass posture, and `disableWorkflows: true`. Re-running strips the prior core hook entries before re-adding, so it never stacks duplicates. Existing unrelated hooks and the deny list are preserved.
+Adds the three hooks, the statusline, the full-bypass posture, and the `env` flags `CLAUDE_CODE_DISABLE_WORKFLOWS=1` and `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1`. Re-running strips the prior core hook entries before re-adding, so it never stacks duplicates. Existing unrelated hooks and the deny list are preserved.
 
 ```bash
 SETTINGS=~/.claude/settings.json
@@ -47,9 +47,9 @@ cp "$SETTINGS" "$SETTINGS.bak.$(date +%Y%m%d%H%M%S)"
 tmp=$(mktemp)
 jq '
   .statusLine = {type: "command", command: "bash ~/.claude/core-hud.sh"}
-  | .disableWorkflows = true
   | .env = (.env // {})
   | .env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING = "1"
+  | .env.CLAUDE_CODE_DISABLE_WORKFLOWS = "1"
   | .permissions = (.permissions // {})
   | .permissions.defaultMode = "bypassPermissions"
   | .hooks = (.hooks // {})
@@ -66,7 +66,7 @@ jq '
       + [{hooks: [{type: "command", command: "bash ~/.claude/research-nudge.sh", statusMessage: "research-nudge"}]}]
     )
 ' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
-echo "settings.json wired: judge-hook, writing-guard, research-nudge, core-hud, bypassPermissions, disableWorkflows, adaptive-thinking off"
+echo "settings.json wired: judge-hook, writing-guard, research-nudge, core-hud, bypassPermissions, workflows off, adaptive-thinking off"
 ```
 
 ## Step 4: write the CLAUDE.md guidelines (backup first; idempotent)
@@ -106,7 +106,7 @@ core:setup
 ~/.claude/research-nudge.sh    installed
 ~/.claude/core-hud.sh          installed (statusline)
 ~/.claude/judge-rules.json     seeded | existing
-~/.claude/settings.json        wired (bypassPermissions, disableWorkflows, adaptive-thinking off, judge+writing+research hooks)
+~/.claude/settings.json        wired (bypassPermissions, workflows off, adaptive-thinking off, judge+writing+research hooks)
 ~/.claude/CLAUDE.md            guidelines section written
 ```
 
