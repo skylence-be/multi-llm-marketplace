@@ -47,6 +47,14 @@ printf '\n' >> "$AGENTS_MD"
 cat "$TEMPLATE" >> "$AGENTS_MD"
 rm -f "$tmp"
 echo "AGENTS.md guidelines section refreshed"
+
+# Cross-check: the installed fenced block must match the shipped example verbatim.
+installed=$(awk '/<!-- BEGIN core:guidelines -->/{f=1} f{print} /<!-- END core:guidelines -->/{f=0}' "$AGENTS_MD")
+if [ "$installed" = "$(cat "$TEMPLATE")" ]; then
+  echo "AGENTS.md guidelines: in sync with the shipped example"
+else
+  echo "AGENTS.md guidelines: DRIFT vs the shipped example — re-run /core-antigravity:setup to refresh"
+fi
 ```
 
 ## Step 3: summary

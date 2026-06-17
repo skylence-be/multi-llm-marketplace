@@ -1,6 +1,6 @@
 {
   "name": "core-codex",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Codex port of the core baseline. Ships the judge-hook (PreToolUse rules engine that escalates via codex exec), the writing-guard (PostToolUse AI-tells guard), the research-nudge (Stop hook that nudges verification of hedged factual claims), and the core guidelines for ~/.codex/AGENTS.md. /core-codex:setup seeds ~/.codex/judge-rules.json and writes the guidelines block.",
   "author": {
     "name": "Skylence",

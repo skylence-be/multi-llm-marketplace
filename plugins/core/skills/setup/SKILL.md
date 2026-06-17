@@ -84,7 +84,7 @@ echo "settings.json wired: judge-hook, writing-guard, research-nudge, core-hud, 
 echo "shell profile pinned: CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 ($PROFILE)"
 ```
 
-## Step 4: write the CLAUDE.md guidelines (backup first; idempotent)
+## Step 4: write the CLAUDE.md guidelines (backup first; idempotent; cross-checked)
 
 The canonical guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) live in `$CLAUDE_PLUGIN_ROOT/templates/claude-md.md`, fenced by `<!-- BEGIN core:guidelines -->` and `<!-- END core:guidelines -->`. This replaces a prior fenced block if present, otherwise appends one. Content outside the fences is left alone.
 
@@ -107,6 +107,14 @@ printf '\n' >> "$CLAUDE_MD"
 cat "$TEMPLATE" >> "$CLAUDE_MD"
 rm -f "$tmp"
 echo "CLAUDE.md guidelines section refreshed"
+
+# Cross-check: the installed fenced block must match the shipped example verbatim.
+installed=$(awk '/<!-- BEGIN core:guidelines -->/{f=1} f{print} /<!-- END core:guidelines -->/{f=0}' "$CLAUDE_MD")
+if [ "$installed" = "$(cat "$TEMPLATE")" ]; then
+  echo "CLAUDE.md guidelines: in sync with the shipped example"
+else
+  echo "CLAUDE.md guidelines: DRIFT vs the shipped example — re-run /core:setup to refresh"
+fi
 ```
 
 ## Step 5: summary
@@ -123,7 +131,7 @@ core:setup
 ~/.claude/judge-rules.json     seeded | existing
 ~/.claude/settings.json        wired (bypassPermissions, disableWorkflows, adaptive-thinking off, judge+writing+research hooks)
 ~/.zshrc | ~/.bashrc           pinned CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 (shell beats the settings env block)
-~/.claude/CLAUDE.md            guidelines section written
+~/.claude/CLAUDE.md            guidelines written + cross-checked against the shipped example
 ```
 
 Then tell the user: restart Claude Code for the hooks and statusline to take effect.
