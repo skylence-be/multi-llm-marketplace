@@ -16,6 +16,17 @@
         "ref": "main"
       },
       "homepage": "https://github.com/skylence-be/multi-llm-marketplace"
+    },
+    {
+      "name": "core",
+      "description": "Opinionated Claude Code baseline: /core:setup installs the judge-hook rules engine, the writing-guard, the core-hud statusline, and CLAUDE.md guidelines, with a full-bypass permission posture gated by the judge-hook.",
+      "source": {
+        "source": "git-subdir",
+        "url": "skylence-be/multi-llm-marketplace",
+        "path": "plugins/core",
+        "ref": "main"
+      },
+      "homepage": "https://github.com/skylence-be/multi-llm-marketplace"
     }
   ]
 }
