@@ -1,5 +1,5 @@
 ---
-name: uninstall-claude
+name: uninstall-claude-skill
 description: Remove all Claude Code user-scope files and uninstall the claude binary from this machine.
 disable-model-invocation: true
 ---

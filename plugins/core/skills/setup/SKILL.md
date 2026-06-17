@@ -1,5 +1,5 @@
 ---
-name: setup
+name: setup-skill
 description: One-shot, no-prompt installer for the core Claude Code baseline. Copies the judge-hook (PreToolUse), writing-guard (PostToolUse), and research-nudge (Stop) hooks plus the core-hud statusline into ~/.claude, seeds judge-rules.json, wires settings.json to a full-bypass permission posture gated by the judge-hook with dynamic workflows disabled, and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) into the user-scope CLAUDE.md. Invoke as /core:setup on a new machine.
 ---
 
