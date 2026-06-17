@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${CODEX_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/judge-hook.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/judge-hook.sh\"",
+            "statusMessage": "judge-hook"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${CODEX_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/writing-guard.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/writing-guard.sh\"",
+            "statusMessage": "writing-guard"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${CODEX_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/research-nudge.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/research-nudge.sh\"",
+            "statusMessage": "research-nudge"
+          }
+        ]
+      }
+    ]
+  }
+}
