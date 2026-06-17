@@ -1,5 +1,5 @@
 ---
-name: org-audit
+name: org-audit-skill
 description: On-demand cold review of the running agent org — board health, lane liveness, verification discipline, token burn. Invoke manually when the operator asks for an outside look; nothing schedules this, ever.
 ---
 

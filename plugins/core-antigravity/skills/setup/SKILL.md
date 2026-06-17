@@ -1,5 +1,5 @@
 ---
-name: setup
+name: setup-skill
 description: One-shot, no-prompt installer for the Antigravity core baseline user-scope state. Seeds ~/.gemini/judge-rules.json (only if absent) and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) into ~/.gemini/AGENTS.md inside a fenced block. The hooks (judge-hook, writing-guard, research-nudge) activate from the installed plugin itself. Invoke as /core-antigravity:setup on a new machine.
 ---
 

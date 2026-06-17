@@ -1,4 +1,5 @@
 ---
+name: uninstall-skill
 description: Fully uninstall skyline — removes MCP wiring, hooks, instructions, daemon autostart, installed plugins, helper processes, dispatchers, and the global skyline package. Use when the user wants to remove skyline.
 ---
 

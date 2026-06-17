@@ -1,5 +1,5 @@
 ---
-name: solo-worker
+name: solo-worker-skill
 description: Worker conduct for Codex agents dispatched by the Claude orchestrator via Solo — todo-body briefs, milestone reporting, build-slot gates, shared-branch etiquette, escalation. Load at the start of any session whose first message is a dispatch pointer ("you own todo <title>") or an orchestrator brief.
 ---
 

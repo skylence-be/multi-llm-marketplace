@@ -1,5 +1,5 @@
 ---
-name: replacer
+name: replacer-skill
 description: Successor pickup — inherit a predecessor worker's lane from durable state (todo trail, committed WIP) after context exhaustion, a kill, or a stall. Invoke when a dispatch brief names you as REPLACER.
 ---
 

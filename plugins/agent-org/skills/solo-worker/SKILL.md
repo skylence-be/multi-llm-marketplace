@@ -1,5 +1,5 @@
 ---
-name: solo-worker
+name: solo-worker-skill
 description: Worker conduct for Claude agents dispatched by an orchestrator (Sonnet fallback lane workers). Invoke at the start of any session whose first message is a dispatch brief or pointer.
 ---
 

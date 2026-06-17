@@ -1,5 +1,5 @@
 ---
-name: orchestrator
+name: orchestrator-skill
 description: Event-driven conductor for Solo-based worker agents (Codex full-auto primary, Sonnet fallback) — dispatch via todo-body briefs, wake-on-idle follow-up, verification, merges, board state. Invoke when acting as the orchestrator of subordinate coding agents or when the user says "you're the conductor".
 ---
 

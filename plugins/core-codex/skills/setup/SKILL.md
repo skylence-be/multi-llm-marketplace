@@ -1,5 +1,5 @@
 ---
-name: setup
+name: setup-skill
 description: One-shot, no-prompt installer for the Codex core baseline user-scope state. Seeds ~/.codex/judge-rules.json (only if absent) and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) into ~/.codex/AGENTS.md inside a fenced block. The hooks (judge-hook, writing-guard, research-nudge) activate from the installed plugin itself — this skill only writes the user-scope files those hooks and the agent read. Invoke as /core-codex:setup on a new machine.
 ---
 

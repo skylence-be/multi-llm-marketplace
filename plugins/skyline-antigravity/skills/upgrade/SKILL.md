@@ -1,5 +1,5 @@
 ---
-name: upgrade
+name: upgrade-skill
 description: Update/upgrade skyline — installs the latest binary, restarts the daemon, and refreshes the plugin. Use when the user wants to update or upgrade skyline.
 ---
 

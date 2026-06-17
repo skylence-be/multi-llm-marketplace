@@ -1,6 +1,6 @@
 {
   "name": "skyline-antigravity",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Wires the skyline MCP daemon into Google Antigravity: one HTTP MCP server and a PreToolUse enforcement hook that steers sessions toward skyline-first tooling while the daemon is running.",
   "author": {
     "name": "Skylence",
