@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js\" read",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js", "read"],
             "statusMessage": "Checking skyline..."
           }
         ]
@@ -16,7 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js\" edit",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js", "edit"],
             "statusMessage": "Checking skyline..."
           }
         ]
@@ -26,7 +28,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js\" grep",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js", "grep"],
             "statusMessage": "Checking skyline..."
           }
         ]
@@ -36,7 +39,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js\" glob",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js", "glob"],
             "statusMessage": "Checking skyline..."
           }
         ]
@@ -46,7 +50,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js\" bash",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/skyline-enforce.js", "bash"],
             "statusMessage": "Checking skyline..."
           }
         ]
