@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" read",
+            "command": "bash -c 'PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" read'",
             "statusMessage": "Checking skyline..."
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" edit",
+            "command": "bash -c 'PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" edit'",
             "statusMessage": "Checking skyline..."
           }
         ]
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" grep",
+            "command": "bash -c 'PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" grep'",
             "statusMessage": "Checking skyline..."
           }
         ]
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" glob",
+            "command": "bash -c 'PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" glob'",
             "statusMessage": "Checking skyline..."
           }
         ]
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" bash",
+            "command": "bash -c 'PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/hooks/skyline-enforce.sh\" bash'",
             "statusMessage": "Checking skyline..."
           }
         ]
