@@ -1,12 +1,12 @@
 [
   {
     "name": "skyline-daemon",
-    "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/monitors/daemon-watchdog.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/monitors/daemon-watchdog.sh\"",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/monitors/daemon-watchdog.js\"",
     "description": "Alerts Claude only on a daemon up/down state change. On down: do not narrate, wait and retry skyline, never fall back to native tools. On recovery: resume silently with no narration."
   },
   {
     "name": "skyline-friction-nudge",
-    "command": "PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT:-}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/monitors/friction-nudge.sh\" ]; then exit 0; fi; bash \"$PLUGIN_ROOT/monitors/friction-nudge.sh\"",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/monitors/friction-nudge.js\"",
     "description": "Debounced friction reporter (tracks skyline#6). After the agent goes idle on skyline tools, surfaces new devlog friction (stale-tag rejections, guide-gate blocks, fallbacks) ONCE so it can be filed via skyline_report_issue after searching open/closed issues. Inert until the audit/devlog observability streams are enabled."
   }
 ]
