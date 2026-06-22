@@ -5,30 +5,6 @@
   },
   "plugins": [
     {
-      "name": "skyline-codex",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skyline-codex"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Developer Tools"
-    },
-    {
-      "name": "skyline-antigravity",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skyline-antigravity"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Developer Tools"
-    },
-    {
       "name": "agent-org-codex",
       "source": {
         "source": "local",

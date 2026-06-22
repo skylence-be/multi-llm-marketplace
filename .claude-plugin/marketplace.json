@@ -7,17 +7,6 @@
   },
   "plugins": [
     {
-      "name": "skyline-claude",
-      "description": "Wires the skyline MCP daemon into Claude Code: HTTP MCP server, PreToolUse enforcement redirecting Read/Edit/Write/Grep/Glob/Bash to skyline equivalents, and a daemon watchdog monitor that alerts Claude when the daemon goes down.",
-      "source": {
-        "source": "git-subdir",
-        "url": "skylence-be/multi-llm-marketplace",
-        "path": "plugins/skyline-claude",
-        "ref": "main"
-      },
-      "homepage": "https://github.com/skylence-be/multi-llm-marketplace"
-    },
-    {
       "name": "core",
       "description": "Opinionated Claude Code baseline: /core:setup installs the judge-hook rules engine, the writing-guard, the core-hud statusline, and CLAUDE.md guidelines, with a full-bypass permission posture gated by the judge-hook.",
       "source": {
