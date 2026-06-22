@@ -18,30 +18,14 @@ optional marketplace plugins when supported agent CLIs are available. The Claude
 and Codex plugins in this repo carry their own MCP configuration; global MCP
 wiring is only needed when explicitly requested with `skyline agent install`.
 
-## Claude Code
-
-```bash
-claude plugin marketplace add skylence-be/multi-llm-marketplace --scope user
-claude plugin install skyline-claude --scope user
-```
-
-Restart Claude Code after installing the plugin.
-
-## Codex
-
-```bash
-codex plugin marketplace add skylence-be/multi-llm-marketplace
-codex plugin add skyline-codex@multi-llm-marketplace
-```
-
-Restart Codex after installing the plugin.
-
 ## Included plugins
 
-- `skyline-claude`: plugin-local HTTP MCP config, PreToolUse enforcement,
-  daemon watchdog monitor, and `upgrade` / `uninstall` commands.
-- `skyline-codex`: plugin-local HTTP MCP config, SessionStart steering skill,
-  PreToolUse enforcement hooks, and `upgrade` / `uninstall` skills.
+- `core`: Opinionated Claude Code baseline: `/core:setup` installs the
+  judge-hook rules engine, the writing-guard, the core-hud statusline, and
+  CLAUDE.md guidelines.
+- `agent-org`: Skylence agent-org v2 in a box — orchestrator, solo-worker,
+  replacer, and org-audit skills, with Solo MCP server substrate, build-slot
+  compile serializer, and the Codex-side conduct pack.
 
 ## Verify
 
@@ -54,9 +38,6 @@ MCP tools should include `skyline_read`, `skyline_grep`, `skyline_edit`,
 `skyline_git`, and `skyline_run`.
 
 ## Upgrade and removal
-
-- Claude: run `/upgrade` or `/uninstall` from the `skyline-claude` plugin.
-- Codex: ask for the Skyline upgrade or uninstall skill.
 
 Manual removal commands are printed by the uninstall flow. Package removal uses
 the package manager you installed with, for example
