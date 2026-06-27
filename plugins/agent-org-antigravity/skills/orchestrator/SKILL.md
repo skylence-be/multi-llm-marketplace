@@ -14,10 +14,10 @@ NO BLIND DELEGATION (operator order 2026-06-10): every worker is a Solo PTY proc
 ## The loop — event-driven, zero cadence timers
 
 1. ANCHOR (invocation/resume — IDEMPOTENT BY CONSTRUCTION): todo_list + list_processes + scratchpad_list. Derive ALL state from the board, never from memory. For each in_progress todo: live proc → read tail + recent comments, re-arm its wake (timer_list first — ONE pending wake per worker, never stack duplicates); dead proc with surviving work (worktree, WIP commits, open PR) → dispatch a replacer immediately. Then SWEEP (Board hygiene below): archive concluded pads, complete/reflag/delete concluded todos, close shipped issues, prune orphaned worktrees — ANCHOR reads the board AND leaves it clean.
-2. DISPATCH (one atomic beat per lane; a big feature is a BATCH of these beats fanned out together): write the brief INTO the todo body (template below) → spawn the worker → arm its wake → todo in_progress. The spawn prompt is a ~5-line POINTER: "you own todo <title> — the body is your brief; read it + cited pads; report there."
+2. DISPATCH (one atomic beat per lane; a big feature is a BATCH of beats fanned out together, not a queue served one-at-a-time): write the brief INTO the todo body (template below) → spawn the worker → arm its wake → todo in_progress; ~5-line POINTER prompt. FAN OUT WIDE — the board should usually show SEVERAL in_progress lanes, not one; independent features/fixes/investigations run CONCURRENTLY, each on its OWN branch + its OWN git worktree, each with its own wake (NEVER two lanes in one checkout, NEVER a lane in the shared main checkout — that corrupts main + collides with siblings). A compile serializer (build-slot) caps concurrent COMPILES, not LANES — keep fanning out, it queues builds; serialize lanes ONLY on a real data/gate dependency (blocker edge), never on machine limits.
 3. SLEEP: end your turn. Wake timers guarantee re-entry. Never poll, never busy-wait.
 4. WAKE ("worker X idle"): read its todo comments + tail, then exactly one of:
-   - DONE → verify claims YOURSELF (re-run the stated command, read the PR diff, check the artifact exists and is sized), post the verdict comment, then bounce with named defects or accept this lane (close_process, todo_complete). The shared feature PR merges per the FAN-OUT MERGE GATE below, never on a single lane's DONE.
+   - DONE → verify claims YOURSELF (re-run the stated command, read the PR diff, check the artifact exists and is sized), post the verdict comment, then bounce with named defects or accept this lane — accepting = close_process + `git worktree remove <path>` + todo_complete, ALL THREE at DONE (a finished lane leaves NO live worker AND NO worktree behind; never defer to a later sweep). The shared feature PR merges per the FAN-OUT MERGE GATE below, never on a single lane's DONE.
    - BLOCKED/ASKING → answer via send_input (tail-check first — no-fusion), or route to the operator via the QUESTIONS pad.
    - STALLED/DEAD → dispatch a replacer into the surviving work, never a fresh start.
    Then RE-ARM a wake for every still-running worker (Solo timers are one-shot) before ending the turn.
@@ -25,7 +25,7 @@ NO BLIND DELEGATION (operator order 2026-06-10): every worker is a Solo PTY proc
 ## Brief template (the todo body IS the brief)
 
 1. GOAL + acceptance criteria as measurable facts (counts, paths, behaviors, "PR open against <repo>") + step 1 = an IDEMPOTENCY CHECK whenever the lane could be a re-dispatch — todo bodies outlive workers, so every brief must be safely re-runnable.
-2. Repo / shared branch / worktree + do-not-touch list + co-workers on the same branch, if any (fanned-out lanes share ONE branch and ONE feature PR).
+2. Repo / shared branch / a DEDICATED worktree for THIS lane — the brief MUST give the exact `git worktree add /abs/path/<lane-slug> -b <branch> origin/main`; NEVER the shared main checkout, NEVER a worktree another lane uses + do-not-touch list + co-workers on the same branch, if any (fanned-out lanes share ONE branch and ONE feature PR).
 3. GATES: every compiling command through `build-slot` (machine law; in AGENTS.md); fmt + clippy clean; open the feature PR if a co-worker hasn't already, never merge; cargo-nextest is banned.
 4. REPORT: milestone comments on this todo — exact commands, counts, SHAs, artifact paths (verification-ready); deviations stated with reasons.
 5. ESCALATE: [BLOCKER]/[INCIDENT] comment with evidence path, incidents BEFORE recovery.
@@ -36,7 +36,7 @@ Commands in briefs are copy-paste-exact — validate once before dispatch. Give 
 
 - Verify adversarially and cheaply: re-run the claimed command, check the artifact. Exit codes through pipes lie; counts come from output you saw.
 - A fix exists only at the branch TIP — confirm the PR head SHA contains it before merging.
-- FAN-OUT MERGE GATE: a shared feature branch lands as ONE PR that merges only when EVERY sibling lane has verified green. Merging on the first DONE ships a half-built feature. (A solo lane has no siblings, so it merges as soon as it verifies.)
+- FAN-OUT MERGE GATE: a shared feature branch lands as ONE PR that merges only when EVERY sibling lane has verified green; a lane reporting DONE closes its own lane (close_process + `git worktree remove` + todo_complete). Merging on the first DONE ships a half-built feature. (A solo lane has no siblings, so it merges as soon as it verifies.)
 - todo_complete only on verified acceptance, and promptly — a finished todo left open hides board state.
 
 ## Standing laws
