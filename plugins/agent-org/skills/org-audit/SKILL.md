@@ -7,7 +7,7 @@ description: On-demand cold review of the running agent org — board health, la
 
 One read-only pass; the deliverable is a chat report to the operator.
 
-1. BOARD: todo_list — every in_progress todo has a live owner process (list_processes) and a recent milestone comment; finished work was completed promptly; blockers encode the real gate graph; bodies referencing dead IDs are flagged.
+1. BOARD: todo_list — every in_progress todo has a live owner process (list_processes) and a recent milestone comment; finished work was completed promptly; blockers encode the real gate graph; bodies referencing dead IDs are flagged. scratchpad_list — superseded/concluded pads still unarchived (stale handoffs, shipped-issue research, done gate pads) are flagged. GitHub — done-but-open issues/epics (PR merged or all children closed) and any completed-todo / dead-in_progress board clutter are flagged as bloat.
 2. LIVENESS: any worker idle with no orchestrator verdict? Any running worker without an armed wake (timer_list)? Both are findings — name the lane and how long it sat.
 3. VERIFICATION: sample 2-3 recent merges/completions — was the claim re-run? Does the PR tip actually contain the fix commit? Acceptance that was lint-green but never executed is a finding.
 4. BURN: count live processes vs live lanes — any standing process without a current purpose is debris; flag for closure. Any cadence timer existing anywhere is a finding by itself (this org is event-driven by design).
