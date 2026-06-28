@@ -1,6 +1,6 @@
 # core-antigravity
 
-Google Antigravity (Gemini) port of the `core` baseline.
+Google Antigravity (Gemini) port of the `core-claude` baseline.
 
 Antigravity's hook contract differs from Claude/Codex: a hook receives the
 tool-call JSON on STDIN (camelCase `toolCall.name` / `toolCall.args`) and prints
@@ -18,11 +18,11 @@ exit-2 block. All three hooks here follow that contract and fail open.
   This is cleaner than the Claude/Codex PostToolUse approach.
 - **hooks/research-nudge.sh** (`Stop`) — nudges web-search verification of a
   hedged factual claim. Escalates via `gemini`.
-- **hooks/judge-rules.example.json** — the same ruleset as the Claude `core`
+- **hooks/judge-rules.example.json** — the same ruleset as the Claude `core-claude`
   plugin; `/core-antigravity:setup` seeds it to `~/.gemini/judge-rules.json`.
 - **templates/agents-md.md** — the core guidelines for `~/.gemini/AGENTS.md`.
 
-## Adaptations from the Claude `core` plugin
+## Adaptations from the Claude `core-claude` plugin
 
 - **Decision contract.** `{"decision":...}` JSON on STDOUT, not exit 2.
 - **Escalation CLI.** `gemini -p "<prompt>"` instead of `claude -p`.

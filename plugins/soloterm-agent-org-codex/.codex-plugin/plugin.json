@@ -1,0 +1,41 @@
+{
+  "name": "soloterm-agent-org-codex",
+  "version": "0.4.0",
+  "description": "Codex package for the full Skylence agent org: bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus orchestrator, replacer, org-audit, solo-worker conduct, build-slot serializer, execpolicy rules, ghost-probe helper, and Codex lifecycle hooks.",
+  "author": {
+    "name": "Skylence",
+    "url": "https://github.com/skylence-be"
+  },
+  "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
+  "repository": "https://github.com/skylence-be/multi-llm-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "agent-org",
+    "solo",
+    "orchestrator",
+    "multi-agent",
+    "codex",
+    "build-slot",
+    "no-fusion"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Agent Org Codex",
+    "shortDescription": "Full Skylence agent-org skills and Codex hooks.",
+    "longDescription": "A Codex-native companion to the Claude Code agent-org plugin. It packages the shared orchestrator, replacer, and org-audit skills from the Claude package, keeps the Codex solo-worker variant, and includes AGENTS.md guidance, execpolicy rules for build-slot and nextest safety, helper scripts used by Solo-orchestrated lanes, and Codex lifecycle hooks for SessionStart steering plus PreToolUse build-slot checks.",
+    "developerName": "Skylence",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Skills",
+      "Scripts",
+      "Hooks"
+    ],
+    "defaultPrompt": [
+      "Invoke orchestrator and plan worker lanes.",
+      "Invoke solo-worker and read my todo brief.",
+      "Run an org-audit of the current board."
+    ],
+    "brandColor": "#7C3AED"
+  }
+}

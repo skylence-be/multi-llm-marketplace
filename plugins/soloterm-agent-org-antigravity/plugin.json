@@ -1,0 +1,23 @@
+{
+  "name": "soloterm-agent-org-antigravity",
+  "version": "0.2.0",
+  "description": "Google Antigravity sibling of the Skylence agent org. Bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus the four role skills (orchestrator, solo-worker, replacer, org-audit), the build-slot compile serializer, the ghost-probe no-fusion PTY check, and portable agent guidance. The Antigravity-native enforcement hook is intentionally omitted until the run_command payload shape is confirmed (see README).",
+  "author": {
+    "name": "Skylence",
+    "url": "https://github.com/skylence-be"
+  },
+  "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
+  "repository": "https://github.com/skylence-be/multi-llm-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "agent-org",
+    "solo",
+    "orchestrator",
+    "multi-agent",
+    "antigravity",
+    "gemini",
+    "no-fusion",
+    "build-slot"
+  ],
+  "mcpServers": "./mcp_config.json"
+}

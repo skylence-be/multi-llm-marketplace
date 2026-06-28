@@ -5,10 +5,10 @@
   },
   "plugins": [
     {
-      "name": "agent-org-codex",
+      "name": "soloterm-agent-org-codex",
       "source": {
         "source": "local",
-        "path": "./plugins/agent-org-codex"
+        "path": "./plugins/soloterm-agent-org-codex"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -17,10 +17,10 @@
       "category": "Developer Tools"
     },
     {
-      "name": "agent-org-antigravity",
+      "name": "soloterm-agent-org-antigravity",
       "source": {
         "source": "local",
-        "path": "./plugins/agent-org-antigravity"
+        "path": "./plugins/soloterm-agent-org-antigravity"
       },
       "policy": {
         "installation": "AVAILABLE",
