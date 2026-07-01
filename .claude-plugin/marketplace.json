@@ -19,7 +19,7 @@
     },
     {
       "name": "soloterm-agent-org",
-      "description": "Skylence agent-org v2 in a box (operator redesign 2026-06-10). Bundles the Solo MCP server (board/PTY/timer substrate every role needs) plus 4 role skills: orchestrator, solo-worker, replacer, org-audit. 2 session-discipline hooks: org-lane-mark (PreToolUse marker on Solo spawn/timer tools) + org-stop-gate (Stop gate blocking final Stop until workers report done). Includes build-slot compile serializer, ghost-probe PTY check (no-fusion law), and the Codex-side conduct pack.",
+      "description": "Skylence agent-org v2 in a box (operator redesign 2026-06-10). Bundles the Solo MCP server (board/PTY/timer substrate every role needs) plus 4 role skills: orchestrator, solo-worker, replacer, org-audit. 2 session-discipline hooks: org-lane-mark (PreToolUse marker on Solo spawn/timer tools) + org-stop-gate (Stop gate blocking a marked session's first stop with the anti-idle checklist). Includes build-slot compile serializer, ghost-probe PTY check (no-fusion law), and the Codex-side conduct pack.",
       "source": {
         "source": "git-subdir",
         "url": "skylence-be/multi-llm-marketplace",

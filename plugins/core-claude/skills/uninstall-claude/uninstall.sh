@@ -106,6 +106,9 @@ fi
 for f in "${RC_FILES[@]}"; do
     [ -f "$f" ] || continue
     BEFORE=$(wc -l < "$f")
+    # Strip the fenced core:env block pinned by /core-claude:setup
+    TMPB=$(mktemp)
+    awk '/# >>> core:env >>>/{s=1} !s{print} /# <<< core:env <<</{s=0; next}' "$f" > "$TMPB" && mv "$TMPB" "$f"
     TMP=$(mktemp)
     grep -vE '\.claude[/"]|anthropic-ai[/-]claude' "$f" > "$TMP" && mv "$TMP" "$f"
     AFTER=$(wc -l < "$f")
