@@ -1,6 +1,6 @@
 {
   "name": "soloterm-agent-org-codex",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Codex package for the full Skylence agent org: bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus orchestrator, replacer, org-audit, solo-worker conduct, build-slot serializer, execpolicy rules, ghost-probe helper, and Codex lifecycle hooks.",
   "author": {
     "name": "Skylence",

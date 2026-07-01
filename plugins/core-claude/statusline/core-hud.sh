@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Claude Code statusline plugin
 # Line1: model (ctx) effort | project (branch) Nf +A -D
-# Line2: bar PCT% CL | 5h used% [⇡⇣pace] countdown  7d used% [⇡⇣pace] countdown
+# Line2: context bar PCT% CL [+ handoff banner]
+# Line3: 5h quota used%, reset countdown [pace]
+# Line4: 7d quota used%, reset countdown [+ session cost]
 
 # Disable glob expansion so unquoted vars with wildcards (e.g. DIR paths)
 # are never accidentally expanded into filename lists.

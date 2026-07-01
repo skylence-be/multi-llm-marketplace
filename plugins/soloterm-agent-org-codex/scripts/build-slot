@@ -16,7 +16,7 @@ while ! mkdir "$LOCK" 2>/dev/null; do
     rm -rf "$LOCK"   # owner died; reclaim
     continue
   fi
-  now=$(date +%s); mt=$(stat -f %m "$LOCK" 2>/dev/null || echo "$now")
+  now=$(date +%s); mt=$(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || echo "$now")
   if [ $((now - mt)) -gt "$STALE" ]; then
     rm -rf "$LOCK"   # stale beyond TTL; reclaim
     continue
