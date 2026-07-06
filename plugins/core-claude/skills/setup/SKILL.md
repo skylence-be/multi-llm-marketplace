@@ -5,16 +5,20 @@ description: One-shot, no-prompt installer for the core Claude Code baseline. Co
 
 # /core-claude:setup
 
-Run once on a new machine. Installs the core baseline with no prompts. Every step that overwrites makes a timestamped backup first. Execute the steps in order, then report the Step 5 checklist.
+Run once on a new machine. Installs the core baseline with no prompts. Every step that overwrites makes a timestamped backup first. Execute the steps in order, then report the Step 6 checklist.
 
 All source files live under `$CLAUDE_PLUGIN_ROOT` (the root of this plugin). Run each block exactly as written.
 
 > Posture note: this skill sets `permissions.defaultMode` to `bypassPermissions`. Per-call permission prompts go away; the judge-hook (PreToolUse) plus its rules become the safety gate. PreToolUse hooks still run under bypass mode, so the gate stays live.
 
-## Step 1: install the hook and statusline scripts
+## Step 1: install the hook and statusline scripts (backup first)
 
 ```bash
 mkdir -p ~/.claude
+ts=$(date +%Y%m%d%H%M%S)
+for f in judge-hook.sh writing-guard.sh research-nudge.sh core-hud.sh; do
+  [ -f ~/.claude/$f ] && cp ~/.claude/$f ~/.claude/$f.bak.$ts
+done
 cp "$CLAUDE_PLUGIN_ROOT/hooks/judge-hook.sh" \
    "$CLAUDE_PLUGIN_ROOT/hooks/writing-guard.sh" \
    "$CLAUDE_PLUGIN_ROOT/hooks/research-nudge.sh" \
@@ -60,7 +64,7 @@ jq '
     )
   | .hooks.PostToolUse = (
       ((.hooks.PostToolUse // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("writing-guard.sh") | not)))
-      + [{matcher: "Write|Edit", hooks: [{type: "command", command: "bash ~/.claude/writing-guard.sh", statusMessage: "writing-guard"}]}]
+      + [{matcher: "Write|Edit|mcp__.*skyline_(create|edit)", hooks: [{type: "command", command: "bash ~/.claude/writing-guard.sh", statusMessage: "writing-guard"}]}]
     )
   | .hooks.Stop = (
       ((.hooks.Stop // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("research-nudge.sh") | not)))
@@ -83,6 +87,13 @@ awk '/# >>> core:env >>>/{s=1} !s{print} /# <<< core:env <<</{s=0; next}' "$PROF
 rm -f "$ptmp"
 echo "settings.json wired: judge-hook, writing-guard, research-nudge, core-hud, bypassPermissions, disableWorkflows, recap off, adaptive-thinking off"
 echo "shell profile pinned: CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 ($PROFILE)"
+
+echo '--- verify ---'
+jq -e '.permissions.defaultMode == "bypassPermissions"' "$SETTINGS" >/dev/null && echo 'defaultMode: OK' || echo 'defaultMode: FAILED'
+for h in judge-hook writing-guard research-nudge; do
+  jq -e --arg h "$h" '[.hooks[][]?.hooks[]?.command] | any(test($h))' "$SETTINGS" >/dev/null \
+    && echo "$h: wired" || echo "$h: FAILED TO WIRE — do not run under bypassPermissions until this is fixed"
+done
 ```
 
 ## Step 4: write the CLAUDE.md guidelines (backup first; idempotent; cross-checked)
@@ -118,21 +129,29 @@ else
 fi
 ```
 
-## Step 5: summary
+## Step 5: stamp the installed version
 
-Print this checklist, substituting the seeded/existing state for judge-rules:
+```bash
+jq -r .version "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" > ~/.claude/.core-claude-version
+echo "stamped ~/.claude/.core-claude-version: $(cat ~/.claude/.core-claude-version)"
+```
+
+## Step 6: summary
+
+Print this checklist, substituting the seeded/existing state for judge-rules and the actual verify results from Step 3:
 
 ```
 core-claude:setup
 ----------
-~/.claude/judge-hook.sh        installed
-~/.claude/writing-guard.sh     installed
-~/.claude/research-nudge.sh    installed
+~/.claude/judge-hook.sh        installed (skyline-aware, rules cached by mtime)
+~/.claude/writing-guard.sh     installed (new-content scan; skyline matcher)
+~/.claude/research-nudge.sh    installed (org sessions + pressure-critical skipped)
 ~/.claude/core-hud.sh          installed (statusline)
 ~/.claude/judge-rules.json     seeded | existing
-~/.claude/settings.json        wired (bypassPermissions, disableWorkflows, recap off, adaptive-thinking off, judge+writing+research hooks)
+~/.claude/settings.json        wired + VERIFIED (bypassPermissions, disableWorkflows, recap off, adaptive-thinking off, judge+writing+research hooks)
 ~/.zshrc | ~/.bashrc           pinned CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 (shell beats the settings env block)
 ~/.claude/CLAUDE.md            guidelines written + cross-checked against the shipped example
+~/.claude/.core-claude-version stamped
 ```
 
-Then tell the user: restart Claude Code for the hooks and statusline to take effect.
+Then tell the user: restart Claude Code for the hooks and statusline to take effect, and that `/core-claude:doctor` re-checks all of this read-only at any time.

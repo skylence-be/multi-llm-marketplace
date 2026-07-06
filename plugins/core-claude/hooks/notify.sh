@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# notify.sh — desktop notifications for Claude Code lifecycle events.
+# Wired by /core-claude:solo-setup (not the base setup). Handles only events
+# Claude Code actually emits: PreCompact, Notification (idle), Stop.
 payload=$(cat)
 event=$(echo "$payload" | jq -r '.hook_event_name // "Unknown"')
 
@@ -6,26 +9,11 @@ case "$event" in
   PreCompact)
     trigger=$(echo "$payload" | jq -r '.matcher // "auto"')
     title="Claude Code"
-    message="$trigger compaction starting. Switch to sonnet[1m] if not already."
-    ;;
-  PostCompact)
-    trigger=$(echo "$payload" | jq -r '.compaction_trigger // "auto"')
-    title="Claude Code"
-    message="Compaction done ($trigger). Context reset."
+    message="Compaction starting ($trigger). Conduct does not survive the summary — agents should re-read their role skill after."
     ;;
   Stop)
     title="Claude Code"
     message="Turn complete."
-    ;;
-  StopFailure)
-    error=$(echo "$payload" | jq -r '.error_type // "unknown"')
-    title="Claude Code - Error"
-    message="Stopped with error: $error"
-    ;;
-  TeammateIdle)
-    agent=$(echo "$payload" | jq -r '.agent_type // "agent"')
-    title="Claude Code - Team"
-    message="Teammate going idle: $agent"
     ;;
   Notification)
     type=$(echo "$payload" | jq -r '.notification_type // ""')

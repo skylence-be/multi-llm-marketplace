@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "core-claude",
-      "description": "Opinionated Claude Code baseline: /core-claude:setup installs the judge-hook rules engine, the writing-guard, the core-hud statusline, and CLAUDE.md guidelines, with a full-bypass permission posture gated by the judge-hook.",
+      "description": "Opinionated Claude Code baseline: /core-claude:setup installs the judge-hook rules engine, the writing-guard, the core-hud statusline, and CLAUDE.md guidelines, with a full-bypass permission posture gated by the judge-hook. Skyline-aware judge (Bash/Write/Edit rules also bind skyline_run/create/edit), transcript-fed escalations, and /core-claude:doctor read-only install audits.",
       "source": {
         "source": "git-subdir",
         "url": "skylence-be/multi-llm-marketplace",

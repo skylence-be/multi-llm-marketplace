@@ -12,6 +12,12 @@
 # claim ("the flag may be --foo") from a benign hedge ("you may want to..."). The
 # stop_hook_active flag caps it at one nudge per turn, never a loop. Fails *open*
 # on any infrastructure error (missing jq/claude, timeout, unreadable transcript).
+#
+# Skipped entirely in Solo agent-org sessions (SOLO_PROCESS_ID set, or the
+# org-lane-mark flag file exists): org roles stop constantly, their milestone
+# prose is hedge-shaped, and they answer to the org's own stop discipline —
+# spawning a judge per stop there is pure RAM burn. Also skipped when kernel
+# memory pressure is CRITICAL (macOS level 4).
 
 set -euo pipefail
 
@@ -21,6 +27,15 @@ INPUT=$(cat)
 # Second pass through the gate (we already nudged once) → let the stop through.
 ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false')
 [ "$ACTIVE" = "true" ] && exit 0
+
+# Org sessions have their own stop discipline; stay out of their way.
+[ -n "${SOLO_PROCESS_ID:-}" ] && exit 0
+SID=$(echo "$INPUT" | jq -r '.session_id // empty')
+if [ -n "$SID" ] && [ -f "/tmp/claude-org-lanes-$SID" ]; then exit 0; fi
+
+# A machine at kernel pressure CRITICAL doesn't get an extra LLM process.
+PRESSURE=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo 0)
+[ "$PRESSURE" = "4" ] && exit 0
 
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 { [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; } || exit 0

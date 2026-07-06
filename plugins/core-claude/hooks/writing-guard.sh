@@ -1,21 +1,40 @@
 #!/bin/bash
-# writing-guard.sh — PostToolUse hook (Write|Edit) that flags AI writing tells in
-# artifact content. Fires when Claude writes a file (HTML, Markdown, code with doc
-# lines, etc.), not on terminal chat. The CLAUDE.md ## Writing Guidelines layer is
-# the primary prevention; this hook is a safety net for what slips through into
-# committed artifacts.
+# writing-guard.sh — PostToolUse hook (Write|Edit + skyline_create/skyline_edit)
+# that flags AI writing tells in NEWLY WRITTEN content — never the whole file:
+#   Write / skyline_create → the full new content
+#   Edit                   → new_string only
+#   skyline_edit           → the +body lines of the patch only
+# so editing a legacy file never flags text the edit didn't add.
+#
+# Em-dash policy matches ~/.claude/CLAUDE.md ## Writing Guidelines: at most one
+# per 500 words in prose (minimum allowance 1); zero in code, where an em dash
+# is almost always a generated-comment tell. Vocab/phrase scans run only on
+# prose files with 150+ new words. Set WRITING_GUARD_EXEMPT_RE (ERE, matched
+# against the file path) to exempt paths. Fails open on infrastructure errors.
 
-set -euo pipefail
+set -uo pipefail
 
+command -v jq >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
-# Write tool uses .content; Edit tool uses .new_string.
-CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // .tool_input.new_string // empty')
+FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null) || exit 0
+CONTENT=$(printf '%s' "$INPUT" | jq -r '.tool_input.content // .tool_input.new_string // empty' 2>/dev/null) || exit 0
+
+# skyline_edit: added lines of the patch; target path from the first ¶ header.
+if [ -z "$CONTENT" ]; then
+  PATCH=$(printf '%s' "$INPUT" | jq -r '.tool_input.patch // empty' 2>/dev/null) || PATCH=""
+  if [ -n "$PATCH" ]; then
+    [ -z "$FILE_PATH" ] && FILE_PATH=$(printf '%s\n' "$PATCH" | sed -n 's/^¶\([^#]*\)#.*/\1/p' | head -1)
+    CONTENT=$(printf '%s\n' "$PATCH" | sed -n 's/^+//p')
+  fi
+fi
 
 [ -z "$FILE_PATH" ] && exit 0
 [ -z "$CONTENT" ] && exit 0
+
+if [ -n "${WRITING_GUARD_EXEMPT_RE:-}" ]; then
+  printf '%s' "$FILE_PATH" | grep -qE -- "$WRITING_GUARD_EXEMPT_RE" 2>/dev/null && exit 0
+fi
 
 # Skip data, config, lock, and binary files where these checks are pure noise.
 case "$FILE_PATH" in
@@ -23,45 +42,45 @@ case "$FILE_PATH" in
   *.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.pdf|*.zip|*.gz|*.tar|*.docx|*.xlsx|*.pptx|*.doc|*.xls|*.ppt|*.key|*.numbers|*.pages) exit 0 ;;
 esac
 
-# Identify prose files for the full vocab/phrase scan. Other files (code, configs)
-# only get the strict em-dash check, since vocab/phrase regex on identifiers and
-# strings is too noisy.
+# Prose files get the full vocab/phrase scan + the ratio em-dash rule; other
+# files (code, configs) get the strict zero em-dash check only.
 case "$FILE_PATH" in
   *.md|*.mdx|*.markdown|*.html|*.htm|*.txt|*.rst|*.adoc|*.tex|*.rtf) IS_PROSE=1 ;;
   *) IS_PROSE=0 ;;
 esac
 
 # Strip code blocks and inline code so quoted code in prose doesn't trip the regex.
-STRIPPED=$(echo "$CONTENT" | awk '
+STRIPPED=$(printf '%s\n' "$CONTENT" | awk '
   /^```/ { in_code = !in_code; next }
   !in_code { print }
 ' | sed 's/`[^`]*`//g')
 
 VIOLATIONS=""
 
-# Em dashes: zero allowed everywhere.
-EM_COUNT=$(echo "$STRIPPED" | grep -o '—' | wc -l | tr -d ' ')
-if [ "$EM_COUNT" -gt 0 ]; then
-  VIOLATIONS="${VIOLATIONS}- Em dashes: ${EM_COUNT} found (zero allowed)\n"
+WORD_COUNT=$(printf '%s\n' "$STRIPPED" | wc -w | tr -d ' ')
+EM_COUNT=$(printf '%s\n' "$STRIPPED" | grep -o '—' | wc -l | tr -d ' ')
+if [ "$IS_PROSE" -eq 1 ]; then
+  EM_ALLOWED=$((WORD_COUNT / 500))
+  [ "$EM_ALLOWED" -lt 1 ] && EM_ALLOWED=1
+else
+  EM_ALLOWED=0
+fi
+if [ "$EM_COUNT" -gt "$EM_ALLOWED" ]; then
+  VIOLATIONS="${VIOLATIONS}- Em dashes: ${EM_COUNT} in ${WORD_COUNT} new words (allowed ${EM_ALLOWED}; policy: max 1 per 500 words in prose, 0 in code)\n"
 fi
 
-# Vocab + phrase checks only on prose files, and only when the content is
-# substantial enough that the rule matters.
-if [ "$IS_PROSE" -eq 1 ]; then
-  WORD_COUNT=$(echo "$STRIPPED" | wc -w | tr -d ' ')
-  if [ "$WORD_COUNT" -ge 150 ]; then
-    BANNED='delve|tapestry|pivotal|testament|meticulous|nuanced|multifaceted|embark|spearhead|bolster|garner|interplay|nestled|bustling|vibrant|comprehensive|invaluable|reimagine|empower|groundbreaking|transformative|paramount|myriad|cornerstone|catalyst|seamless|seamlessly'
-    FOUND=$(echo "$STRIPPED" | grep -oiE "\b(${BANNED})\b" 2>/dev/null | sort -fu | tr '\n' ',' | sed 's/,$//' || true)
-    [ -n "$FOUND" ] && VIOLATIONS="${VIOLATIONS}- Banned AI vocabulary: ${FOUND}\n"
+if [ "$IS_PROSE" -eq 1 ] && [ "$WORD_COUNT" -ge 150 ]; then
+  BANNED='delve|tapestry|pivotal|testament|meticulous|nuanced|multifaceted|embark|spearhead|bolster|garner|interplay|nestled|bustling|vibrant|comprehensive|invaluable|reimagine|empower|groundbreaking|transformative|paramount|myriad|cornerstone|catalyst|seamless|seamlessly'
+  FOUND=$(printf '%s\n' "$STRIPPED" | grep -oiE "\b(${BANNED})\b" 2>/dev/null | sort -fu | tr '\n' ',' | sed 's/,$//' || true)
+  [ -n "$FOUND" ] && VIOLATIONS="${VIOLATIONS}- Banned AI vocabulary: ${FOUND}\n"
 
-    PHRASES='great question!|certainly!|absolutely!|i hope this helps|let'\''s dive in|without further ado|it'\''s worth noting that|in conclusion,|in summary,'
-    FOUND_PH=$(echo "$STRIPPED" | grep -oiE "(${PHRASES})" 2>/dev/null | sort -fu | tr '\n' ' / ' | sed 's, / $,,' || true)
-    [ -n "$FOUND_PH" ] && VIOLATIONS="${VIOLATIONS}- AI phrases: ${FOUND_PH}\n"
-  fi
+  PHRASES='great question!|certainly!|absolutely!|i hope this helps|let'\''s dive in|without further ado|it'\''s worth noting that|in conclusion,|in summary,'
+  FOUND_PH=$(printf '%s\n' "$STRIPPED" | grep -oiE "(${PHRASES})" 2>/dev/null | sort -fu | tr '\n' ' / ' | sed 's, / $,,' || true)
+  [ -n "$FOUND_PH" ] && VIOLATIONS="${VIOLATIONS}- AI phrases: ${FOUND_PH}\n"
 fi
 
 [ -z "$VIOLATIONS" ] && exit 0
 
-REASON=$(printf "Wrote to %s but content violates ## Writing Guidelines (~/.claude/CLAUDE.md):\n\n%b\nEdit the file to remove these tells. Do not acknowledge or apologize, just produce a corrected version." "$FILE_PATH" "$VIOLATIONS")
+REASON=$(printf "New content written to %s violates ## Writing Guidelines (~/.claude/CLAUDE.md):\n\n%b\nEdit the file to remove these tells from the text you just added. Do not acknowledge or apologize, just produce a corrected version." "$FILE_PATH" "$VIOLATIONS")
 
 jq -n --arg reason "$REASON" '{decision: "block", reason: $reason}'

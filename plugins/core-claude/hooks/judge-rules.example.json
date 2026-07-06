@@ -1,6 +1,6 @@
 {
-  "_comment": "Copy to ~/.claude/judge-rules.json and customize. Rules evaluate in declaration order; first match wins. Three classes: 'deny' blocks (exit 2); 'allow' short-circuits to allow (use for allowlist patterns above broader denies); 'escalate' spawns `claude -p` with judge_prompt and parses the first word of the response (ALLOW or BLOCK). 'pattern' is a POSIX extended regex matched against the tool_input JSON. Patterns are case-sensitive. Portable across GNU grep and BSD grep — avoid \\s inside [], use [[:space:]]; avoid [^\\n], use .* (which already excludes newlines). The '_category' field is an inline label, ignored by the hook.",
-  "_categories": "fs | net | privilege | git-destructive | git-review | secrets | db | cloud | deps | system",
+  "_comment": "Copy to ~/.claude/judge-rules.json and customize. Rules evaluate in declaration order; first match wins. Three classes: 'deny' blocks (exit 2); 'allow' short-circuits to allow (use for allowlist patterns above broader denies); 'escalate' spawns `claude -p` with judge_prompt (the hook appends the last few user messages from the transcript, so prompts that reference user intent are decidable) and parses the first word of the response (ALLOW or BLOCK). 'pattern' is a POSIX extended regex matched against the tool_input JSON plus the hook's normalization lines: rules with tool 'Bash' also bind *skyline_run (match text gains one 'cmd: <argv joined>' line per command), 'Write' also binds *skyline_create and 'Edit' also binds *skyline_edit (match text gains \"file_path\":\"<path>\" lines), so skyline routing cannot bypass a rule. Patterns are case-sensitive. Portable across GNU grep and BSD grep — avoid \\s inside [], use [[:space:]]; avoid [^\\n], use .* (which already excludes newlines). The '_category' field is an inline label, ignored by the hook.",
+  "_categories": "fs | net | privilege | git-destructive | git-review | github | secrets | db | cloud | deps | system",
   "_caveats": "Regex bypasses exist (rm -fr vs rm -rf, alternative interpreters, base64-decoded commands). This is a safety net, not a security boundary.",
   "rules": [
     {
@@ -210,6 +210,43 @@
       "pattern": "(\\bkillall\\s|\\bpkill\\s+-9\\b|\\bkill\\s+-9\\s+1\\b)",
       "class": "deny",
       "reason": "mass process kill or kill init"
+    },
+    {
+      "_category": "git-destructive",
+      "tool": "Bash",
+      "pattern": "git\\s+push\\s+.*--mirror\\b",
+      "class": "deny",
+      "reason": "git push --mirror (overwrites ALL remote refs)"
+    },
+    {
+      "_category": "github",
+      "tool": "Bash",
+      "pattern": "gh\\s+repo\\s+delete\\b",
+      "class": "deny",
+      "reason": "gh repo delete (irreversible repository deletion)"
+    },
+    {
+      "_category": "github",
+      "tool": "Bash",
+      "pattern": "gh\\s+release\\s+delete\\b",
+      "class": "escalate",
+      "reason": "gh release delete (published artifacts disappear)",
+      "judge_prompt": "A command is deleting a GitHub release. Block unless the user explicitly named this release (tag or version) and asked for its deletion in a recent message; released artifacts may be referenced by installers and download channels. Block by default."
+    },
+    {
+      "_category": "system",
+      "tool": "Bash",
+      "pattern": "launchctl\\s+(bootout|unload|remove|kill)\\b",
+      "class": "escalate",
+      "reason": "launchd service teardown (may target a production daemon)",
+      "judge_prompt": "A command is unloading, removing, or killing a launchd service. Block unless the service label clearly belongs to a scratch or test service the user asked to manage in a recent message. Production daemons an agent did not start must never be stopped by an agent. Block by default."
+    },
+    {
+      "_category": "fs",
+      "tool": "Bash",
+      "pattern": "diskutil\\s+(erase(Disk|Volume)|partitionDisk|zeroDisk|secureErase|apfs\\s+delete)",
+      "class": "deny",
+      "reason": "diskutil erase/partition/delete (disk destroyer)"
     }
   ]
 }
