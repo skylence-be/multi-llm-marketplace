@@ -1,7 +1,7 @@
 {
   "name": "soloterm-agent-org",
-  "version": "1.5.1",
-  "description": "Skylence agent-org v2 in a box (operator redesign 2026-06-10). Bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus 4 role skills (orchestrator, solo-worker, replacer, org-audit), 2 session-discipline hooks (org-lane-mark PreToolUse marker on Solo spawn/timer tools + org-stop-gate anti-idle Stop gate), the build-slot machine-wide compile serializer, a ghost-probe script implementing the field-validated ghost-text-vs-live-typing PTY check (no-fusion law), and the Codex-side conduct pack (AGENTS.md, execpolicy org rules, solo-worker Codex skill).",
+  "version": "1.6.0",
+  "description": "Skylence agent-org v2 in a box (operator redesign 2026-06-10). Bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus 4 role skills (orchestrator, solo-worker, replacer, org-audit), 3 session-discipline hooks (org-lane-mark PreToolUse marker on Solo spawn/timer tools + org-stop-gate anti-idle Stop gate + org-conduct-refresh post-compaction role-skill re-read), the build-slot machine-wide compile serializer, a ghost-probe script implementing the field-validated ghost-text-vs-live-typing PTY check (no-fusion law), and the Codex-side conduct pack (AGENTS.md, execpolicy org rules, solo-worker Codex skill).",
   "author": {
     "name": "Skylence"
   },

@@ -1,6 +1,6 @@
 ---
 name: solo-worker-skill
-description: Worker conduct for Codex agents dispatched by the Claude orchestrator via Solo — todo-body briefs, milestone reporting, build-slot gates, shared-branch etiquette, escalation. Load at the start of any session whose first message is a dispatch pointer ("you own todo <title>") or an orchestrator brief.
+description: Worker conduct for Codex agents dispatched by the Claude orchestrator via Solo — todo-body briefs, milestone reporting, no-compile law (the orchestrator owns the gate build), shared-branch etiquette, escalation. Load at the start of any session whose first message is a dispatch pointer ("you own todo <title>") or an orchestrator brief.
 ---
 
 # Solo worker conduct (Codex)
@@ -12,8 +12,9 @@ Your dispatch is a pointer: "you own todo <title>" — read the todo body via th
 1. Read the todo body + every pad it cites. Execute its idempotency check FIRST (verify X does not already exist before creating it) — briefs are re-runnable by design.
 2. Entry smoke: `git branch --show-current` matches the brief; `git status --short` + `git log --oneline -1` so tree state is known before reading code.
 3. Implement with skyline MCP tools (grep/sgrep -> edit with the returned ¶path#TAG anchor; skyline_run for commands). Raw shell only for compound shell features — report each such gap as a finding.
-4. Gates: every compiling command as `build-slot <command...>` — execpolicy will reject bare cargo/go compiles and name the fix; that rejection is the mechanism working, re-run wrapped. cargo-nextest never runs, in any wrapping.
+4. Gates: you run NO compiling command — no cargo/go build/test/clippy/fmt and no build-slot (operator order 2026-07-04: workers never compile; the machine has ONE compile slot and a compiling worker poll-loops its session away — execpolicy still rejects bare compiles as defense in depth, but the fix is DON'T COMPILE, not re-wrap). Edit, commit, push, report — the ORCHESTRATOR runs the single gate build at feature-end and returns any compile/test error to you as an edit to fix. cargo-nextest never runs, in any wrapping.
 5. Open the PR; never merge. Post the final milestone comment with verification-ready facts before going idle.
+6. After any mid-session compaction: re-read this skill and your todo body + newest comments before continuing — summaries keep facts, not conduct; your contract is the board's version, not the summary's.
 
 ## Reporting (the orchestrator reads your todo, not your mind)
 

@@ -32,6 +32,11 @@ field validation, promote ritual, risks):
     arm one-shot wakes for still-running workers, put blocking questions on the
     QUESTIONS pad). `stop_hook_active` passes the second stop, so it costs one
     extra turn, never a loop. Inert in sessions that never spawn workers.
+  - `org-conduct-refresh.sh` — SessionStart hook (matcher `compact`); in org
+    sessions (Solo-managed process or a lane-marked session), re-injects the
+    order to re-invoke the role skill and re-anchor from the board after every
+    compaction. Summaries keep facts, not conduct — long-session decay is
+    self-invisible, so the refresh is hook-driven, never self-assessed.
 
 ## Manual installs (documented, not auto-wired)
 

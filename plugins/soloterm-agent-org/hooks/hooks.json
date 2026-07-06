@@ -1,5 +1,5 @@
 {
-  "description": "Agent-org session discipline: org-lane-mark marks any session that dispatches Solo workers or arms Solo timers (PreToolUse on the spawn/timer tools); org-stop-gate blocks that session's FIRST stop with the anti-idle checklist (read finished workers, arm wakes, surface blocking questions) — stop_hook_active passes the second stop, so it costs one turn, never a loop. Both are inert in sessions that never spawn workers.",
+  "description": "Agent-org session discipline: org-lane-mark marks any session that dispatches Solo workers or arms Solo timers (PreToolUse on the spawn/timer tools); org-conduct-refresh re-injects the re-read-your-role-skill order after every compaction (SessionStart:compact) in org sessions — summaries keep facts, not conduct; org-stop-gate blocks a marked session's FIRST stop with the anti-idle checklist (read finished workers, arm wakes, surface blocking questions) — stop_hook_active passes the second stop, so it costs one turn, never a loop. All inert in sessions that never spawn workers and are not Solo-managed.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,6 +8,17 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/org-lane-mark.sh\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/org-conduct-refresh.sh\""
           }
         ]
       }
