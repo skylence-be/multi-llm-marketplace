@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Claude Code statusline plugin
-# Line1: model (ctx) effort | project (branch) Nf +A -D
-# Line2: context bar PCT% CL [+ handoff banner]
-# Line3: 5h quota used%, reset countdown [pace]
-# Line4: 7d quota used%, reset countdown [+ session cost]
+# core-hud.sh: Claude Code statusline.
+# L1: [cfg model] model ·effort │ project ⎇ branch ~Nf +A -D
+# L2: gradient context bar (24 cells, 1/8-cell resolution) PCT% of CTX · safe · handoff banner
+# L3: 5h ▸ used% [spark] rate%/h → limit-vs-reset verdict · resets HH:MM
+# L4: 7d ▸ used% rate%/h · resets Day HH:MM · session cost
+#
+# RATE ENGINE: every render appends (epoch,u5,u7) to a per-user history file
+# (deduped to one sample per 20s). Burn rate = delta over the last ~10 min,
+# responsive within a couple of renders, not the whole-window average. The
+# sparkline is 8×3-min buckets of 5h-quota deltas over the last 24 min. When
+# the projected time-to-100% lands BEFORE the window reset, the verdict goes
+# red with the projected limit clock.
 
-# Disable glob expansion so unquoted vars with wildcards (e.g. DIR paths)
-# are never accidentally expanded into filename lists.
+# Disable glob expansion so unquoted vars with wildcards are never expanded.
 set -f
 input=$(cat)
 [ -z "$input" ] && {
@@ -18,28 +24,17 @@ command -v jq >/dev/null || {
   exit 0
 }
 
-# ── Colors & Utilities ──
-# C=Cyan G=Green Y=Yellow R=Red M=Magenta T=Turquoise D=Light gray (bright black) N=Normal (reset)
-# Store real escape bytes so final output does not need echo -e interpretation.
-# D uses bright-black (\033[90m) instead of the dim attribute (\033[2m) — dim renders unreadable on many terminals.
-C=$'\033[36m' G=$'\033[32m' Y=$'\033[33m' R=$'\033[31m' M=$'\033[35m' T=$'\033[96m' D=$'\033[37m' N=$'\033[0m'
-# Cache records use ASCII Unit Separator so legal Git ref names cannot split
-# serialized fields and empty values survive round-trips through read.
+# ── Colors ──
+C=$'\033[36m' G=$'\033[32m' Y=$'\033[33m' R=$'\033[31m' M=$'\033[35m' T=$'\033[96m' D=$'\033[37m' W=$'\033[97m' B=$'\033[1m' N=$'\033[0m'
+x() { printf '\033[38;5;%sm' "$1"; }  # 256-color foreground
 SEP=$'\037'
 NOW=$(date +%s)
-# Returns true when the candidate cache dir is a real directory owned by the
-# current user, writable, and not a symlink into a foreign-controlled path.
+
 _cache_dir_ok() { [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] && [ -w "$1" ]; }
-# Reads one cache record into CACHE_FIELDS, supporting the current separator
-# and the legacy pipe format used by older cache files.
 _read_cache_record() {
   local line="$1" delim rest field
   CACHE_FIELDS=()
-  if [[ "$line" == *"$SEP"* ]]; then
-    delim="$SEP"
-  else
-    delim='|'
-  fi
+  if [[ "$line" == *"$SEP"* ]]; then delim="$SEP"; else delim='|'; fi
   rest="$line"
   while [[ "$rest" == *"$delim"* ]]; do
     field=${rest%%"$delim"*}
@@ -48,15 +43,12 @@ _read_cache_record() {
   done
   CACHE_FIELDS+=("$rest")
 }
-# Loads and parses one cache file into CACHE_FIELDS.
 _load_cache_record_file() {
   local path="$1" line=""
   [ -f "$path" ] || return 1
   IFS= read -r line <"$path" || line=""
   _read_cache_record "$line"
 }
-# Writes one cache record atomically. If mktemp fails, the caller skips the
-# cache update and keeps serving live data for this run.
 _write_cache_record() {
   local path="$1" tmp dir
   shift
@@ -68,7 +60,6 @@ _write_cache_record() {
     printf '%s\n' "$*"
   ) >"$tmp" && mv "$tmp" "$path"
 }
-# Avoids rewriting the quota cache when the live snapshot is unchanged.
 _write_quota_snapshot_if_changed() {
   local path="$1" u5="$2" u7="$3" r5="$4" r7="$5"
   if [ -f "$path" ] && [ ! -L "$path" ] && [ -r "$path" ] && _load_cache_record_file "$path"; then
@@ -79,8 +70,6 @@ _write_quota_snapshot_if_changed() {
   fi
   _write_cache_record "$path" "$u5" "$u7" "$r5" "$r7"
 }
-# Computes remaining whole minutes until a future epoch. Missing or expired
-# timestamps return an empty string so callers can skip countdown formatting.
 _minutes_until() {
   local epoch="$1" mins
   [[ "$epoch" =~ ^[0-9]+$ ]] && ((epoch > 0)) || return
@@ -88,8 +77,6 @@ _minutes_until() {
   ((mins < 0)) && mins=0
   printf '%s\n' "$mins"
 }
-# Valid quota snapshots must contain integer usage values and future reset
-# epochs for both windows. Partial or expired snapshots never enter the cache.
 _valid_quota_snapshot() {
   local u5="$1" u7="$2" r5="$3" r7="$4"
   [[ "$u5" =~ ^[0-9]+$ ]] || return 1
@@ -98,50 +85,57 @@ _valid_quota_snapshot() {
   [[ "$r7" =~ ^[0-9]+$ ]] || return 1
   ((r5 > NOW && r7 > NOW))
 }
-# Collects live Git metadata for DIR. On non-repos, leaves defaults in place
-# and returns non-zero so callers can decide whether to cache the empty result.
+_clock() {  # epoch → HH:MM (+ "Day DD Mon" when not today); empty on failure
+  local epoch="$1" _rt _today _rday
+  [[ "$epoch" =~ ^[0-9]+$ ]] && ((epoch > 0)) || return
+  _rt=$(date -d "@${epoch}" +"%H:%M" 2>/dev/null || date -r "${epoch}" +"%H:%M" 2>/dev/null || echo "")
+  [ -n "$_rt" ] || return
+  _today=$(date +"%Y-%m-%d")
+  _rday=$(date -d "@${epoch}" +"%Y-%m-%d" 2>/dev/null || date -r "${epoch}" +"%Y-%m-%d" 2>/dev/null || echo "")
+  if [[ -n "$_rday" && "$_today" != "$_rday" ]]; then
+    printf '%s %s' "$(date -d "@${epoch}" +"%a" 2>/dev/null || date -r "${epoch}" +"%a" 2>/dev/null)" "$_rt"
+  else
+    printf '%s' "$_rt"
+  fi
+}
 _collect_git_info() {
-  BR="" FC=0 AD=0 DL=0
+  BRN="" FC=0 AD=0 DL=0
   git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1 || return 1
-  BR=$(git -C "$DIR" --no-optional-locks branch --show-current 2>/dev/null)
+  BRN=$(git -C "$DIR" --no-optional-locks branch --show-current 2>/dev/null)
   while IFS=$'\t' read -r a d _; do
-    # Skip binary files (reported as "-" instead of a number).
     [[ "$a" =~ ^[0-9]+$ ]] || continue
     FC=$((FC + 1))
     AD=$((AD + a))
     DL=$((DL + d))
   done < <(git -C "$DIR" --no-optional-locks diff HEAD --numstat 2>/dev/null)
 }
-# Cache only inside a user-owned, non-symlinked directory. If no safe root is
-# available, disable caching for this run instead of falling back to shared /tmp.
+
 _CD="" CACHE_OK=0
 for _BASE in "${XDG_RUNTIME_DIR:-}" "${HOME}/.cache"; do
   [ -n "$_BASE" ] || continue
   _CAND="${_BASE%/}/claude-pace"
-  # shellcheck disable=SC2174  # -p only creates leaf here; parent already exists
+  # shellcheck disable=SC2174
   [ -e "$_CAND" ] || mkdir -p -m 700 "$_CAND" 2>/dev/null || continue
   _cache_dir_ok "$_CAND" || continue
   _CD="$_CAND"
   CACHE_OK=1
   break
 done
-QC=""
-[[ "$CACHE_OK" == "1" ]] && QC="${_CD}/claude-sl-quota"
-# Returns true (exit 0) when file is missing or older than $2 seconds.
+QC="" HIST=""
+[[ "$CACHE_OK" == "1" ]] && QC="${_CD}/claude-sl-quota" && HIST="${_CD}/claude-sl-hist"
 _stale() { [ ! -f "$1" ] || [ $((NOW - $(stat -f%m "$1" 2>/dev/null || stat -c%Y "$1" 2>/dev/null || echo 0))) -gt "$2" ]; }
 
 # ── Parse stdin + settings in one jq call ──
-# Fields: MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7
-# Pre-read settings to avoid --slurpfile process substitution (no /proc on Windows).
 _cfg_eff=$(jq -r '.effortLevel // "default"' ~/.claude/settings.json 2>/dev/null || echo "default")
 _cfg_model=$(jq -r '.model // ""' ~/.claude/settings.json 2>/dev/null || echo "")
 HAS_RL=0
-IFS=$'\t' read -r MODEL DIR PCT CTX REM COST EFF HAS_RL U5 U7 R5 R7 < <(
+IFS=$'\t' read -r MODEL DIR PCT CTX REM COST DUR_MS EFF HAS_RL U5 U7 R5 R7 < <(
   jq -r --arg cfg_eff "$_cfg_eff" \
     '[(.model.display_name//"?"),(.workspace.project_dir//"."),
     (.context_window.used_percentage//0|floor),(.context_window.context_window_size//0),
     (.context_window.remaining_percentage//0|floor),
     (.cost.total_cost_usd//0),
+    (.cost.total_duration_ms//0),
     $cfg_eff,
     (if .rate_limits then 1 else 0 end),
     (.rate_limits.five_hour.used_percentage//null|if type=="number" then floor else "--" end),
@@ -156,55 +150,78 @@ if ((CTX >= 1000000)); then
 elif ((CTX > 0)); then
   CL="$((CTX / 1000))K"
 else CL=""; fi
-# Tokens used and safe space remaining before auto-compact (from remaining_percentage).
 USED_K="" REM_K=""
-if ((CTX > 0 && PCT > 0)); then
-  USED_K="$((PCT * CTX / 100000))K"
-fi
-if ((CTX > 0 && REM > 0)); then
-  REM_K="$((REM * CTX / 100000))K"
-fi
+((CTX > 0 && PCT > 0)) && USED_K="$((PCT * CTX / 100000))K"
+((CTX > 0 && REM > 0)) && REM_K="$((REM * CTX / 100000))K"
 
-# ── MODEL_SHORT: strip redundant context label ──
 MODEL=${MODEL/ context)/)}
 [[ "$CTX" -gt 0 && "$MODEL" != *"("* ]] && MODEL="${MODEL} (${CL})"
-# Truncate long model names to keep padding within 0-5 chars.
 ((${#MODEL} > 30)) && MODEL="${MODEL:0:29}…"
 
-# ── Progress Bar (3 zones, 20 blocks: used █ | safe space ░ | compact buffer ▒) ──
-BF=$((PCT / 5)); ((BF < 0)) && BF=0; ((BF > 20)) && BF=20
-BR=0; ((REM > 0)) && BR=$((REM / 5))
-((BF + BR > 20)) && BR=$((20 - BF))
-BB=$((20 - BF - BR)); ((BB < 0)) && BB=0
-# Fresh session (PCT=0, no remaining data yet): show neutral bar instead of all-red ▒
-((PCT == 0 && BR == 0)) && BR=20 && BB=0
-if ((PCT >= 90)); then BC=$R; elif ((PCT >= 70)); then BC=$Y; else BC=$G; fi
-BAR="${BC}"
-for ((i = 0; i < BF; i++)); do BAR+='█'; done
-BAR+="${N}${D}"
-for ((i = 0; i < BR; i++)); do BAR+='░'; done
-((BB > 0)) && { BAR+="${N}${R}"; for ((i = 0; i < BB; i++)); do BAR+='▒'; done; }
-BAR+="${N}"
+# Model accent color by family.
+MC=$C
+case "$MODEL" in
+  *[Ff]able*) MC=$M ;;
+  *[Oo]pus*) MC=$C ;;
+  *[Ss]onnet*) MC="$(x 75)" ;;
+  *[Hh]aiku*) MC=$G ;;
+esac
 
-# ── Git Info (5s cache, atomic write) ──
-# Cache key encodes DIR so concurrent sessions in different repos don't clash.
-# Atomic write: write to a temp file first, then mv to avoid partial reads.
-BR="" FC=0 AD=0 DL=0
+# Effort chip (finally rendered; the old HUD parsed it and dropped it).
+EFF_CHIP=""
+case "$EFF" in
+  max) EFF_CHIP=" ${M}${B}·max${N}" ;;
+  high) EFF_CHIP=" ${Y}·high${N}" ;;
+  medium) EFF_CHIP=" ${D}·med${N}" ;;
+  low) EFF_CHIP=" ${D}·low${N}" ;;
+esac
+
+# ── Gradient context bar: 24 cells, 1/8-cell resolution ──
+# Filled cells colored by position on a green→red ramp; partial cell uses
+# eighth-blocks so growth is visible between percents; unused = dim dots;
+# auto-compact buffer = dim red shade at the tail.
+RAMP=(46 46 82 82 118 118 154 154 190 190 226 226 220 220 214 214 208 208 202 202 198 198 196 196)
+PARTIAL=('' '▏' '▎' '▍' '▌' '▋' '▊' '▉')
+BAR_W=24
+FE=$((PCT * BAR_W * 8 / 100)); ((FE < 0)) && FE=0; ((FE > BAR_W * 8)) && FE=$((BAR_W * 8))
+FULL=$((FE / 8)); PART=$((FE % 8))
+SAFE_CELLS=0; ((REM > 0)) && SAFE_CELLS=$((REM * BAR_W / 100))
+((FULL + SAFE_CELLS > BAR_W)) && SAFE_CELLS=$((BAR_W - FULL))
+((PCT == 0 && SAFE_CELLS == 0)) && SAFE_CELLS=$BAR_W
+BAR=""
+for ((i = 0; i < FULL; i++)); do BAR+="$(x "${RAMP[i]}")█"; done
+CONSUMED=$FULL
+if ((PART > 0 && FULL < BAR_W)); then
+  BAR+="$(x "${RAMP[FULL]}")${PARTIAL[PART]}"
+  CONSUMED=$((FULL + 1))
+fi
+TAIL=$((BAR_W - CONSUMED)); ((TAIL < 0)) && TAIL=0
+BUF_CELLS=$((TAIL - SAFE_CELLS)); ((BUF_CELLS < 0)) && BUF_CELLS=0
+SAFE_DRAW=$((TAIL - BUF_CELLS)); ((SAFE_DRAW < 0)) && SAFE_DRAW=0
+BAR+="$(x 240)"
+for ((i = 0; i < SAFE_DRAW; i++)); do BAR+='⋅'; done
+if ((BUF_CELLS > 0)); then
+  BAR+="$(x 88)"
+  for ((i = 0; i < BUF_CELLS; i++)); do BAR+='▒'; done
+fi
+BAR+="$N"
+
+# ── Git info (5s cache) ──
+BRN="" FC=0 AD=0 DL=0
 if [[ "$CACHE_OK" == "1" ]]; then
   GC="${_CD}/claude-sl-git-$(printf '%s' "$DIR" | { shasum 2>/dev/null || sha1sum; } | cut -c1-16)"
   if _stale "$GC" 5; then
     if _collect_git_info; then
-      _write_cache_record "$GC" "$BR" "$FC" "$AD" "$DL"
+      _write_cache_record "$GC" "$BRN" "$FC" "$AD" "$DL"
     else
       _write_cache_record "$GC" "" "" "" ""
     fi
   elif _load_cache_record_file "$GC"; then
-    BR=${CACHE_FIELDS[0]:-}
+    BRN=${CACHE_FIELDS[0]:-}
     FC=${CACHE_FIELDS[1]:-}
     AD=${CACHE_FIELDS[2]:-}
     DL=${CACHE_FIELDS[3]:-}
   fi
-  # Reject cache corruption before arithmetic or terminal output formatting.
   [[ "$FC" =~ ^[0-9]+$ ]] || FC=0
   [[ "$AD" =~ ^[0-9]+$ ]] || AD=0
   [[ "$DL" =~ ^[0-9]+$ ]] || DL=0
@@ -212,10 +229,9 @@ else
   _collect_git_info || true
 fi
 
-# ── Project Name + Line 1 Right Section ──
-# Extract project name. Worktree: save repo name explicitly.
+# ── Project name + worktree identity ──
 PN="${DIR##*/}"
-PN="${PN##*\\}"  # handle Windows backslash paths
+PN="${PN##*\\}"
 IS_WT=0 _REPO=""
 if [[ "${DIR/#$HOME/\~}" =~ /([^/]+)/\.claude/worktrees/([^/]+) ]]; then
   IS_WT=1
@@ -224,24 +240,18 @@ if [[ "${DIR/#$HOME/\~}" =~ /([^/]+)/\.claude/worktrees/([^/]+) ]]; then
   PN="$_REPO"
 fi
 ((${#PN} > 25)) && PN="${PN:0:25}…"
-
-# Format: project (branch) [git stats]
-L1R="$PN"
-if [ -n "$BR" ]; then
-  ((${#BR} > 35)) && BR="${BR:0:35}…"
-  L1R+=" (${BR})"
-  ((FC > 0)) 2>/dev/null && L1R+=" ${FC}f ${G}+${AD}${N} ${R}-${DL}${N}"
+L1R="${W}${PN}${N}"
+if [ -n "$BRN" ]; then
+  ((${#BRN} > 35)) && BRN="${BRN:0:35}…"
+  L1R+=" $(x 245)⎇${N} ${T}${BRN}${N}"
+  ((FC > 0)) 2>/dev/null && L1R+=" $(x 245)~${FC}f${N} ${G}+${AD}${N} ${R}-${DL}${N}"
 elif [[ "$IS_WT" == "1" ]]; then
-  # Detached HEAD in worktree: show repo/worktree to preserve identity
-  L1R="${_REPO}/${_WT_NAME}"
-  ((${#L1R} > 25)) && L1R="${L1R:0:25}…"
+  L1R="${W}${_REPO}/${_WT_NAME}${N}"
 fi
 
-# Usage data: read stdin rate_limits when available, otherwise show session cost.
+# ── Quota snapshot (stdin when present, else last cached) ──
 SHOW_COST=0
 if [[ "$HAS_RL" == "1" ]]; then
-  # Stdin path: real-time, no network. U5/U7 already set by jq read above.
-  # Guard: resets_at=0 means field missing, leave RM empty so _usage skips it.
   RM5=$(_minutes_until "$R5")
   RM7=$(_minutes_until "$R7")
   if [[ -n "$QC" ]] && _valid_quota_snapshot "$U5" "$U7" "$R5" "$R7"; then
@@ -256,10 +266,7 @@ else
     _CR5=${CACHE_FIELDS[2]:-}
     _CR7=${CACHE_FIELDS[3]:-}
     if _valid_quota_snapshot "$_CU5" "$_CU7" "$_CR5" "$_CR7"; then
-      U5="$_CU5"
-      U7="$_CU7"
-      R5="$_CR5"
-      R7="$_CR7"
+      U5="$_CU5" U7="$_CU7" R5="$_CR5" R7="$_CR7"
       RM5=$(_minutes_until "$R5")
       RM7=$(_minutes_until "$R7")
       SHOW_COST=0
@@ -267,96 +274,157 @@ else
   fi
 fi
 
-# Combined usage formatter: used%, resets @ HH:MM [⇡ burning fast]
-_usage() {
-  local u="${1:---}" rm="$2" w="$3" epoch="${4:-0}" _burn=""
-  if [[ ! "$u" =~ ^[0-9]+$ ]]; then
-    printf "%s" "$u"
-    return
-  fi
-  if ((u >= 90)); then printf "${R}%d%%${N} ${D}used${N}" "$u"
-  elif ((u >= 70)); then printf "${Y}%d%%${N} ${D}used${N}" "$u"
-  else printf "${G}%d%%${N} ${D}used${N}" "$u"; fi
-  # Compute burn-fast suffix; emit after the reset time.
-  if [[ "$rm" =~ ^[0-9]+$ ]] && ((rm <= w)); then
-    local d=$((u - (w - rm) * 100 / w))
-    ((d > 0)) && _burn="  ${R}⇡ burning fast${N}"
-  fi
-  if [[ "$rm" =~ ^[0-9]+$ ]]; then
-    # Show absolute clock time. Add day name when reset is not today (e.g. 7d window).
-    if [[ "$epoch" =~ ^[0-9]+$ ]] && ((epoch > NOW)); then
-      local _rt _today _rday _day
-      _rt=$(date -d "@${epoch}" +"%H:%M" 2>/dev/null || date -r "${epoch}" +"%H:%M" 2>/dev/null || echo "")
-      if [[ -n "$_rt" ]]; then
-        _today=$(date +"%Y-%m-%d")
-        _rday=$(date -d "@${epoch}" +"%Y-%m-%d" 2>/dev/null || date -r "${epoch}" +"%Y-%m-%d" 2>/dev/null || echo "")
-        if [[ "$_today" != "$_rday" ]]; then
-          _day=$(date -d "@${epoch}" +"%a %d %b" 2>/dev/null || date -r "${epoch}" +"%a %d %b" 2>/dev/null || echo "")
-          printf "${D}, resets @ %s %s${N}" "$_day" "$_rt"
-        else
-          printf "${D}, resets @ %s${N}" "$_rt"
-        fi
-      else
-        # Fallback to relative time when date formatting fails.
-        ((rm >= 1440)) && printf " ${D}resets in %dd${N}" $((rm / 1440))
-        ((rm < 1440 && rm >= 60))   && printf " ${D}resets in %dh${N}" $((rm / 60))
-        ((rm < 60))    && printf " ${D}resets in %dm${N}" "$rm"
-      fi
-    else
-      ((rm >= 1440)) && printf " ${D}resets in %dd${N}" $((rm / 1440))
-      ((rm < 1440 && rm >= 60))   && printf " ${D}resets in %dh${N}" $((rm / 60))
-      ((rm < 60))    && printf " ${D}resets in %dm${N}" "$rm"
+# ── RATE ENGINE: sample history → burn %/h (last ~10 min) + 5h sparkline ──
+RATE5="" RATE7="" SPARK=""
+if [[ -n "$HIST" && "$U5" =~ ^[0-9]+$ && "$U7" =~ ^[0-9]+$ ]]; then
+  _LAST_TS=0
+  [ -f "$HIST" ] && _LAST_TS=$(tail -n 1 "$HIST" 2>/dev/null | cut -d' ' -f1)
+  [[ "$_LAST_TS" =~ ^[0-9]+$ ]] || _LAST_TS=0
+  # Quota resets make used% DROP; a drop invalidates old samples, so start fresh.
+  if ((NOW - _LAST_TS >= 20)); then
+    if [ -f "$HIST" ]; then
+      _LAST_U5=$(tail -n 1 "$HIST" 2>/dev/null | cut -d' ' -f2)
+      [[ "$_LAST_U5" =~ ^[0-9]+$ ]] && ((U5 < _LAST_U5 - 2)) && : >"$HIST"
+    fi
+    printf '%s %s %s\n' "$NOW" "$U5" "$U7" >>"$HIST" 2>/dev/null || true
+    # Trim occasionally.
+    if [ "$(wc -l <"$HIST" 2>/dev/null || echo 0)" -gt 400 ]; then
+      tail -n 200 "$HIST" >"$HIST.t.$$" 2>/dev/null && mv "$HIST.t.$$" "$HIST" 2>/dev/null || rm -f "$HIST.t.$$"
     fi
   fi
-  printf "%s" "$_burn"
+  IFS=$'\t' read -r RATE5 RATE7 SPARK < <(awk -v now="$NOW" -v u5="$U5" -v u7="$U7" '
+    { ts[NR]=$1; a5[NR]=$2; a7[NR]=$3 }
+    END {
+      n = NR
+      # Burn rate: against the sample closest to 10 min back (accept 2-30 min).
+      bi = 0
+      for (i = 1; i <= n; i++) { age = now - ts[i]; if (age >= 120 && age <= 1800) { if (!bi || (age < now - ts[bi])) ; } }
+      best = -1
+      for (i = 1; i <= n; i++) {
+        age = now - ts[i]
+        if (age < 120 || age > 1800) continue
+        d = age - 600; if (d < 0) d = -d
+        if (best < 0 || d < best) { best = d; bi = i }
+      }
+      r5 = ""; r7 = ""
+      if (bi > 0) {
+        dt = now - ts[bi]
+        if (dt >= 120) {
+          r5 = (u5 - a5[bi]) * 3600.0 / dt
+          r7 = (u7 - a7[bi]) * 3600.0 / dt
+          if (r5 < 0) r5 = 0
+          if (r7 < 0) r7 = 0
+        }
+      }
+      # Sparkline: 8 × 3-min buckets over the last 24 min of 5h-quota deltas.
+      spark = ""
+      lv[1]="▁"; lv[2]="▂"; lv[3]="▃"; lv[4]="▄"; lv[5]="▅"; lv[6]="▆"; lv[7]="▇"; lv[8]="█"
+      have = 0
+      for (b = 7; b >= 0; b--) {
+        t1 = now - (b + 1) * 180; t2 = now - b * 180
+        lo = -1; hi = -1
+        for (i = 1; i <= n; i++) {
+          if (ts[i] <= t1) lo = i
+          if (ts[i] <= t2) hi = i
+        }
+        if (lo > 0 && hi > 0 && hi >= lo) {
+          d = a5[hi] - a5[lo]
+          if (d < 0) d = 0
+          idx = int(d / 0.75) + 1
+          if (idx > 8) idx = 8
+          spark = spark lv[idx]
+          if (d > 0) have = 1
+        } else spark = spark " "
+      }
+      sub(/^ +/, "", spark); if (spark ~ /^ *$/) spark = ""
+      printf "%s\t%s\t%s\n", (r5 == "" ? "" : sprintf("%.1f", r5)), (r7 == "" ? "" : sprintf("%.1f", r7)), spark
+    }' "$HIST" 2>/dev/null) || { RATE5="" RATE7="" SPARK=""; }
+fi
+
+# ── Quota line renderer ──
+# _quota label used% rm window_min reset_epoch rate spark
+_quota() {
+  local label="$1" u="$2" rm="$3" w="$4" epoch="$5" rate="$6" spark="$7"
+  local out="" uc=$G verdict="" rc=245 arrow="" sus t_lim lim_clock rst
+  if [[ ! "$u" =~ ^[0-9]+$ ]]; then
+    printf '%s %s' "$(x 245)${label} ▸${N}" "${D}--${N}"
+    return
+  fi
+  ((u >= 90)) && uc=$R || { ((u >= 70)) && uc=$Y; }
+  out="$(x 245)${label} ▸${N} ${uc}${B}${u}%%${N}"
+  [ -n "$spark" ] && out+=" $(x 66)${spark}${N}"
+  if [[ "$rate" =~ ^[0-9.]+$ ]]; then
+    # Sustainable pace = 100% spread over the window; ×1000 fixed-point math.
+    sus=$((100000 * 60 / w))                       # (%/h)×1000
+    local r1000=$(awk -v r="$rate" 'BEGIN{printf "%d", r*1000}')
+    if ((r1000 > 0)); then
+      if ((r1000 > sus * 3 / 2)); then rc=196 arrow="↑"
+      elif ((r1000 > sus * 11 / 10)); then rc=214 arrow="↗"
+      elif ((r1000 > sus / 2)); then rc=250 arrow="→"
+      else rc=245 arrow="↘"; fi
+      out+=" $(x "$rc")${arrow}${rate}%%/h${N}"
+    fi
+    # Projection: does the current burn hit 100% before the reset?
+    if [[ "$rm" =~ ^[0-9]+$ ]] && ((r1000 > 0)); then
+      t_lim=$(awk -v u="$u" -v r="$rate" 'BEGIN{ if (r > 0) printf "%d", (100 - u) * 60 / r; else print 999999 }')
+      if ((t_lim < rm)); then
+        lim_clock=$(_clock $((NOW + t_lim * 60)))
+        out+=" ${R}${B}⚠ limit ~${lim_clock:-soon} before reset${N}"
+      fi
+    fi
+  fi
+  if [[ "$rm" =~ ^[0-9]+$ ]]; then
+    rst=$(_clock "$epoch")
+    if [ -n "$rst" ]; then
+      out+=" $(x 240)· resets ${rst}${N}"
+    else
+      ((rm >= 1440)) && out+=" $(x 240)· resets in $((rm / 1440))d${N}"
+      ((rm < 1440 && rm >= 60)) && out+=" $(x 240)· resets in $((rm / 60))h${N}"
+      ((rm < 60)) && out+=" $(x 240)· resets in ${rm}m${N}"
+    fi
+  fi
+  printf '%s' "$out"
 }
 
-# ── Output Assembly ──
-
-# Configured model prefix (e.g. "opusplan") shown in turquoise before the live model.
-_CFG_PFX=""
-[[ -n "$_cfg_model" ]] && _CFG_PFX="${T}${_cfg_model}${N}  "
-
-# ── Handoff urgency banner — inlined on the context bar line ──
-# Thresholds: <60 quiet, 60-85 amber, >=85 red.
-# Pace bump: >=50% ctx AND >=+15% pace delta on 5h window trips amber early.
+# ── Handoff urgency banner ──
 BANNER=""
 if [[ "$PCT" =~ ^[0-9]+$ ]]; then
-  _pace_delta_5h=0
-  if [[ "$U5" =~ ^[0-9]+$ ]] && [[ "$RM5" =~ ^[0-9]+$ ]]; then
-    _elapsed_5h=$((300 - RM5))
-    ((_elapsed_5h < 0)) && _elapsed_5h=0
-    _expected_5h=$((_elapsed_5h * 100 / 300))
-    _pace_delta_5h=$((U5 - _expected_5h))
-  fi
+  _pace_hot=0
+  [[ "$RATE5" =~ ^[0-9.]+$ ]] && _pace_hot=$(awk -v r="$RATE5" 'BEGIN{print (r > 30) ? 1 : 0}')
   if ((PCT >= 85)); then
-    BANNER="${R}● handoff NOW — auto-compact imminent${N}"
+    BANNER="${R}${B}● handoff NOW: auto-compact imminent${N}"
   elif ((PCT >= 60)); then
     BANNER="${Y}● handoff soon${N}"
-  elif ((PCT >= 50)) && ((_pace_delta_5h >= 15)); then
-    BANNER="${Y}● handoff soon${N}"
+  elif ((PCT >= 50)) && [[ "$_pace_hot" == "1" ]]; then
+    BANNER="${Y}● handoff soon (hot burn)${N}"
   fi
 fi
 
-# Line 1: [config model]  live model effort  |  project (branch) git-stats
-L1="${_CFG_PFX}${C}${MODEL}${N}  ${D}|${N}  ${L1R}"
-
-# Line 2: context bar [+ inline handoff banner when triggered]
-# Fresh/empty context (PCT==0, CL known): show available window rather than "0% of Xk".
-if ((PCT == 0 && CTX > 0)); then
-  _CTX_LABEL="${CL} avail"
-else
-  _CTX_LABEL="${PCT}%${CL:+ of ${CL}}"
+# ── Assembly ──
+_CFG_PFX=""
+if [[ -n "$_cfg_model" ]]; then
+  _ml=$(printf '%s' "$MODEL" | tr '[:upper:]' '[:lower:]')
+  _cl=$(printf '%s' "$_cfg_model" | tr '[:upper:]' '[:lower:]')
+  [[ "$_ml" != *"$_cl"* ]] && _CFG_PFX="${T}${_cfg_model}${N} "
 fi
-L2="${D}context window:${N} ${BAR} ${_CTX_LABEL}${REM_K:+ · ${D}${REM_K} safe${N}}${BANNER:+  ${BANNER}}"
+L1="${_CFG_PFX}${MC}${B}⏺ ${MODEL}${N}${EFF_CHIP}  $(x 240)│${N}  ${L1R}"
 
-# Line 3: 5h quota window
-L3="${D}5h quota:${N} $(_usage "$U5" "$RM5" 300 "$R5")"
-# Line 4: 7d quota window [+ session cost when no quota data]
-L4="${D}7d quota:${N} $(_usage "$U7" "$RM7" 10080 "$R7")"
-if [[ "$SHOW_COST" == "1" ]]; then
-  printf -v _CS "\$%.2f" "$COST" 2>/dev/null
-  [[ "$_CS" != "\$0.00" ]] && L4+="  $_CS"
+if ((PCT == 0 && CTX > 0)); then
+  _CTX_LABEL="$(x 250)${CL} avail${N}"
+else
+  _CTX_LABEL="${W}${B}${PCT}%%${N}$(x 245)${CL:+ of ${CL}}${N}"
+fi
+L2="${BAR} $(printf "$_CTX_LABEL")${REM_K:+ $(x 240)· ${REM_K} safe${N}}${BANNER:+  ${BANNER}}"
+
+L3="$(printf "$(_quota 5h "$U5" "$RM5" 300 "$R5" "$RATE5" "$SPARK")")"
+L4="$(printf "$(_quota 7d "$U7" "$RM7" 10080 "$R7" "$RATE7" "")")"
+# Session cost (+ avg $/h from session duration) on the 7d line.
+if [[ "$COST" != "0" && -n "$COST" ]]; then
+  _CS=$(awk -v c="$COST" 'BEGIN{ if (c > 0) printf "$%.2f", c }')
+  if [ -n "$_CS" ]; then
+    _CPH=$(awk -v c="$COST" -v ms="$DUR_MS" 'BEGIN{ if (ms > 300000) printf " ($%.1f/h)", c * 3600000 / ms }')
+    L4+=" $(x 240)· ${_CS}${_CPH}${N}"
+  fi
 fi
 
 printf '%s\n' "$L1"
