@@ -13,8 +13,8 @@ role playbooks plus the machine-law helper scripts.
   `/Applications/Solo.app/Contents/MacOS/mcp`). This is the dependency that
   makes every role skill runnable: orchestrator/worker/replacer/audit are all
   built on Solo's todo, process, and timer tools.
-- **skills/** — the four host-neutral role playbooks (`orchestrator`,
-  `solo-worker`, `replacer`, `org-audit`), invocable as
+- **skills/** — the five host-neutral role playbooks (`orchestrator`,
+  `planner`, `solo-worker`, `replacer`, `org-audit`), invocable as
   `soloterm-agent-org-antigravity:<skill>`.
 - **scripts/build-slot** — machine-wide compile serializer (one build at a
   time; install to `~/.local/bin/`).

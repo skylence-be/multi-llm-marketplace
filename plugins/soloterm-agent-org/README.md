@@ -12,11 +12,16 @@ field validation, promote ritual, risks):
 
 ## What activates automatically (Claude Code side)
 
-- **skills/** — the four role playbooks, invocable as
+- **skills/** — the five role playbooks, invocable as
   `soloterm-agent-org:<skill>`:
   - `orchestrator` — event-driven conductor for Solo-based worker agents:
     dispatch via todo-body briefs, wake-on-idle follow-up, verification and
     merge discipline, board state.
+  - `planner` — program planner on the strongest reasoning model at max
+    effort (Fable 5 while available, else Opus): GitHub epic + child issues,
+    dispatch-ready todo briefs, design pads, and the blocker graph encoding
+    order and parallelism. The orchestrator delegates plans; it never
+    authors them.
   - `solo-worker` — worker conduct when dispatched by an orchestrator.
   - `replacer` — successor pickup of a predecessor's lane from durable state
     (todo trail, committed WIP) after context exhaustion, a kill, or a stall.

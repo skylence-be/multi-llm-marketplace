@@ -3,9 +3,11 @@
 cat <<'EOF'
 ## agent-org Codex
 
-This plugin exposes orchestrator, replacer, org-audit, and solo-worker skills.
-If this session is the conductor, invoke orchestrator and operate from Solo
-todos/processes/timers. If this session is a dispatched worker, invoke
+This plugin exposes orchestrator, planner, replacer, org-audit, and
+solo-worker skills. If this session is the conductor, invoke orchestrator and
+operate from Solo todos/processes/timers — program-sized work is planned by
+the PLANNER (strongest model, max effort), the conductor only delegates it.
+If this session is a dispatched worker, invoke
 solo-worker and read the todo body before implementing. Workers NEVER compile
 (no cargo/go build/test/clippy, no build-slot) — the orchestrator runs the
 single gate build at feature-end via build-slot; cargo nextest stays banned.
