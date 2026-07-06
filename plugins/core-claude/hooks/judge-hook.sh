@@ -110,7 +110,7 @@ while IFS='	' read -r R_TOOL R_CLASS R_PAT_B64 R_REASON_B64 R_PROMPT_B64; do
   case "$R_CLASS" in
     deny)
       R_REASON=$(b64d "$R_REASON_B64"); [ -n "$R_REASON" ] || R_REASON="no reason given"
-      echo "judge-hook: blocked — $R_REASON"
+      echo "judge-hook: blocked: $R_REASON" >&2
       exit 2
       ;;
     allow)
@@ -161,7 +161,7 @@ while IFS='	' read -r R_TOOL R_CLASS R_PAT_B64 R_REASON_B64 R_PROMPT_B64; do
       VERDICT=$(echo "$DECISION" | head -1 | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
       LLM_REASON=$(echo "$DECISION" | sed -n '2p')
       if [ "$VERDICT" = "BLOCK" ]; then
-        echo "judge-hook: LLM judge blocked — ${LLM_REASON:-no reason given}"
+        echo "judge-hook: LLM judge blocked: ${LLM_REASON:-no reason given}" >&2
         exit 2
       fi
       exit 0
