@@ -19,6 +19,7 @@ Your dispatch is usually a pointer: "you own todo <title>" — the todo body is 
 
 - Milestone comments on YOUR todo at every phase boundary: bold marker ("**[PHASE 2 DONE]**", "**[BLOCKER]**", "**[INCIDENT]**") + verification-ready facts — exact command, count, SHA, artifact path. "Tests pass" is not a claim; "26 passed, 0 failed, commit 6fa3b0e" is. The orchestrator re-runs claims: hand it the re-run.
 - Deviations from the brief are stated with reasons in the final summary — silent adaptation is a violation even when correct.
+- Your FINAL summary (the lane-concluding [DONE]) ends with a literal close-out footer for the orchestrator: "LANE CLOSE-OUT DUE: close this process, remove worktree(s) <paths you used>, delete branch <name> after merge." You are disposable by design — remind your dispatcher to dispose of you; a lane that outlives its last todo is board debris.
 - Timestamps in durable writes are pasted `date -u` output.
 - Incidents (crash, panic, masked failure — empty result or crash with exit 0 — destructive recovery step): report with evidence path FIRST, then recover.
 

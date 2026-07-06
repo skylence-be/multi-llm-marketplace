@@ -1,6 +1,6 @@
 {
   "name": "core-claude",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Opinionated Claude Code baseline. /core-claude:setup installs (no prompts) the judge-hook PreToolUse rules engine, the writing-guard PostToolUse AI-tells guard, the research-nudge Stop hook (verify hedged factual claims with a web search), the core-hud statusline, and the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) in your user-scope CLAUDE.md, defaulting to a full-bypass permission posture gated by the judge-hook with dynamic workflows disabled. Also ships uninstall-claude (remove ~/.claude + the binary) and purge-claude-user-scope (wipe ~/.claude, keep the binary) skills.",
   "author": {
     "name": "Skylence",

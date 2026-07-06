@@ -3,7 +3,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "mcp__solo__spawn_agent|mcp__solo__spawn_process|mcp__solo__timer_set|mcp__solo__timer_fire_when_idle_any|mcp__solo__timer_fire_when_idle_all",
+        "matcher": "mcp__(plugin_soloterm-agent-org_)?solo__(spawn_agent|spawn_process|timer_set|timer_fire_when_idle_any|timer_fire_when_idle_all)",
         "hooks": [
           {
             "type": "command",
