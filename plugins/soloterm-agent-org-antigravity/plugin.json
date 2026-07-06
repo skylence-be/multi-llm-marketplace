@@ -1,7 +1,7 @@
 {
   "name": "soloterm-agent-org-antigravity",
-  "version": "0.6.0",
-  "description": "Google Antigravity sibling of the Skylence agent org. Bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus the five role skills (orchestrator, planner, solo-worker, replacer, org-audit), the build-slot compile serializer, the ghost-probe no-fusion PTY check, and portable agent guidance. The Antigravity-native enforcement hook is intentionally omitted until the run_command payload shape is confirmed (see README).",
+  "version": "0.7.0",
+  "description": "Google Antigravity sibling of the Skylence agent org. Bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus the five role skills (orchestrator, planner, solo-worker, replacer, org-audit), the capacity-check spawn gate, the build-slot compile serializer, the ghost-probe no-fusion PTY check, the capacity-probe macOS RAM gate, and portable agent guidance. The Antigravity-native enforcement hook is intentionally omitted until the run_command payload shape is confirmed (see README).",
   "author": {
     "name": "Skylence",
     "url": "https://github.com/skylence-be"

@@ -24,8 +24,9 @@ wiring is only needed when explicitly requested with `skyline agent install`.
   judge-hook rules engine, the writing-guard, the core-hud statusline, and
   CLAUDE.md guidelines.
 - `soloterm-agent-org`: Skylence agent-org v2 in a box — orchestrator, planner,
-  solo-worker, replacer, and org-audit skills, with Solo MCP server substrate,
-  build-slot compile serializer, and the Codex-side conduct pack.
+  solo-worker, replacer, org-audit, and capacity-check skills, with Solo MCP
+  server substrate, build-slot compile serializer, capacity-probe RAM gate,
+  and the Codex-side conduct pack.
 
 ## Verify
 
