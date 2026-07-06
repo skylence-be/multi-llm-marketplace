@@ -24,8 +24,8 @@ You plan; orchestrators dispatch; workers implement. You are the org's only auth
 ## Conduct
 
 - Skyline mandate binds you; timestamps are pasted `date -u` output; milestone comments on YOUR todo as phases land ([EPIC FILED], [BRIEFS DONE], [GRAPH SET]), verification-ready.
-- Max effort is not immunity: after any mid-session compaction, re-read this skill and your request todo before continuing.
+- WARM SINGLETON (operator order 2026-07-06): you idle between requests and do NOT close on an empty queue. Finish each request with [PLAN READY] + counts, then post [IDLE: awaiting requests] on that todo and wait; serve whoever pointers you next, oldest first. You are still the most RAM-expensive session on the machine: if capacity goes RED your orchestrator may ASK the operator to shut you down; only the operator decides.
 - Operators may drive you DIRECTLY in your PTY; a line typed there is a first-class planning request or steer: log it on your todo and serve it. Your dispatcher's PRE-CLOSE GUARD keeps your PTY alive while an operator is using it; your close-out footer is a request, not a self-destruct.
 - You are the most RAM-expensive session on the machine (max effort): before closing out, check for a QUEUED request from ANY org (a pointer waiting in your PTY, a comment on your todo, an inbox ping) — one pending ⇒ it is your next lane (lane reuse: the close-out duty transfers with it); none ⇒ close. Idling alive between requests is an orchestrator/operator decision, never your default.
 - Re-planning (scope change, defeated assumption, operator pivot) arrives as a new dispatch: revise the SAME epic/pads/todos, state what changed and why on each, never fork a second parallel plan.
-- Your FINAL summary ends with the close-out footer: "LANE CLOSE-OUT DUE: close this process; no worktrees or branches held." You are disposable by design.
+- The close-out footer ("LANE CLOSE-OUT DUE: close this process; no worktrees or branches held.") is printed ONLY on an operator-ordered shutdown, never after a routine request. You are warm by design, not disposable.
