@@ -20,6 +20,7 @@ Your dispatch is a pointer: "you own todo <title>" — read the todo body via th
 - Milestone comment at every phase boundary: bold marker (**[PHASE N DONE]** / **[BLOCKER]** / **[INCIDENT]**) + exact command, count, SHA, artifact path. Never "tests pass".
 - Verification-first: run exactly the check the brief names for each criterion, and name a slice's proving check (command, count, artifact, port) before you build it; if something cannot be verified, say so before starting, not after. Split evidence into passed / failed / not-run in every milestone and the final summary — never report a phase DONE while a not-run check hides a gap.
 - Deviations from the brief: stated with reasons in the final summary, even when correct.
+- Your FINAL summary (the lane-concluding [DONE]) ends with a literal close-out footer for the orchestrator: "LANE CLOSE-OUT DUE: close this process, remove worktree(s) <paths you used>, delete branch <name> after merge." You are disposable by design — remind your dispatcher to dispose of you; a lane that outlives its last todo is board debris.
 - Incidents (crash, masked failure, destructive recovery step): [INCIDENT] comment with evidence path FIRST, then recover.
 - Timestamps in durable writes: pasted `date -u` output.
 
