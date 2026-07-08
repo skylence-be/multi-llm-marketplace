@@ -5,14 +5,14 @@ description: Device-capacity gate for Solo agent spawning (macOS-only probe for 
 
 # Capacity check (spawn gate)
 
-Solo agents are RAM-expensive (a claude session runs ~0.5-1 GB RSS, more once it works), and an OOM freeze on this 8GB-class hardware kills EVERY lane at once, far more expensive than deferring one spawn. Spawning therefore gates on MEASURED capacity: never on optimism, and never on anxiety either; on GREEN, wide fan-out stays the default, and this gate bounds it by measurement, not fear.
+Solo agents are RAM-expensive (a claude or codex session runs ~0.5-1 GB RSS, more once it works), and an OOM freeze on this 8GB-class hardware kills EVERY lane at once, far more expensive than deferring one spawn. Spawning therefore gates on MEASURED capacity: never on optimism, and never on anxiety either; on GREEN, wide fan-out stays the default, and this gate bounds it by measurement, not fear.
 
 ## The probe
 
 Run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/capacity-probe.sh"` via skyline_run (or `~/.local/bin/capacity-probe` if installed). macOS-only for now; other platforms return YELLOW/exit 3 (assume constrained). First line is the verdict, and the EXIT CODE is the verdict too, not an error: 0 GREEN, 1 YELLOW, 2 RED, 3 unsupported.
 
 - `VERDICT=GREEN|YELLOW|RED <reason>` — byte math (reclaimable = free+inactive+purgeable+speculative pages) sets the tier; the kernel's own pressure level (1 normal / 2 warn / 4 critical) can only WORSEN it.
-- Facts line: `total_gb= reclaimable_gb= pressure_level= swap_used= agent_procs= agent_rss_gb=`, where the last two are the live claude worker process count and their combined RSS, i.e. what the org itself is burning.
+- Facts line: `total_gb= reclaimable_gb= pressure_level= swap_used= agent_procs= agent_rss_gb=`, where the last two are the live claude/codex worker process count and their combined RSS, i.e. what the org itself is burning.
 - Tunables: `SOLO_CAP_GREEN_GB` (default 2.0), `SOLO_CAP_RED_GB` (default 1.0).
 
 ## Decision rules (for the roles that spawn: orchestrator, and the operator)
