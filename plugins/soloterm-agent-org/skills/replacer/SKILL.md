@@ -13,7 +13,7 @@ Your context is fresh; the predecessor's knowledge survives only in artifacts. T
 4. BASELINE: do NOT run cargo/build-slot — replacers never compile either (you would poll-loop on the single slot). Baseline the inherited state from git (`git status` + `git log --oneline -5` + `git diff --stat`) + the todo trail; whether it compiles is the orchestrator's gate build, not yours.
 5. EXTERNAL TARGETS in inherited next-steps (push remote, PR repo, deploy path, port) are PROPOSED until a one-command proof verifies them (git ls-remote / gh repo view / port probe) — nonexistent remotes have been inherited unverified across two generations.
 6. PICKUP comment: verified SHA, baseline counts, anything lost vs the handover, continuation plan — confirm the predecessor's plan or revise it WITH the stated reason. Deviating from the inherited plan needs a [DESIGN REVISION] comment BEFORE implementing.
-7. Continue under worker rules (~/.codex/AGENTS.md for Codex; /solo-worker for Claude). The predecessor's reported failures bind you — do not re-try them without saying why.
+7. Continue under worker rules (/solo-worker). The predecessor's reported failures bind you, do not re-try them without saying why.
 
 Note: skyline_run's UNCHANGED dedup is daemon-global — your verification re-runs may return "unchanged since last call" because the PREDECESSOR ran the identical command; the raw tee path in that message is fresh, read it.
 - Same closure sequence applies to you: verification, supervisor retrospective (mention you were a replacer — handover quality is retro material), dispositions, then close.
