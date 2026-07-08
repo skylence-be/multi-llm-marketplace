@@ -1,45 +1,60 @@
-# Multi-LLM Skyline Marketplace
+# Multi-LLM Marketplace
 
-Marketplace repo for Skyline agent plugins. It exposes the same Skyline MCP
-daemon to Claude Code and Codex, with agent-side hooks that steer native file
-work toward Skyline's hash-guarded tools.
+Skylence's marketplace of multi-agent orchestration and agent-baseline plugins,
+packaged for Claude Code, Codex, and Antigravity. The agent-org plugins turn a
+single agent CLI into a conductor-and-workers organisation; the core plugins
+install each agent's opinionated baseline (hooks, statusline, guidelines).
 
-## Prerequisite
+Owner: Skylence (github.com/skylence-be).
 
-Install and bootstrap Skyline first:
+## What's in here
 
-```bash
-npm install -g @skylence-ai/skyline
-skyline setup
+The agent-org plugins bundle the **Solo MCP server**, the board / PTY / timer
+substrate the orchestration skills run on. An orchestrator conducts; planner,
+solo-worker, replacer, and org-audit skills fill the roles; a capacity-check
+gate rations spawns and the build-slot serializer keeps one compile at a time on
+a shared machine. The core plugins install the per-agent baseline: a judge-hook
+rules engine, a writing-guard, a statusline, and CLAUDE.md guidelines.
+
+The agent-org plugins are self-contained. The Solo MCP server is bundled and
+wired by the plugin, so no separate daemon install is required.
+
+## Plugins
+
+Each plugin ships in a per-agent variant. Current versions live in each plugin's
+manifest, not in this README.
+
+**Claude Code** (`.claude-plugin/marketplace.json`):
+
+- `core-claude` : opinionated Claude Code baseline. `/core-claude:setup` installs
+  the judge-hook rules engine, the writing-guard, the core-hud statusline, and
+  the CLAUDE.md guidelines.
+- `soloterm-agent-org` : the agent-org stack. Orchestrator, planner, solo-worker,
+  replacer, org-audit, and capacity-check skills, plus the Solo MCP server,
+  the build-slot compile serializer, the capacity-probe RAM gate, and the
+  session-discipline hooks.
+
+**Codex and Antigravity** (`.agents/plugins/marketplace.json`):
+
+- `core-codex`, `core-antigravity` : the core baseline for each CLI.
+- `soloterm-agent-org-codex`, `soloterm-agent-org-antigravity` : the agent-org
+  stack for each CLI, kept in doctrinal sync with the Claude variant.
+
+## Install
+
+**Claude Code:**
+
+```
+/plugin marketplace add skylence-be/multi-llm-marketplace
+/plugin install soloterm-agent-org@multi-llm-marketplace
+/plugin install core-claude@multi-llm-marketplace
 ```
 
-`skyline setup` installs the shared HTTP daemon on port 7333 and installs the
-optional marketplace plugins when supported agent CLIs are available. The Claude
-and Codex plugins in this repo carry their own MCP configuration; global MCP
-wiring is only needed when explicitly requested with `skyline agent install`.
+**Codex / Antigravity:** add this repo as a plugin source for the agent, then
+install the matching `-codex` or `-antigravity` variant. The offerings for those
+CLIs are declared in `.agents/plugins/marketplace.json`.
 
-## Included plugins
+## Keeping variants in sync
 
-- `core-claude`: Opinionated Claude Code baseline: `/core-claude:setup` installs the
-  judge-hook rules engine, the writing-guard, the core-hud statusline, and
-  CLAUDE.md guidelines.
-- `soloterm-agent-org`: Skylence agent-org v2 in a box — orchestrator, planner,
-  solo-worker, replacer, org-audit, and capacity-check skills, with Solo MCP
-  server substrate, build-slot compile serializer, capacity-probe RAM gate,
-  and the Codex-side conduct pack.
-
-## Verify
-
-```bash
-skyline daemon status
-```
-
-The port 7333 row should show `running`. In a fresh agent session, the Skyline
-MCP tools should include `skyline_read`, `skyline_grep`, `skyline_edit`,
-`skyline_git`, and `skyline_run`.
-
-## Upgrade and removal
-
-Manual removal commands are printed by the uninstall flow. Package removal uses
-the package manager you installed with, for example
-`npm uninstall -g @skylence-ai/skyline`.
+The three agent-org variants share one body of doctrine. A change to the shared
+conduct lands in all three skill trees together, each with its own version bump.
