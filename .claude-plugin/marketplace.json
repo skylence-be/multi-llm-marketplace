@@ -7,23 +7,23 @@
   },
   "plugins": [
     {
-      "name": "core-claude",
-      "description": "Opinionated Claude Code baseline: /core-claude:setup installs the judge-hook rules engine, the writing-guard, the core-hud statusline, and CLAUDE.md guidelines, with a full-bypass permission posture gated by the judge-hook. Skyline-aware judge (Bash/Write/Edit rules also bind skyline_run/create/edit), transcript-fed escalations, and /core-claude:doctor read-only install audits.",
+      "name": "core-claude-grok",
+      "description": "Unified baseline for Claude Code + Grok. /core-claude-grok:setup installs the judge-hook, writing-guard, core-hud, and guidelines (CLAUDE.md on Claude), with bypass posture gated by the judge. Skyline-aware, transcript escalations, dual-compat for Grok. /core-claude-grok:doctor audits.",
       "source": {
         "source": "git-subdir",
         "url": "skylence-be/multi-llm-marketplace",
-        "path": "plugins/core-claude",
+        "path": "plugins/core-claude-grok",
         "ref": "main"
       },
       "homepage": "https://github.com/skylence-be/multi-llm-marketplace"
     },
     {
-      "name": "soloterm-agent-org",
-      "description": "Skylence agent-org v2 in a box (operator redesign 2026-06-10). Bundles the Solo MCP server (board/PTY/timer substrate every role needs) plus 5 role skills: orchestrator, planner (machine-wide singleton on the strongest model at max effort, plans grounded in the skybox code graph: epics, child issues, dispatch-ready briefs, blocker graph), solo-worker, replacer, org-audit — plus the capacity-check spawn gate (macOS capacity-probe: GREEN/YELLOW/RED RAM verdicts) and peer-orchestrator coordination doctrine. 3 session-discipline hooks: org-lane-mark (PreToolUse marker on Solo spawn/timer tools), org-conduct-refresh (SessionStart post-compaction re-injection of the role-skill re-read order — summaries keep facts, not conduct), org-stop-gate (Stop gate blocking a marked session's first stop with the anti-idle checklist). Includes build-slot compile serializer, ghost-probe PTY check (no-fusion law), and the Codex-side conduct pack.",
+      "name": "soloterm-agent-org-claude-grok",
+      "description": "Skylence agent-org v2 (unified for Claude Code + Grok). Bundles Solo MCP + the five roles (orchestrator, planner, solo-worker, replacer, org-audit) + capacity-check, build-slot, ghost-probe. Dual-compatible session discipline hooks (lane-mark, conduct-refresh, stop-gate). Includes Codex conduct pack.",
       "source": {
         "source": "git-subdir",
         "url": "skylence-be/multi-llm-marketplace",
-        "path": "plugins/soloterm-agent-org",
+        "path": "plugins/soloterm-agent-org-claude-grok",
         "ref": "main"
       },
       "homepage": "https://github.com/skylence-be/multi-llm-marketplace"

@@ -1,6 +1,6 @@
 # soloterm-agent-org-antigravity
 
-The Google Antigravity (Gemini) sibling of the Skylence `soloterm-agent-org` plugin.
+The Google Antigravity (Gemini) sibling of the Skylence `soloterm-agent-org-claude-grok` plugin.
 
 This is the Antigravity side of the Solo-orchestrated agent org. It bundles the
 Solo MCP server so an Antigravity session can drive the same board / PTY /
@@ -27,7 +27,7 @@ role playbooks plus the machine-law helper scripts.
 
 ## Siblings
 
-- `soloterm-agent-org` — Claude Code (auto-loads `.mcp.json`, ships the org-lane-mark +
+- `soloterm-agent-org-claude-grok` — Claude Code / Grok (auto-loads, ships the org-lane-mark +
   org-stop-gate session-discipline hooks).
 - `soloterm-agent-org-codex` — Codex (`.codex-plugin/plugin.json` → `.mcp.json`, ships
   SessionStart steering + a PreToolUse build-slot guard).

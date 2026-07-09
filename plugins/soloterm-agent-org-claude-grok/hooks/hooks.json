@@ -1,0 +1,37 @@
+{
+  "description": "Agent-org session discipline (soloterm-agent-org-claude-grok): org-lane-mark / org-conduct-refresh / org-stop-gate. Dual compatible for Claude + Grok.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__(plugin_soloterm-agent-org(_claude-grok)?_)?solo__(spawn_agent|spawn_process|timer_set|timer_fire_when_idle_any|timer_fire_when_idle_all)|solo__(spawn|timer)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; sh \"$PLUGIN_ROOT/hooks/org-lane-mark.sh\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; sh \"$PLUGIN_ROOT/hooks/org-conduct-refresh.sh\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; sh \"$PLUGIN_ROOT/hooks/org-stop-gate.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

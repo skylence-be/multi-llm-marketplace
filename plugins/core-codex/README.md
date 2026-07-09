@@ -1,6 +1,6 @@
 # core-codex
 
-Codex port of the `core-claude` baseline. The Codex sibling of `core-claude` (Claude Code).
+Codex port of the `core-claude-grok` baseline. The Codex sibling of `core-claude-grok`.
 
 Codex supports the same hook lifecycle Claude does — `PreToolUse`, `PostToolUse`,
 and `Stop` are all real events — so this is a full port, not a guidance-only
@@ -17,12 +17,12 @@ subset. The three hooks ship with the plugin and activate on install; the
 - **hooks/research-nudge.sh** (`Stop`) — when the final turn hedges a factual
   claim, nudges a web-search verification before concluding. Two-stage gate
   (cheap hedge grep, then a `codex exec` judge) keeps it quiet.
-- **hooks/judge-rules.example.json** — the same ruleset as the Claude `core-claude`
+- **hooks/judge-rules.example.json** — the same ruleset as `core-claude-grok`
   plugin; `/core-codex:setup` seeds it to `~/.codex/judge-rules.json`.
 - **templates/agents-md.md** — the core guidelines (Advisor, Decisive Thinking,
   Coding, Review Mindset, Writing) for `~/.codex/AGENTS.md`.
 
-## Adaptations from the Claude `core-claude` plugin
+## Adaptations from the `core-claude-grok` plugin
 
 - **Escalation CLI.** Claude's hooks call `claude -p`; these call `codex exec`
   (read-only sandbox, final message to stdout — confirmed against the Codex

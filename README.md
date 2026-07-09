@@ -29,24 +29,20 @@ plugin's manifest, not in this README.
 
 **Grok** (`.grok-plugin/marketplace.json`):
 
-- `core-grok`: Grok baseline. `/core-grok:setup` seeds `~/.grok/judge-rules.json`,
-  writes the guidelines into `~/.grok/AGENTS.md`, and stamps the version.
-  Includes native PreToolUse judge-hook, writing-guard, research-nudge.
-  `/core-grok:doctor` audits the install (rules, guidelines, version, hooks).
-  Uses Grok hook contract + `grok -p` escalation.
-- `soloterm-agent-org-grok`: Full agent-org stack. Orchestrator, planner,
-  solo-worker, replacer, org-audit + capacity-check. Bundles Solo MCP,
-  build-slot, ghost-probe, and Grok-adapted discipline hooks.
+- `core-claude-grok`: Unified baseline for Claude Code + Grok. `/core-claude-grok:setup`
+  seeds rules/guidelines (AGENTS.md on Grok), stamps version, sets compat flag on Grok.
+  Includes dual judge-hook, writing-guard, research-nudge + core-hud.
+  `/core-claude-grok:doctor` audits.
+- `soloterm-agent-org-claude-grok`: Unified agent-org stack for Claude + Grok.
+  Skills + Solo MCP + dual discipline hooks.
 
 **Claude Code** (`.claude-plugin/marketplace.json`):
 
-- `core-claude`: opinionated Claude Code baseline. `/core-claude:setup` installs
-  the judge-hook rules engine, the writing-guard, the core-hud statusline, and
-  the CLAUDE.md guidelines.
-- `soloterm-agent-org`: the agent-org stack. Orchestrator, planner, solo-worker,
-  replacer, org-audit, and capacity-check skills, plus the Solo MCP server,
-  the build-slot compile serializer, the capacity-probe RAM gate, and the
-  session-discipline hooks.
+- `core-claude-grok`: unified baseline (Claude + Grok). `/core-claude-grok:setup`
+  installs the judge-hook, writing-guard, core-hud statusline, and guidelines.
+- `soloterm-agent-org-claude-grok`: the agent-org stack. Orchestrator, planner,
+  solo-worker, replacer, org-audit, capacity-check + Solo MCP, build-slot,
+  capacity-probe, and session-discipline hooks.
 
 **Codex and Antigravity** (`.agents/plugins/marketplace.json`):
 
@@ -61,11 +57,11 @@ plugin's manifest, not in this README.
 ```
 grok plugin marketplace add skylence-be/multi-llm-marketplace
 grok plugin marketplace update multi-llm-marketplace
-grok plugin install soloterm-agent-org-grok@skylence-be/multi-llm-marketplace --trust
-grok plugin install core-grok@skylence-be/multi-llm-marketplace --trust
+grok plugin install soloterm-agent-org-claude-grok@skylence-be/multi-llm-marketplace --trust
+grok plugin install core-claude-grok@skylence-be/multi-llm-marketplace --trust
 ```
 
-Then run `/core-grok:setup` and use the org roles (orchestrator, planner, etc.).
+Then run `/core-claude-grok:setup` and use the org roles.
 
 **Note:** After adding, run `grok plugin marketplace update multi-llm-marketplace`.
 For install commands, use the full qualifier: `...@skylence-be/multi-llm-marketplace` (the short name may not resolve for installs).
@@ -74,8 +70,8 @@ For install commands, use the full qualifier: `...@skylence-be/multi-llm-marketp
 
 ```
 /plugin marketplace add skylence-be/multi-llm-marketplace
-/plugin install soloterm-agent-org@multi-llm-marketplace
-/plugin install core-claude@multi-llm-marketplace
+/plugin install soloterm-agent-org-claude-grok@multi-llm-marketplace
+/plugin install core-claude-grok@multi-llm-marketplace
 ```
 
 **Codex / Antigravity:** add this repo as a plugin source for the agent, then
@@ -94,11 +90,11 @@ trees on the next release of each variant.
 
 ```bash
 grok plugin list
-grok plugin details core-grok
-grok plugin details soloterm-agent-org-grok
-grok inspect | grep -E '(core-grok|soloterm-agent-org-grok|solo)'
-/core-grok:setup
-/core-grok:doctor
+grok plugin details core-claude-grok
+grok plugin details soloterm-agent-org-claude-grok
+grok inspect | grep -E '(core-claude-grok|soloterm-agent-org-claude-grok|solo)'
+/core-claude-grok:setup
+/core-claude-grok:doctor
 ```
 
 **Local dev (any agent):**

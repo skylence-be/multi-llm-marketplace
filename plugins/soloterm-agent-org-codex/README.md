@@ -1,6 +1,6 @@
 # soloterm-agent-org-codex
 
-Codex-native companion to the Claude Code `soloterm-agent-org` plugin.
+Codex-native companion to the `soloterm-agent-org-claude-grok` plugin.
 
 This package is the Codex side of the Solo-orchestrated agent org and includes every shared `agent-org` skill from the Claude package, plus the Codex worker variant:
 
@@ -17,7 +17,7 @@ This package is the Codex side of the Solo-orchestrated agent org and includes e
 - `scripts/capacity-probe.sh` — macOS RAM probe: `VERDICT=GREEN|YELLOW|RED` spawn verdicts, exit code 0/1/2 (3 = non-macOS).
 - `hooks/hooks.json` — Codex lifecycle hooks: `SessionStart` agent-org steering and `PreToolUse` Bash checks for nextest/build-slot violations.
 
-The source skills live in `plugins/soloterm-agent-org/`; these files are copied into the Codex package because Codex's GitHub plugin installer does not currently preserve symlinked skill directories into the installed plugin cache. Hook behavior is implemented against Codex lifecycle events and goes through Codex hook trust review.
+The source skills live in `plugins/soloterm-agent-org-claude-grok/`; these files are copied into the Codex package. Hook behavior is implemented against Codex lifecycle events and goes through Codex hook trust review.
 
 Install from the repo-local Codex marketplace:
 

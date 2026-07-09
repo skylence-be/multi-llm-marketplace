@@ -7,26 +7,26 @@
   },
   "plugins": [
     {
-      "name": "core-grok",
-      "description": "Opinionated Grok baseline: /core-grok:setup seeds ~/.grok/judge-rules.json and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing + compaction survival) into ~/.grok/AGENTS.md. Ships Grok-native judge-hook (PreToolUse), writing-guard, research-nudge Stop hook. Uses GROK_PLUGIN_ROOT with Claude alias fallbacks.",
+      "name": "core-claude-grok",
+      "description": "Unified baseline for Claude Code + Grok (via compatibility). /core-claude-grok:setup seeds judge-rules + guidelines, wires posture (or sets compat flag on Grok). Ships dual judge-hook, writing-guard, research-nudge, core-hud. /core-claude-grok:doctor audits.",
       "source": {
         "type": "local",
-        "path": "./plugins/core-grok"
+        "path": "./plugins/core-claude-grok"
       },
       "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
       "category": "core",
-      "keywords": ["core", "baseline", "judge-hook", "guidelines", "safety"]
+      "keywords": ["core", "baseline", "judge-hook", "guidelines", "safety", "grok", "claude"]
     },
     {
-      "name": "soloterm-agent-org-grok",
-      "description": "Skylence agent-org v2 for Grok. Bundles the Solo MCP server (board/PTY/timer substrate) + orchestrator, planner (max-effort grounded plans), solo-worker, replacer, org-audit skills, capacity-check gate, build-slot serializer, ghost-probe, capacity-probe scripts. Includes session-discipline hooks adapted for Grok (lane marking, conduct refresh, stop gate).",
+      "name": "soloterm-agent-org-claude-grok",
+      "description": "Unified agent-org for Claude + Grok. Bundles Solo MCP + orchestrator, planner, solo-worker, replacer, org-audit, capacity-check + build-slot/ghost-probe. Dual-compatible session discipline hooks.",
       "source": {
         "type": "local",
-        "path": "./plugins/soloterm-agent-org-grok"
+        "path": "./plugins/soloterm-agent-org-claude-grok"
       },
       "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
       "category": "agent-org",
-      "keywords": ["agent-org", "solo", "orchestrator", "multi-agent", "planner"]
+      "keywords": ["agent-org", "solo", "orchestrator", "multi-agent", "planner", "grok", "claude"]
     }
   ]
 }
