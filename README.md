@@ -59,11 +59,14 @@ plugin's manifest, not in this README.
 
 ```
 grok plugin marketplace add skylence-be/multi-llm-marketplace
+grok plugin marketplace update multi-llm-marketplace
 grok plugin install soloterm-agent-org-grok@multi-llm-marketplace --trust
 grok plugin install core-grok@multi-llm-marketplace --trust
 ```
 
 Then run `/core-grok:setup` and use the org roles (orchestrator, planner, etc.).
+
+**Note:** After adding, run `grok plugin marketplace update multi-llm-marketplace`. Use the short name or full `skylence-be/...` as the qualifier after `@`.
 
 **Claude Code:**
 
