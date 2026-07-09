@@ -67,7 +67,8 @@ grok plugin install core-grok@skylence-be/multi-llm-marketplace --trust
 
 Then run `/core-grok:setup` and use the org roles (orchestrator, planner, etc.).
 
-**Note:** After adding, run `grok plugin marketplace update multi-llm-marketplace`. Use the short name or full `skylence-be/...` as the qualifier after `@`.
+**Note:** After adding, run `grok plugin marketplace update multi-llm-marketplace`.
+For install commands, use the full qualifier: `...@skylence-be/multi-llm-marketplace` (the short name may not resolve for installs).
 
 **Claude Code:**
 
