@@ -1,0 +1,40 @@
+{
+  "description": "Agent-org session discipline for Grok: org-lane-mark marks sessions that dispatch Solo workers or arm timers (PreToolUse on solo MCP spawn/timer tools); org-conduct-refresh re-injects role-skill re-read order after compaction (SessionStart compact matcher) — summaries keep facts not conduct; org-stop-gate blocks a marked session's first Stop with anti-idle checklist. All inert if never spawned workers.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "solo__(spawn_agent|spawn_process|timer_set|timer_fire_when_idle_any|timer_fire_when_idle_all)|mcp__.*__solo__.*(spawn|timer)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; sh \"$PLUGIN_ROOT/hooks/org-lane-mark.sh\"",
+            "statusMessage": "org-lane-mark"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; sh \"$PLUGIN_ROOT/hooks/org-conduct-refresh.sh\"",
+            "statusMessage": "org-conduct-refresh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; sh \"$PLUGIN_ROOT/hooks/org-stop-gate.sh\"",
+            "statusMessage": "org-stop-gate"
+          }
+        ]
+      }
+    ]
+  }
+}
