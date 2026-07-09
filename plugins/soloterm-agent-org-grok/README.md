@@ -25,7 +25,7 @@ Grok port of the Skylence soloterm-agent-org (agent orchestration substrate).
 ```bash
 grok plugin marketplace add skylence-be/multi-llm-marketplace
 grok plugin marketplace update multi-llm-marketplace
-grok plugin install soloterm-agent-org-grok@multi-llm-marketplace --trust
+grok plugin install soloterm-agent-org-grok@skylence-be/multi-llm-marketplace --trust
 ```
 
 After install, the `solo` MCP tools become available and the skills are listed (use `/skills` or invoke as slash commands).

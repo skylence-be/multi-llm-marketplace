@@ -61,8 +61,8 @@ plugin's manifest, not in this README.
 ```
 grok plugin marketplace add skylence-be/multi-llm-marketplace
 grok plugin marketplace update multi-llm-marketplace
-grok plugin install soloterm-agent-org-grok@multi-llm-marketplace --trust
-grok plugin install core-grok@multi-llm-marketplace --trust
+grok plugin install soloterm-agent-org-grok@skylence-be/multi-llm-marketplace --trust
+grok plugin install core-grok@skylence-be/multi-llm-marketplace --trust
 ```
 
 Then run `/core-grok:setup` and use the org roles (orchestrator, planner, etc.).

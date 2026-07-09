@@ -20,7 +20,7 @@ Installs opinionated safety and quality guardrails that work with Grok's native 
 ```bash
 grok plugin marketplace add skylence-be/multi-llm-marketplace
 grok plugin marketplace update multi-llm-marketplace
-grok plugin install core-grok@multi-llm-marketplace --trust
+grok plugin install core-grok@skylence-be/multi-llm-marketplace --trust
 ```
 
 Then run the setup skill:
