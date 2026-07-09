@@ -57,13 +57,23 @@ else
 fi
 ```
 
-## Step 3: summary
+## Step 3: stamp the installed version
+
+```bash
+PLUGIN_ROOT="${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}"
+mkdir -p ~/.grok
+jq -r .version "$PLUGIN_ROOT/plugin.json" > ~/.grok/.core-grok-version
+echo "stamped ~/.grok/.core-grok-version: $(cat ~/.grok/.core-grok-version)"
+```
+
+## Step 4: summary
 
 ```
 core-grok:setup
 ----------------------
 ~/.grok/judge-rules.json    seeded | existing
 ~/.grok/AGENTS.md           guidelines section written
+~/.grok/.core-grok-version  stamped
 hooks (judge/writing/research) active from the installed plugin (requires trust)
 ```
 

@@ -10,7 +10,8 @@ Installs opinionated safety and quality guardrails that work with Grok's native 
 - `hooks/writing-guard.sh` — PreToolUse guard that blocks writes containing em-dashes, banned AI-tells vocabulary, and filler phrases in prose files (>150 words).
 - `hooks/research-nudge.sh` — Stop hook that detects hedged factual claims in the last assistant turn and requests a verification step (best-effort; Grok Stop is passive).
 - `hooks/judge-rules.example.json` — the shared Skylence safety ruleset.
-- `skills/setup/` — `/core-grok:setup` seeds the rules file and writes the guidelines block.
+- `skills/setup/` — `/core-grok:setup` seeds the rules file, writes the guidelines block, and stamps the version.
+- `skills/doctor/` — `/core-grok:doctor` performs a read-only audit of judge-rules, AGENTS.md, version stamp, and hook notes.
 - `templates/agents-md.md` — the canonical Advisor/Decisive/Coding/Review/Writing guidelines (compaction-surviving fenced block).
 - `plugin.json` — Grok plugin manifest.
 
@@ -40,8 +41,11 @@ Or from CLI: `grok -p "/core-grok:setup" --always-approve`
 ## Verification
 
 After setup:
-- `ls ~/.grok/judge-rules.json ~/.grok/AGENTS.md`
+- `ls ~/.grok/judge-rules.json ~/.grok/AGENTS.md ~/.grok/.core-grok-version`
 - `grok plugin list` should show core-grok
-- `grok inspect` should list the hooks under plugin: core-grok
+- `grok inspect` should list skills/hooks from the plugin
+- Run `/core-grok:doctor` for a full read-only audit (judge-rules, guidelines, version, hook notes)
 
 Re-run `/core-grok:setup` safely — it only seeds when absent and replaces the fenced block.
+
+Run `/core-grok:doctor` any time you want to audit the install (especially after updates or if hooks seem inactive).

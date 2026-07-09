@@ -29,10 +29,11 @@ plugin's manifest, not in this README.
 
 **Grok** (`.grok-plugin/marketplace.json`):
 
-- `core-grok`: Grok baseline. `/core-grok:setup` seeds `~/.grok/judge-rules.json`
-  and writes the guidelines block into `~/.grok/AGENTS.md`. Includes native
-  PreToolUse judge-hook, writing-guard, research-nudge (Grok hook contract +
-  `grok -p` escalation for decisions).
+- `core-grok`: Grok baseline. `/core-grok:setup` seeds `~/.grok/judge-rules.json`,
+  writes the guidelines into `~/.grok/AGENTS.md`, and stamps the version.
+  Includes native PreToolUse judge-hook, writing-guard, research-nudge.
+  `/core-grok:doctor` audits the install (rules, guidelines, version, hooks).
+  Uses Grok hook contract + `grok -p` escalation.
 - `soloterm-agent-org-grok`: Full agent-org stack. Orchestrator, planner,
   solo-worker, replacer, org-audit + capacity-check. Bundles Solo MCP,
   build-slot, ghost-probe, and Grok-adapted discipline hooks.
@@ -96,6 +97,7 @@ grok plugin details core-grok
 grok plugin details soloterm-agent-org-grok
 grok inspect | grep -E '(core-grok|soloterm-agent-org-grok|solo)'
 /core-grok:setup
+/core-grok:doctor
 ```
 
 **Local dev (any agent):**
