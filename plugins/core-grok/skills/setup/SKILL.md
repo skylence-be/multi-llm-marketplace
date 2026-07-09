@@ -1,6 +1,6 @@
 ---
 name: setup
-description: One-shot, no-prompt installer for the Grok core baseline user-scope state. Seeds ~/.grok/judge-rules.json (only if absent) and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) into ~/.grok/AGENTS.md inside a fenced block. The hooks (judge-hook, writing-guard, research-nudge) activate from the installed plugin itself on trust. Invoke as /core-grok:setup on a new machine or after fresh Grok install.
+description: One-shot, no-prompt installer for the Grok core baseline user-scope state. Seeds ~/.grok/judge-rules.json (only if absent), writes the core guidelines into ~/.grok/AGENTS.md, stamps the version, and sets [compat.claude] hooks = false in config.toml. The hooks (judge-hook, writing-guard, research-nudge) activate from the installed plugin itself on trust. Invoke as /core-grok:setup on a new machine or after fresh Grok install.
 ---
 
 # /core-grok:setup
@@ -66,14 +66,47 @@ jq -r .version "$PLUGIN_ROOT/plugin.json" > ~/.grok/.core-grok-version
 echo "stamped ~/.grok/.core-grok-version: $(cat ~/.grok/.core-grok-version)"
 ```
 
-## Step 4: summary
+## Step 4: disable Claude hooks compatibility
+
+This prevents Grok from loading Claude's hooks (which can conflict with the Grok-native ones from this plugin).
+
+```bash
+CONFIG=~/.grok/config.toml
+mkdir -p ~/.grok
+if [ -f "$CONFIG" ]; then
+  cp "$CONFIG" "$CONFIG.bak.$(date +%Y%m%d%H%M%S)"
+fi
+
+# Check if section exists
+if grep -q '^\[compat.claude\]' "$CONFIG" 2>/dev/null; then
+  # Update hooks = false inside the section
+  awk '
+    /^\[compat.claude\]/ { print; in_sec=1; next }
+    in_sec && /^hooks[[:space:]]*=/ { print "hooks = false"; in_sec=0; next }
+    in_sec && /^\[/ { in_sec=0; print; next }
+    { print }
+  ' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
+  echo "updated [compat.claude] hooks = false in config.toml"
+else
+  # Append the section
+  cat >> "$CONFIG" << 'EOF'
+
+[compat.claude]
+hooks = false
+EOF
+  echo "added [compat.claude] hooks = false to config.toml"
+fi
+```
+
+## Step 5: summary
 
 ```
 core-grok:setup
 ----------------------
-~/.grok/judge-rules.json    seeded | existing
-~/.grok/AGENTS.md           guidelines section written
-~/.grok/.core-grok-version  stamped
+~/.grok/judge-rules.json      seeded | existing
+~/.grok/AGENTS.md             guidelines section written
+~/.grok/.core-grok-version    stamped
+~/.grok/config.toml           [compat.claude] hooks = false set
 hooks (judge/writing/research) active from the installed plugin (requires trust)
 ```
 

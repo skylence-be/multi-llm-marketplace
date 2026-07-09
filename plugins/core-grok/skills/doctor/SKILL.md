@@ -52,6 +52,13 @@ echo "Hooks (judge-hook, writing-guard, research-nudge) are declared in the plug
 echo "They are loaded automatically when the core-grok plugin is trusted and active in the session."
 echo "There is no manual copy into ~/.grok/hooks/ (unlike some Claude setups)."
 echo "To force reload: open /plugins and press 'r', or run 'grok plugin reload'."
+echo ""
+echo '== compat check =='
+if grep -q '^\[compat.claude\]' ~/.grok/config.toml 2>/dev/null && grep -q 'hooks = false' ~/.grok/config.toml; then
+  echo "[compat.claude] hooks = false : set (good, prevents loading Claude hooks)"
+else
+  echo "[compat.claude] hooks = false : missing — re-run /core-grok:setup"
+fi
 
 echo ''
 echo '== plugin root =='
