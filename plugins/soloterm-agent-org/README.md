@@ -46,6 +46,11 @@ field validation, promote ritual, risks):
     order to re-invoke the role skill and re-anchor from the board after every
     compaction. Summaries keep facts, not conduct — long-session decay is
     self-invisible, so the refresh is hook-driven, never self-assessed.
+  - `planner-singleton-gate.sh` (PreToolUse on `spawn_agent|spawn_process`):
+    denies a planner-named spawn unless the machine-wide sweep just ran. The
+    planner is a machine-wide singleton, so a planner in ANY Solo project
+    serves every org; the deny carries the sweep order (route to a live
+    planner found anywhere, and only a post-sweep retry passes the gate).
 
 ## Manual installs (documented, not auto-wired)
 
