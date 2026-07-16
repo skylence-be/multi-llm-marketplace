@@ -67,6 +67,16 @@ grok plugin install core-grok@skylence-be/multi-llm-marketplace --trust
 
 Then run `/core-grok:setup` and use the org roles (orchestrator, planner, etc.).
 
+For full skyline MCP tools (skyline_read, skyline_edit with ¶path#TAG hash guards, skyline_grep, skyline_run, etc.) and the PreToolUse enforce hook that redirects native tools to skyline equivalents when the daemon is running:
+
+```
+grok plugin marketplace add skylence-be/skylence-plugins
+grok plugin marketplace update skylence-plugins
+grok plugin install skyline-grok@skylence-be/skylence-plugins --trust
+```
+
+The enforce hook (in skyline-grok) will be active for Grok sessions as long as the skyline daemon is up (fails open otherwise). See the skyline-grok README for details.
+
 **Note:** After adding, run `grok plugin marketplace update multi-llm-marketplace`.
 For install commands, use the full qualifier: `...@skylence-be/multi-llm-marketplace` (the short name may not resolve for installs).
 

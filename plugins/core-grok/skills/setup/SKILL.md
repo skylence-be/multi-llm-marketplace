@@ -1,6 +1,6 @@
 ---
 name: setup
-description: One-shot, no-prompt installer for the Grok core baseline user-scope state. Seeds ~/.grok/judge-rules.json (only if absent), writes the core guidelines into ~/.grok/AGENTS.md, stamps the version, and sets [compat.claude] hooks = false in config.toml. The hooks (judge-hook, writing-guard, research-nudge) activate from the installed plugin itself on trust. Invoke as /core-grok:setup on a new machine or after fresh Grok install.
+description: One-shot, no-prompt installer for the Grok core baseline user-scope state. Seeds ~/.grok/judge-rules.json (only if absent), writes the core guidelines into ~/.grok/AGENTS.md, stamps the version, and fully disables [compat.claude] (all=false) in config.toml. Prevents any Claude harness leakage. The hooks activate from the installed plugin on trust. Invoke as /core-grok:setup on a new machine or after fresh Grok install.
 ---
 
 # /core-grok:setup
@@ -66,9 +66,9 @@ jq -r .version "$PLUGIN_ROOT/plugin.json" > ~/.grok/.core-grok-version
 echo "stamped ~/.grok/.core-grok-version: $(cat ~/.grok/.core-grok-version)"
 ```
 
-## Step 4: disable Claude hooks compatibility
+## Step 4: fully disable Claude compatibility
 
-This prevents Grok from loading Claude's hooks (which can conflict with the Grok-native ones from this plugin).
+This prevents Grok from loading anything from the Claude harness (skills, rules, agents/CLAUDE.md, MCPs, hooks/settings). Stops core-claude plugin bleed and any .claude/ scanning.
 
 ```bash
 CONFIG=~/.grok/config.toml
@@ -77,24 +77,45 @@ if [ -f "$CONFIG" ]; then
   cp "$CONFIG" "$CONFIG.bak.$(date +%Y%m%d%H%M%S)"
 fi
 
-# Check if section exists
-if grep -q '^\[compat.claude\]' "$CONFIG" 2>/dev/null; then
-  # Update hooks = false inside the section
-  awk '
-    /^\[compat.claude\]/ { print; in_sec=1; next }
-    in_sec && /^hooks[[:space:]]*=/ { print "hooks = false"; in_sec=0; next }
-    in_sec && /^\[/ { in_sec=0; print; next }
-    { print }
-  ' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
-  echo "updated [compat.claude] hooks = false in config.toml"
-else
-  # Append the section
-  cat >> "$CONFIG" << 'EOF'
+# Remove any existing [compat.claude] section (multi-line)
+awk '
+  /^\[compat.claude\]/ { skip=1; next }
+  skip && /^\[/ { skip=0 }
+  !skip { print }
+' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
+
+# Append the full disabled section
+cat >> "$CONFIG" << 'EOF'
 
 [compat.claude]
+skills = false
+rules = false
+agents = false
+mcps = false
 hooks = false
 EOF
-  echo "added [compat.claude] hooks = false to config.toml"
+echo "set full [compat.claude] disable (skills/rules/agents/mcps/hooks = false) in config.toml"
+
+# Also ensure core-claude plugin is disabled so its skills don't leak
+if ! grep -q 'core-claude' "$CONFIG" 2>/dev/null; then
+  if grep -q '^\[plugins\]' "$CONFIG" 2>/dev/null; then
+    cat >> "$CONFIG" << 'EOP'
+disabled = [
+    "core-claude",
+]
+EOP
+  else
+    cat >> "$CONFIG" << 'EOP'
+
+[plugins]
+disabled = [
+    "core-claude",
+]
+EOP
+  fi
+  echo "added core-claude to [plugins] disabled"
+else
+  echo "core-claude plugin already disabled in config"
 fi
 ```
 
@@ -106,7 +127,7 @@ core-grok:setup
 ~/.grok/judge-rules.json      seeded | existing
 ~/.grok/AGENTS.md             guidelines section written
 ~/.grok/.core-grok-version    stamped
-~/.grok/config.toml           [compat.claude] hooks = false set
+~/.grok/config.toml           [compat.claude] all=false + core-claude disabled
 hooks (judge/writing/research) active from the installed plugin (requires trust)
 ```
 
