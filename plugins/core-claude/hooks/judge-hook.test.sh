@@ -187,6 +187,72 @@ allows "echo of a sentence naming sudo" Bash \
 allows "git commit message explaining the guard" Bash \
   "$(bash_cmd 'git commit -m "explain why sudo reboot is blocked"')"
 
+echo "--- must DENY: programs evicted from \$INERT (review #529, todo 524) ----"
+
+# Each of these was listed inert on the assumption "text in, text out, arguments
+# never executed", without checking whether that was true of the program. It was
+# not true of any of them. An entry in \$INERT is a promise about the program's
+# whole documented flag surface, and it needs a case here.
+denies "jq filter runs sudo via system()" "sudo invocation" Bash \
+  "$(bash_cmd "jq -n 'system(\"sudo reboot\")'")"
+denies "yq filter runs sudo via system()" "sudo invocation" Bash \
+  "$(bash_cmd "yq eval 'system(\"sudo reboot\")' -")"
+denies "GNU sed e command runs sudo" "sudo invocation" Bash \
+  "$(bash_cmd "sed 'e sudo reboot'")"
+denies "GNU sed s///e flag runs sudo" "sudo invocation" Bash \
+  "$(bash_cmd "sed 's/.*/sudo reboot/e'")"
+denies "git -c alias runs a shell alias" "sudo invocation" Bash \
+  "$(bash_cmd "git -c alias.x='!sudo reboot' x")"
+denies "git -c core.editor runs an editor string" "sudo invocation" Bash \
+  "$(bash_cmd "git -c core.editor='sudo reboot' commit")"
+denies "git -c core.pager runs a pager string" "sudo invocation" Bash \
+  "$(bash_cmd "git -c core.pager='sudo reboot' log")"
+denies "rg --pre runs a preprocessor" "sudo invocation" Bash \
+  "$(bash_cmd "rg --pre 'sudo reboot' foo .")"
+denies "sort --compress-program is executed" "sudo invocation" Bash \
+  "$(bash_cmd "sort --compress-program='sudo reboot' /tmp/f")"
+denies "ack --pager is executed" "sudo invocation" Bash \
+  "$(bash_cmd "ack --pager='sudo reboot' foo")"
+
+echo "--- must DENY: privilege text reaching a shell across stages ------------"
+
+# Per-stage reasoning cannot see this: stage 1 is inert so the quoted privilege
+# text is dropped as data, and stage 2 is the shell that would have run it. The
+# inert exemption is therefore withdrawn for the whole command whenever any
+# stage is a shell or interpreter.
+denies "echo piped into sh" "sudo invocation" Bash \
+  "$(bash_cmd "echo 'sudo reboot' | sh")"
+denies "printf piped into sh" "sudo invocation" Bash \
+  "$(bash_cmd "printf '%s\n' 'sudo reboot' | sh")"
+denies "cat herestring piped into sh" "sudo invocation" Bash \
+  "$(bash_cmd "cat <<< 'sudo reboot' | sh")"
+denies "inert stage behind an and-list, piped into sh" "sudo invocation" Bash \
+  "$(bash_cmd "true && echo 'sudo reboot' | sh")"
+denies "echo piped into bash" "sudo invocation" Bash \
+  "$(bash_cmd "echo 'sudo reboot' | bash")"
+denies "printf piped into an interpreter" "sudo invocation" Bash \
+  "$(bash_cmd "printf 'sudo reboot' | python3")"
+denies "power word reaching sh through a pipe" "system power command" Bash \
+  "$(bash_cmd "printf 'shutdown -h now\n' | sh")"
+denies "privilege word followed by a backslash escape" "sudo invocation" Bash \
+  "$(bash_cmd "printf 'sudo\nreboot\n' | sh")"
+# KNOWN REMAINING HOLE, filed rather than folded in (todo 524, bounce 4):
+#   echo 'sudo reboot' > /tmp/x; sh /tmp/x        ALLOW here, DENY pre-argv0
+# The privilege text goes through a FILE, and the shell that runs it has a
+# script operand, so it is not a stdin executor. Denying it means denying every
+# `printf ... | bash some-script.sh` and every `printf 'text with reboot' > f`,
+# which are two of the false positives this PR exists to fix (both asserted
+# ALLOW above). Closing it needs file-level dataflow, not a wider list.
+
+# git and rg are inert only while every flag in the stage is a known-safe one,
+# so the false positives this PR exists for must still be ALLOW.
+allows "rg pattern naming power words" Bash \
+  "$(bash_cmd "rg 'poweroff|reboot' docs/")"
+allows "rg with ordinary search flags" Bash \
+  "$(bash_cmd "rg -n -i 'reboot' docs/")"
+allows "git commit with an ordinary flag beside -m" Bash \
+  "$(bash_cmd 'git commit -m "no verify" --no-verify')"
+
 echo "--- must ALLOW: spoof resistance (argv0 rules never see raw JSON) -----"
 
 allows "echo argv0: sudo does not forge a match" Bash \

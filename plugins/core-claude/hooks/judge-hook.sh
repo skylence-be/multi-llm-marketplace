@@ -134,13 +134,48 @@ my $INTERP = qr/^(perl|perl[0-9.]+|python|python[0-9.]+|ruby|node|nodejs|php|lua
 # privilege word treated as possible code, which fails CLOSED to raw matching.
 # Deliberately an allowlist of safety, not a denylist of danger: the denylist
 # shape is exactly what let `flock FILE sudo reboot` through.
-my $INERT = qr/^(echo|printf|cat|head|tail|wc|sort|uniq|cut|tr|column|fold|
-                 grep|egrep|fgrep|rg|ag|ack|sed|jq|yq|ls|stat|file|diff|comm|
-                 tee|git|basename|dirname|realpath|readlink|date|true|false)$/x;
+#
+# MEMBERSHIP BAR (review #529): "no execute surface under ANY documented flag",
+# checked per entry rather than assumed. One line of justification each:
+#   echo printf   write operands to stdout; no operand is ever a command
+#   cat head tail tee wc cut tr fold column uniq comm  byte/line filters; operands are files
+#   ls stat file date basename dirname realpath readlink  report metadata; no exec option
+#   diff          compares two files; neither GNU nor BSD diff can run a program
+#   grep egrep fgrep  pattern + files only; no flag spawns anything (unlike rg --pre)
+#   true false    take no meaningful operand at all
+# EVICTED 2026-07-21, each proven to execute one of its own arguments:
+#   sed     GNU `e` command and the `s///e` flag run a shell command
+#   jq yq   `system()` inside the filter program
+#   sort    --compress-program=CMD is exec'd
+#   ag ack  --pager=CMD is exec'd
+#   git rg  see %INERT_IF_FLAGS; text-only ONLY when their exec flags are absent
+my $INERT = qr/^(echo|printf|cat|head|tail|tee|wc|cut|tr|fold|column|uniq|comm|
+                 grep|egrep|fgrep|ls|stat|file|diff|date|basename|dirname|
+                 realpath|readlink|true|false)$/x;
+# Text-only EXCEPT for specific flags that run a program, and needed inert for
+# false positives this PR exists to fix (`git commit -m "…sudo…"`,
+# `rg 'poweroff|reboot' docs/`). Inert only when EVERY flag in the stage is on
+# that program's list, so an unrecognised flag fails CLOSED. Still an allowlist
+# of safety: `git -c alias.x='!sudo reboot'` and `rg --pre CMD` are not on it,
+# and cannot be added by accident, because absence is what denies.
+my %INERT_IF_FLAGS = (
+  git => qr/^(-m|--message|-F|--file|-a|--all|-s|--signoff|-v|--verbose|-q|--quiet|
+              -n|--no-verify|--amend|--no-edit|--allow-empty|--author|--date)$/x,
+  rg  => qr/^(-n|--line-number|-N|--no-line-number|-i|--ignore-case|-S|--smart-case|
+              -w|--word-regexp|-l|--files-with-matches|-c|--count|-e|--regexp|
+              -F|--fixed-strings|-A|-B|-C|--after-context|--before-context|--context|
+              -g|--glob|-t|--type|-v|--invert-match|--color|--no-heading|--hidden|
+              --json|--stats|--null|-0|-H|--with-filename|-h|--no-filename|
+              -m|--max-count|--sort|--sortr|-p|--pretty|--no-ignore|--files|
+              -u|--unrestricted|--replace|-r)$/x,
+);
 # A privilege/power word anywhere inside a quoted payload, on a word boundary.
 # Token equality is not enough here: the payload is a program, not a bare word
 # (`BEGIN{system("sudo reboot")}` never equals `sudo`).
-my $PRIV_IN_TEXT = qr/(?:^|[^A-Za-z0-9_\/.-])(sudo|doas|pkexec|run0|shutdown|reboot|halt|poweroff)(?:[^A-Za-z0-9_-]|$)/;
+# `/` is deliberately NOT a leading exclusion: `/usr/bin/sudo` and
+# `s/.*/sudo reboot/e` are real invocations. `.` and `-` stay excluded so that
+# `foo.sudo` and `x-sudo` do not fire.
+my $PRIV_IN_TEXT = qr/(?:^|[^A-Za-z0-9_.-])(sudo|doas|pkexec|run0|shutdown|reboot|halt|poweroff)(?:[^A-Za-z0-9_-]|$)/;
 # sudo flags that consume the next word; without this, `sudo -u root sh` would
 # read `root` as the escalated program.
 my $PRIV_VALUE_FLAG = qr/^-[ugpCThDrt]$/;
@@ -174,6 +209,11 @@ my %WRAP_POS = (
 );
 my %seen;
 my $uncertain = 0;
+# Cross-stage data flow, tracked for the whole command (see the note above the
+# final mark() below): did any stage run a shell or interpreter, and did any
+# inert stage carry privilege text that such a stage could consume?
+my $has_exec_stage = 0;
+my $inert_text_priv = 0;
 
 sub emit { my ($n) = @_; return if $seen{$n}++; print "argv0: $n\n"; }
 sub mark { $uncertain = 1; }
@@ -334,6 +374,18 @@ sub scan {
       }
       emit($p);
       $stage_prog = $p;
+      if ($p =~ $SHELL || $p =~ $INTERP) {
+        # A shell or interpreter with NO script operand executes whatever
+        # reaches its stdin, so an earlier inert stage's text is code, not data.
+        # Given a script file it runs that file instead and the piped text is
+        # data for the script to read (`printf '{json}' | bash some-hook.sh`),
+        # which is a false positive worth keeping out.
+        my $has_operand = 0;
+        for my $j ($i + 1 .. $#t) {
+          if ($t[$j] !~ /^-/) { $has_operand = 1; last; }
+        }
+        $has_exec_stage = 1 unless $has_operand;
+      }
       if ($p =~ $SHELL) {
         for my $j ($i + 1 .. $#t) {
           next unless $t[$j] =~ /^-[a-zA-Z]*c$/ && $j < $#t;
@@ -357,11 +409,32 @@ sub scan {
     # means the scan walked past the real command (see header). The parse is
     # confidently wrong rather than uncertain, so nothing else here would catch
     # it; mark uncertain and let raw matching take over.
-    my $inert = ($stage_prog ne '' && $stage_prog =~ $INERT) ? 1 : 0;
+    # Inert is a property of the INVOCATION, not of the program name. `git` and
+    # `rg` are text-only until a flag turns one of their arguments into a
+    # command, so their flags must all be recognised safe or the stage is not
+    # inert. An unknown flag is treated as an execute surface.
+    my $inert = 0;
+    if ($stage_prog ne '') {
+      if ($stage_prog =~ $INERT) {
+        $inert = 1;
+      } elsif (my $safe_flags = $INERT_IF_FLAGS{$stage_prog}) {
+        $inert = 1;
+        for my $k (0 .. $#t) {
+          next if $q[$k];
+          next unless $t[$k] =~ /^-/;
+          (my $f = $t[$k]) =~ s/=.*$//s;
+          next if $f eq '--';
+          unless ($f =~ $safe_flags) { $inert = 0; last; }
+        }
+      }
+    }
     for my $k (0 .. $#t) {
       if ($q[$k]) {
         # Quoted: data for an inert program, possibly code for anything else.
-        next if $inert;
+        if ($inert) {
+          $inert_text_priv = 1 if $t[$k] =~ $PRIV_IN_TEXT;
+          next;
+        }
         mark() if $t[$k] =~ $PRIV_IN_TEXT;
         next;
       }
@@ -380,6 +453,21 @@ while (my $line = <STDIN>) {
   next unless length $line;
   scan(MIME::Base64::decode_base64($line), 0);
 }
+# CROSS-STAGE DATA FLOW: `echo 'sudo reboot' | sh` is the commonest idiom for
+# running text as a command, and per-stage reasoning cannot see it. Stage 1 is
+# inert, so the privilege text is dropped as data; stage 2 is a shell that never
+# sees those tokens, because they were dropped before it was reached. Nothing is
+# uncertain and nothing is raw-matched, so it ALLOWs.
+# The fix withdraws the inert exemption for the WHOLE command as soon as any
+# stage is a shell or interpreter: the text has somewhere to be executed.
+# Chosen over modelling only pipe-into-shell, which was the narrower option,
+# because a shell reaches an inert stage's output by many routes beyond a pipe
+# (`echo … > f; sh f`, `$(…)`, xargs, process substitution), and only the coarse
+# rule fails closed on the routes nobody enumerated. Enumeration is exactly what
+# has failed here four times. Cost of the coarse rule: `bash -lc "git commit -m
+# '…sudo…'"` now denies where the bare `git commit` still allows. That is a
+# reword, not a breach, and it is the acceptable direction to be wrong in.
+mark() if $inert_text_priv && $has_exec_stage;
 print "uncertain: 1\n" if $uncertain;
 PERL_EOF
   # @sh shell-quotes each argv element, so a pre-tokenized skyline_run call and
@@ -437,10 +525,27 @@ while IFS='|' read -r R_TOOL R_CLASS R_PAT_B64 R_REASON_B64 R_PROMPT_B64 R_MATCH
       printf '%s' "$ARGV_TEXT" | grep -qE -- "$R_PATTERN" 2>/dev/null && HIT=1
     fi
     if [ "$HIT" -eq 0 ] && [ "$ARGV_UNCERTAIN" -eq 1 ] && [ -n "$R_PATTERN" ]; then
-      # ^argv0: (a|b|c)$  →  (^|[^a-zA-Z_/.])(a|b|c)(["'[:space:]]|$)
-      RAW_ALT=$(printf '%s' "$R_PATTERN" | sed -n 's/^\^argv0: (\(.*\))\$$/\1/p')
+      # ^argv0: (a|b|c)$  ->  (^|[^a-zA-Z_.])(a|b|c)([^a-zA-Z0-9_-]|$)
+      # The trailing class is every non-word char, not just quote/space/end:
+      # `printf 'sudo\nreboot\n' | sh` puts a backslash straight after the
+      # privilege word, and a narrow class let exactly that through.
+      # `/` is not a leading exclusion here either: `/usr/bin/sudo reboot` and
+      # `s/.*/sudo reboot/e` are invocations, and this fallback only runs on a
+      # command already marked uncertain.
+      # Derivation also accepts the unparenthesised and unanchored shapes
+      # (`^argv0: sudo$`, `argv0: sudo`), which the strict form silently
+      # produced nothing for, matching nothing and failing OPEN.
+      RAW_ALT=$(printf '%s' "$R_PATTERN" \
+        | sed -n 's/^\^\{0,1\}argv0: \(.*\)$/\1/p' \
+        | sed 's/\$$//; s/^(\(.*\))$/\1/')
       if [ -n "$RAW_ALT" ]; then
-        printf '%s' "$MATCH_TEXT" | grep -qE -- "(^|[^a-zA-Z_/.])(${RAW_ALT})([\"'[:space:]]|\$)" 2>/dev/null && HIT=1
+        printf '%s' "$MATCH_TEXT" | grep -qE -- "(^|[^a-zA-Z_.])(${RAW_ALT})([^a-zA-Z0-9_-]|\$)" 2>/dev/null && HIT=1
+      else
+        # An argv0 pattern that cannot be projected back onto raw text would
+        # match nothing on an uncertain command, which is the fail-open defect
+        # this file has shipped four times. Deny, and name the rule doing it.
+        echo "judge-hook: argv0 rule pattern '$R_PATTERN' is not of the form '^argv0: ...$'; failing closed on an unparseable command" >&2
+        HIT=1
       fi
     fi
     [ "$HIT" -eq 1 ] || continue
