@@ -150,6 +150,43 @@ denies "perl -e with sudo inside (fail-closed)" "sudo invocation" Bash \
 denies "bash -lc combined flags still deny" "sudo invocation" Bash \
   "$(bash_cmd "bash -lc 'sudo reboot'")"
 
+echo "--- must DENY: wrappers with POSITIONAL args (orchestrator A/B, todo 524)"
+
+# Every one of these was DENY on the pre-argv0 hook and ALLOW after the first
+# fix, because adding a wrapper to $WRAP without modelling its argument grammar
+# makes the scanner call the positional "the program". Adding a wrapper to that
+# list is not free: it needs a case here, and a %WRAP_POS entry if it takes a
+# positional.
+denies "flock FILE wraps sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'flock /tmp/x sudo reboot')"
+denies "flock -w N FILE wraps sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'flock -w 5 /tmp/x sudo reboot')"
+denies "taskset MASK wraps sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'taskset 0x1 sudo reboot')"
+denies "chrt PRIO wraps sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'chrt 1 sudo reboot')"
+denies "script FILE wraps sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'script -q /dev/null sudo reboot')"
+denies "env -S splits and runs the string" "sudo invocation" Bash \
+  "$(bash_cmd 'env -S "sudo reboot"')"
+
+echo "--- must DENY: quoted payloads a non-inert program executes -----------"
+
+# The quoted-token exemption is an allowlist of INERT programs, not a denylist
+# of interpreters: awk and make execute their quoted argument, and a denylist
+# would fail open for every interpreter nobody listed.
+denies "awk program body runs sudo" "sudo invocation" Bash \
+  "$(bash_cmd "awk 'BEGIN{system(\"sudo reboot\")}'")"
+denies "make herestring recipe runs sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'make -f /dev/stdin <<< "all:; sudo reboot"')"
+
+# The other half of that trade: for an inert program the quoted text is data,
+# and these must stay ALLOW or the false-positive fix is gone.
+allows "echo of a sentence naming sudo" Bash \
+  "$(bash_cmd 'echo "the word sudo appears here"')"
+allows "git commit message explaining the guard" Bash \
+  "$(bash_cmd 'git commit -m "explain why sudo reboot is blocked"')"
+
 echo "--- must ALLOW: spoof resistance (argv0 rules never see raw JSON) -----"
 
 allows "echo argv0: sudo does not forge a match" Bash \

@@ -99,6 +99,22 @@ esac
 # missing perl), it emits `uncertain: 1`. The rule matcher then falls back to
 # raw tool_input matching for that rule, so exotic shapes are never weaker than
 # the pre-argv0 guard. Fully-parsed read-only greps stay ALLOW (the FP fix).
+# CROSS-CHECK INVARIANT (2026-07-21): fail-closed on uncertainty cannot help
+# when the parse succeeds into a WRONG answer. An unmodelled wrapper with a
+# positional argument (`flock FILE cmd`) makes the scanner confidently call
+# the positional "the program". So: a privilege/power word present as a BARE
+# token in a stage that the projection never emitted also marks uncertain.
+# Any wrapper whose argument grammar is not modelled therefore degrades to
+# raw matching instead of hiding everything after it.
+# QUOTED PAYLOADS: a quoted token is data for `echo`, and a program for `awk`.
+# The exemption is therefore an allowlist of INERT programs (text in, text out,
+# arguments never executed), NOT a denylist of known interpreters. A denylist
+# fails OPEN for every interpreter nobody thought of (awk, make, and whatever
+# ships next), which is the same defect as an unmodelled wrapper one level up.
+# So a quoted token carrying a privilege/power word marks uncertain unless the
+# stage's program is known inert. Caveat: `git` is inert for its own arguments
+# but can run hooks and aliases. It is listed because the message-body false
+# positive is common and git does not execute `-m` text.
 # Infrastructure errors (missing jq, bad rules) remain fail-open per the header.
 ARGV_TEXT=""
 ARGV_UNCERTAIN=0
@@ -109,8 +125,22 @@ if [ "$CLASS_TOOL" = "Bash" ]; then
   read -r -d '' ARGV_SCAN_PL <<'PERL_EOF'
 my $WRAP  = qr/^(env|command|builtin|exec|nice|ionice|nohup|setsid|time|stdbuf|xargs|timeout|gtimeout|watch|script|unbuffer|rlwrap|strace|ltrace|catchsegv|taskset|chrt|prlimit|flock|chronic|softlimit)$/;
 my $PRIV  = qr/^(sudo|doas|pkexec|run0)$/;
+my $POWER = qr/^(shutdown|reboot|halt|poweroff)$/;
 my $SHELL = qr/^(sh|bash|zsh|dash|ksh|fish)$/;
 my $INTERP = qr/^(perl|perl[0-9.]+|python|python[0-9.]+|ruby|node|nodejs|php|lua|osascript)$/;
+# Programs whose ARGUMENTS are never executed: text in, text out. Only for
+# these is a quoted token safely treated as data. Anything absent from this
+# list (awk, make, xargs-with-a-shell, tomorrow's interpreter) has a quoted
+# privilege word treated as possible code, which fails CLOSED to raw matching.
+# Deliberately an allowlist of safety, not a denylist of danger: the denylist
+# shape is exactly what let `flock FILE sudo reboot` through.
+my $INERT = qr/^(echo|printf|cat|head|tail|wc|sort|uniq|cut|tr|column|fold|
+                 grep|egrep|fgrep|rg|ag|ack|sed|jq|yq|ls|stat|file|diff|comm|
+                 tee|git|basename|dirname|realpath|readlink|date|true|false)$/x;
+# A privilege/power word anywhere inside a quoted payload, on a word boundary.
+# Token equality is not enough here: the payload is a program, not a bare word
+# (`BEGIN{system("sudo reboot")}` never equals `sudo`).
+my $PRIV_IN_TEXT = qr/(?:^|[^A-Za-z0-9_\/.-])(sudo|doas|pkexec|run0|shutdown|reboot|halt|poweroff)(?:[^A-Za-z0-9_-]|$)/;
 # sudo flags that consume the next word; without this, `sudo -u root sh` would
 # read `root` as the escalated program.
 my $PRIV_VALUE_FLAG = qr/^-[ugpCThDrt]$/;
@@ -131,9 +161,16 @@ my %WRAP_VAL = (
   taskset  => qr/^(-[cp]|--cpu-list|--pid)$/,
   chrt     => qr/^(-p|--pid)$/,
   prlimit  => qr/^(-p|--pid)$/,
-  flock    => qr/^(-[ewFon]|--timeout|--conflict-exit-code|--command)$/,
+  flock    => qr/^(-[wE]|--timeout|--conflict-exit-code)$/,
   rlwrap   => qr/^(-[abceN])$/,
   softlimit=> qr/^(-[a-zA-Z])$/,
+);
+# Wrappers taking a mandatory POSITIONAL argument BEFORE the command. Every
+# entry in $WRAP is a new hiding place unless its argument grammar is known:
+# unmodelled, the positional is declared the program and the real command
+# after it never reaches the projection.
+my %WRAP_POS = (
+  timeout => 1, gtimeout => 1, flock => 1, taskset => 1, chrt => 1, script => 1,
 );
 my %seen;
 my $uncertain = 0;
@@ -160,8 +197,8 @@ sub strip_heredocs {
 # separators inside a quoted argument stay part of that argument.
 sub lex {
   my ($s) = @_;
-  my (@stages, @cur, $tok, $has);
-  ($tok, $has) = ('', 0);
+  my (@stages, @cur, $tok, $has, $q);
+  ($tok, $has, $q) = ('', 0, 0);
   my ($i, $n) = (0, length $s);
   while ($i < $n) {
     my $c = substr($s, $i, 1);
@@ -169,7 +206,7 @@ sub lex {
     if ($c eq "'") {
       my $j = index($s, "'", $i + 1);
       if ($j < 0) { mark(); $j = $n; }
-      $tok .= substr($s, $i + 1, $j - $i - 1); $has = 1; $i = $j + 1; next;
+      $tok .= substr($s, $i + 1, $j - $i - 1); $has = 1; $q = 1; $i = $j + 1; next;
     }
     if ($c eq '"') {
       $i++;
@@ -180,20 +217,20 @@ sub lex {
         $tok .= $d; $i++;
       }
       mark() if $i >= $n; # unclosed double quote
-      $has = 1; $i++; next;
+      $has = 1; $q = 1; $i++; next;
     }
-    if ($c =~ /\s/) { push @cur, $tok if $has; ($tok, $has) = ('', 0); $i++; next; }
+    if ($c =~ /\s/) { push @cur, [$tok, $q] if $has; ($tok, $has, $q) = ('', 0, 0); $i++; next; }
     # Stage break. `(`/`)`/`{`/`}` cover subshells and `$(...)` substitution,
     # whose body is itself a command and must be scanned as one.
     if ($c =~ /[|;&\n()\{\}]/) {
-      push @cur, $tok if $has; ($tok, $has) = ('', 0);
+      push @cur, [$tok, $q] if $has; ($tok, $has, $q) = ('', 0, 0);
       push @stages, [@cur] if @cur; @cur = ();
       $i++;
       next;
     }
     $tok .= $c; $has = 1; $i++;
   }
-  push @cur, $tok if $has;
+  push @cur, [$tok, $q] if $has;
   push @stages, [@cur] if @cur;
   return @stages;
 }
@@ -226,7 +263,9 @@ sub scan {
   }
 
   for my $st (lex(strip_heredocs($work))) {
-    my @t = @$st;
+    my @t = map { $_->[0] } @$st;
+    my @q = map { $_->[1] } @$st;
+    my $stage_prog = '';
     my $i = 0;
     $i++ while $i < @t && $t[$i] =~ /^[A-Za-z_][A-Za-z0-9_]*=/;
     while ($i < @t) {
@@ -248,25 +287,38 @@ sub scan {
       if ($p =~ $WRAP) {
         $i++;
         my $valre = $WRAP_VAL{$p};
+        my $nopos = 0;
         while ($i < @t && $t[$i] =~ /^-/) {
           my $f = $t[$i++];
           last if $f eq '--';
-          next if $f =~ /^--[^=]+=/;
+          # `env -S "cmd args"` / `-S"cmd args"`: env splits the string itself
+          # and runs it, so the value is a COMMAND, not data. Rescan it.
+          if ($p eq 'env' && $f =~ /^(?:-S|--split-string=?)(.*)$/s) {
+            if (length $1) { scan($1, $depth + 1); }
+            elsif ($i < @t) { scan($t[$i], $depth + 1); $i++; }
+            next;
+          }
+          if ($f =~ /^--[^=]+=/) {
+            $nopos = 1 if $f =~ /^--(cpu-list|pid)=/;
+            next;
+          }
           if ($p =~ /^(script|flock)$/ && $f =~ /^(-c|--command)$/ && $i < @t) {
             scan($t[$i], $depth + 1);
             $i++;
+            $nopos = 1;
             next;
           }
+          # A flag supplying what the positional would have carried
+          # (taskset -c LIST, chrt/prlimit -p PID) removes the positional.
+          $nopos = 1 if $f =~ /^(-c|--cpu-list|-p|--pid)$/;
           if (defined $valre && $f =~ $valre && $i < @t && $t[$i] !~ /^-/) {
             $i++;
           }
         }
-        # timeout DURATION COMMAND — duration is a mandatory positional.
-        if ($p =~ /^(timeout|gtimeout)$/ && $i < @t && $t[$i] !~ /^-/) {
+        # timeout DURATION / flock FILE / taskset MASK / chrt PRIO / script FILE
+        if ($WRAP_POS{$p} && !$nopos && $i < @t && $t[$i] !~ /^-/) {
           $i++;
         }
-        # script without -c: remaining args are the typescript path, not a cmd.
-        if ($p eq 'script') { last; }
         $i++ while $i < @t && $t[$i] =~ /^[A-Za-z_][A-Za-z0-9_]*=/;
         next;
       }
@@ -281,6 +333,7 @@ sub scan {
         next;
       }
       emit($p);
+      $stage_prog = $p;
       if ($p =~ $SHELL) {
         for my $j ($i + 1 .. $#t) {
           next unless $t[$j] =~ /^-[a-zA-Z]*c$/ && $j < $#t;
@@ -299,6 +352,22 @@ sub scan {
         }
       }
       last;
+    }
+    # CROSS-CHECK INVARIANT: a privilege/power word this stage never emitted
+    # means the scan walked past the real command (see header). The parse is
+    # confidently wrong rather than uncertain, so nothing else here would catch
+    # it; mark uncertain and let raw matching take over.
+    my $inert = ($stage_prog ne '' && $stage_prog =~ $INERT) ? 1 : 0;
+    for my $k (0 .. $#t) {
+      if ($q[$k]) {
+        # Quoted: data for an inert program, possibly code for anything else.
+        next if $inert;
+        mark() if $t[$k] =~ $PRIV_IN_TEXT;
+        next;
+      }
+      (my $w = $t[$k]) =~ s{.*/}{};
+      next unless $w =~ $PRIV || $w =~ $POWER;
+      mark() unless $seen{$w};
     }
   }
 }
