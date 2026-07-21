@@ -80,7 +80,7 @@ $(printf '%s\n' "$FPS" | sed 's/^/"file_path":"/; s/$/"/')"
     ;;
 esac
 
-# ARGV PROJECTION (false-positive fix, 2026-07-21).
+# ARGV PROJECTION (false-positive fix, 2026-07-21; fail-closed, 2026-07-21).
 # A regex over the raw tool_input cannot tell an argument from a program. It
 # blocked `grep -n "...poweroff..." judge-rules.json` as a "system power
 # command" and a `sudo` string inside a JSON test fixture as "sudo invocation";
@@ -89,23 +89,57 @@ esac
 # `argv0: <basename>` line per pipeline stage. A rule opts in with
 # "match": "argv0" and is then grepped against this projection ALONE, never
 # the raw JSON, so command text such as `echo 'argv0: sudo'` cannot spoof it.
-# Wrappers (env, nice, xargs, ...) are transparent; sudo/doas are emitted AND
-# stepped past, so `env sudo reboot` yields both `sudo` and `reboot`; `sh -c`
-# payloads are rescanned. Heredoc bodies are dropped: they are data, not
-# commands. Anything perl cannot parse yields no line, which fails open in
-# keeping with the FAIL-OPEN CONTRACT above.
+# Wrappers (env, nice, timeout, xargs, ...) are transparent; their flag VALUES
+# are consumed so `env -u FOO sudo` still yields `sudo`. sudo/doas are emitted
+# AND stepped past; `sh -c`, `eval`, and backtick bodies are rescanned. Heredoc
+# bodies are dropped: they are data, not commands.
+#
+# FAIL-CLOSED for argv0 rules: when the tokenizer cannot fully understand a
+# construct (dynamic command, interpreter -e code, source, unclosed quotes,
+# missing perl), it emits `uncertain: 1`. The rule matcher then falls back to
+# raw tool_input matching for that rule, so exotic shapes are never weaker than
+# the pre-argv0 guard. Fully-parsed read-only greps stay ALLOW (the FP fix).
+# Infrastructure errors (missing jq, bad rules) remain fail-open per the header.
 ARGV_TEXT=""
-if [ "$CLASS_TOOL" = "Bash" ] && command -v perl >/dev/null 2>&1; then
+ARGV_UNCERTAIN=0
+if [ "$CLASS_TOOL" = "Bash" ]; then
+  if ! command -v perl >/dev/null 2>&1; then
+    ARGV_UNCERTAIN=1
+  else
   read -r -d '' ARGV_SCAN_PL <<'PERL_EOF'
-my $WRAP  = qr/^(env|command|builtin|exec|nice|ionice|nohup|setsid|time|stdbuf|xargs)$/;
+my $WRAP  = qr/^(env|command|builtin|exec|nice|ionice|nohup|setsid|time|stdbuf|xargs|timeout|gtimeout|watch|script|unbuffer|rlwrap|strace|ltrace|catchsegv|taskset|chrt|prlimit|flock|chronic|softlimit)$/;
 my $PRIV  = qr/^(sudo|doas|pkexec|run0)$/;
 my $SHELL = qr/^(sh|bash|zsh|dash|ksh|fish)$/;
+my $INTERP = qr/^(perl|perl[0-9.]+|python|python[0-9.]+|ruby|node|nodejs|php|lua|osascript)$/;
 # sudo flags that consume the next word; without this, `sudo -u root sh` would
 # read `root` as the escalated program.
 my $PRIV_VALUE_FLAG = qr/^-[ugpCThDrt]$/;
+# Wrapper flags that take a separate value. Without this, `env -u FOO sudo`
+# treats FOO as the program and never emits sudo (privilege regression).
+my %WRAP_VAL = (
+  env      => qr/^(-[uCS]|--unset|--chdir|--split-string)$/,
+  timeout  => qr/^(-[sk]|--signal|--kill-after)$/,
+  gtimeout => qr/^(-[sk]|--signal|--kill-after)$/,
+  nice     => qr/^(-n|--adjustment)$/,
+  ionice   => qr/^(-[cnp]|--class|--classdata|--pid)$/,
+  stdbuf   => qr/^(-[ioe]|--input|--output|--error)$/,
+  xargs    => qr/^(-[nPsILEda]|--max-args|--max-procs|--max-chars|--replace|--arg-file|--delimiter|--max-lines)$/,
+  watch    => qr/^(-n|--interval)$/,
+  script   => qr/^(-[ct]|--command|--timing)$/,
+  strace   => qr/^(-[eopsS]|--trace|--signal|--pid|--output)$/,
+  ltrace   => qr/^(-[eops])$/,
+  taskset  => qr/^(-[cp]|--cpu-list|--pid)$/,
+  chrt     => qr/^(-p|--pid)$/,
+  prlimit  => qr/^(-p|--pid)$/,
+  flock    => qr/^(-[ewFon]|--timeout|--conflict-exit-code|--command)$/,
+  rlwrap   => qr/^(-[abceN])$/,
+  softlimit=> qr/^(-[a-zA-Z])$/,
+);
 my %seen;
+my $uncertain = 0;
 
 sub emit { my ($n) = @_; return if $seen{$n}++; print "argv0: $n\n"; }
+sub mark { $uncertain = 1; }
 
 # Drop heredoc bodies: `cat <<EOF ... sudo rm ... EOF` names no command.
 # `<<<` is a herestring with no body, so it must not trigger the skip.
@@ -134,7 +168,7 @@ sub lex {
     if ($c eq '\\' && $i + 1 < $n) { $tok .= substr($s, $i + 1, 1); $has = 1; $i += 2; next; }
     if ($c eq "'") {
       my $j = index($s, "'", $i + 1);
-      $j = $n if $j < 0;
+      if ($j < 0) { mark(); $j = $n; }
       $tok .= substr($s, $i + 1, $j - $i - 1); $has = 1; $i = $j + 1; next;
     }
     if ($c eq '"') {
@@ -145,6 +179,7 @@ sub lex {
         if ($d eq '\\' && $i + 1 < $n) { $tok .= substr($s, $i + 1, 1); $i += 2; next; }
         $tok .= $d; $i++;
       }
+      mark() if $i >= $n; # unclosed double quote
       $has = 1; $i++; next;
     }
     if ($c =~ /\s/) { push @cur, $tok if $has; ($tok, $has) = ('', 0); $i++; next; }
@@ -166,15 +201,72 @@ sub lex {
 sub scan {
   my ($cmd, $depth) = @_;
   return if $depth > 3 || !defined $cmd;
-  for my $st (lex(strip_heredocs($cmd))) {
+
+  # Legacy command substitution: scan backtick bodies, then blank them so the
+  # outer lex does not treat `sudo as a token. Unclosed ` marks uncertain.
+  my $work = $cmd;
+  {
+    my ($out, $i, $n) = ('', 0, length $work);
+    my $in_sq = 0;
+    while ($i < $n) {
+      my $c = substr($work, $i, 1);
+      if ($c eq '\\' && $i + 1 < $n && !$in_sq) { $out .= substr($work, $i, 2); $i += 2; next; }
+      if ($c eq "'" ) { $in_sq = !$in_sq; $out .= $c; $i++; next; }
+      if ($c eq '`' && !$in_sq) {
+        my $j = index($work, '`', $i + 1);
+        if ($j < 0) { mark(); $out .= substr($work, $i); last; }
+        scan(substr($work, $i + 1, $j - $i - 1), $depth + 1);
+        $out .= ' ';
+        $i = $j + 1;
+        next;
+      }
+      $out .= $c; $i++;
+    }
+    $work = $out;
+  }
+
+  for my $st (lex(strip_heredocs($work))) {
     my @t = @$st;
     my $i = 0;
     $i++ while $i < @t && $t[$i] =~ /^[A-Za-z_][A-Za-z0-9_]*=/;
     while ($i < @t) {
       (my $p = $t[$i]) =~ s{.*/}{};
+
+      # Dynamic command: `$cmd` / `${cmd}` — cannot resolve; fail closed.
+      if ($t[$i] =~ /^\$/) { mark(); emit($p); last; }
+
+      # eval "..." — the rest of the stage is a shell snippet; rescan it.
+      if ($p eq 'eval') {
+        my $body = join ' ', @t[$i + 1 .. $#t];
+        scan($body, $depth + 1) if length $body;
+        last;
+      }
+
+      # source / . file — body not visible; fail closed so raw may still match.
+      if ($p eq 'source' || $p eq '.') { mark(); emit($p); last; }
+
       if ($p =~ $WRAP) {
         $i++;
-        $i++ while $i < @t && $t[$i] =~ /^-/;
+        my $valre = $WRAP_VAL{$p};
+        while ($i < @t && $t[$i] =~ /^-/) {
+          my $f = $t[$i++];
+          last if $f eq '--';
+          next if $f =~ /^--[^=]+=/;
+          if ($p =~ /^(script|flock)$/ && $f =~ /^(-c|--command)$/ && $i < @t) {
+            scan($t[$i], $depth + 1);
+            $i++;
+            next;
+          }
+          if (defined $valre && $f =~ $valre && $i < @t && $t[$i] !~ /^-/) {
+            $i++;
+          }
+        }
+        # timeout DURATION COMMAND — duration is a mandatory positional.
+        if ($p =~ /^(timeout|gtimeout)$/ && $i < @t && $t[$i] !~ /^-/) {
+          $i++;
+        }
+        # script without -c: remaining args are the typescript path, not a cmd.
+        if ($p eq 'script') { last; }
         $i++ while $i < @t && $t[$i] =~ /^[A-Za-z_][A-Za-z0-9_]*=/;
         next;
       }
@@ -196,6 +288,16 @@ sub scan {
           last;
         }
       }
+      # Interpreter -e/-c code is opaque to the argv0 projection; fail closed
+      # so a `sudo` string inside the payload still hits the raw fallback.
+      if ($p =~ $INTERP) {
+        for my $j ($i + 1 .. $#t) {
+          if ($t[$j] =~ /^-[a-zA-Z]*[ecE]$/ || $t[$j] eq '--eval' || $t[$j] eq '-code') {
+            mark();
+            last;
+          }
+        }
+      }
       last;
     }
   }
@@ -209,6 +311,7 @@ while (my $line = <STDIN>) {
   next unless length $line;
   scan(MIME::Base64::decode_base64($line), 0);
 }
+print "uncertain: 1\n" if $uncertain;
 PERL_EOF
   # @sh shell-quotes each argv element, so a pre-tokenized skyline_run call and
   # a raw Bash string go through one and the same tokenizer.
@@ -217,7 +320,12 @@ PERL_EOF
       ((.argv? // []) | select(length > 0) | @sh),
       ((.argv_list? // [])[] | @sh) ]
     | .[] | tostring | @base64' 2>/dev/null \
-    | perl -e "$ARGV_SCAN_PL" 2>/dev/null)
+    | perl -e "$ARGV_SCAN_PL" 2>/dev/null) || ARGV_UNCERTAIN=1
+  if printf '%s' "$ARGV_TEXT" | grep -q '^uncertain: 1$'; then
+    ARGV_UNCERTAIN=1
+    ARGV_TEXT=$(printf '%s\n' "$ARGV_TEXT" | grep -v '^uncertain: 1$' || true)
+  fi
+  fi
 fi
 
 # Compile rules to a cache: tool, class, pattern/reason/judge_prompt (b64),
@@ -248,13 +356,31 @@ while IFS='|' read -r R_TOOL R_CLASS R_PAT_B64 R_REASON_B64 R_PROMPT_B64 R_MATCH
   if [ "$R_TOOL" != "*" ] && [ "$R_TOOL" != "$RAW_TOOL" ] && [ "$R_TOOL" != "$CLASS_TOOL" ]; then
     continue
   fi
-  # "argv0" rules see the invoked-program projection ONLY, so text that merely
-  # names a command cannot match them. Any other value keeps raw-JSON matching.
-  if [ "$R_MATCH" = "argv0" ]; then R_TEXT="$ARGV_TEXT"; else R_TEXT="$MATCH_TEXT"; fi
+  # "argv0" rules see the invoked-program projection, so text that merely names
+  # a command cannot match them. When the tokenizer marked the command uncertain
+  # (or perl is missing), fall back to a raw word-boundary match derived from
+  # the argv0 pattern — never weaker than the pre-argv0 guard on exotic shapes.
+  # Any other match scope keeps raw-JSON matching.
   R_PATTERN=$(b64d "$R_PAT_B64")
-  if [ -n "$R_PATTERN" ]; then
-    # A malformed pattern makes grep exit 2; `|| continue` keeps that fail-open.
-    printf '%s' "$R_TEXT" | grep -qE -- "$R_PATTERN" 2>/dev/null || continue
+  if [ "$R_MATCH" = "argv0" ]; then
+    HIT=0
+    if [ -n "$R_PATTERN" ] && [ -n "$ARGV_TEXT" ]; then
+      printf '%s' "$ARGV_TEXT" | grep -qE -- "$R_PATTERN" 2>/dev/null && HIT=1
+    fi
+    if [ "$HIT" -eq 0 ] && [ "$ARGV_UNCERTAIN" -eq 1 ] && [ -n "$R_PATTERN" ]; then
+      # ^argv0: (a|b|c)$  →  (^|[^a-zA-Z_/.])(a|b|c)(["'[:space:]]|$)
+      RAW_ALT=$(printf '%s' "$R_PATTERN" | sed -n 's/^\^argv0: (\(.*\))\$$/\1/p')
+      if [ -n "$RAW_ALT" ]; then
+        printf '%s' "$MATCH_TEXT" | grep -qE -- "(^|[^a-zA-Z_/.])(${RAW_ALT})([\"'[:space:]]|\$)" 2>/dev/null && HIT=1
+      fi
+    fi
+    [ "$HIT" -eq 1 ] || continue
+  else
+    R_TEXT="$MATCH_TEXT"
+    if [ -n "$R_PATTERN" ]; then
+      # A malformed pattern makes grep exit 2; `|| continue` keeps that fail-open.
+      printf '%s' "$R_TEXT" | grep -qE -- "$R_PATTERN" 2>/dev/null || continue
+    fi
   fi
   case "$R_CLASS" in
     deny)

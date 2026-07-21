@@ -58,11 +58,11 @@ denies() { # <label> <expected reason substring> <tool> <tool_input json>
   else
     ok "$1"
   fi
+}
 
 blocked() { # <label> <tool> <tool_input json>: denied, reason not asserted
   run_hook "$2" "$3"
   if [ "$RC" -eq 2 ]; then ok "$1"; else bad "$1" "expected deny, got exit $RC: $STDERR"; fi
-}
 }
 
 bash_cmd() { jq -nc --arg c "$1" '{command:$c}'; }
@@ -126,6 +126,38 @@ denies "command substitution hiding sudo" "sudo invocation" Bash \
   "$(bash_cmd 'echo $(sudo reboot)')"
 denies "pipeline stage after a harmless read" "sudo invocation" Bash \
   "$(bash_cmd 'cat /etc/hosts | sudo tee /tmp/out')"
+
+# Regressions proven on PR #24 review (todo 522): old hook DENY, new ALLOW.
+# Each must stay DENY. Flag-value, missing wrappers, eval, backticks.
+denies "env -u FOO wraps sudo (flag value)" "sudo invocation" Bash \
+  "$(bash_cmd 'env -u FOO sudo reboot')"
+denies "env -C /tmp wraps sudo (flag value)" "sudo invocation" Bash \
+  "$(bash_cmd 'env -C /tmp sudo reboot')"
+denies "timeout wraps sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'timeout 5 sudo reboot')"
+denies "watch wraps sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'watch sudo reboot')"
+denies "eval runs sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'eval "sudo reboot"')"
+# shellcheck disable=SC2016  # literal backticks are the payload under test
+denies "backticks hide sudo" "sudo invocation" Bash \
+  "$(bash_cmd 'echo `sudo reboot`')"
+# Pre-existing gaps (ALLOW on old AND new) — file separately; not asserted here:
+#   su -c reboot ; script -q /dev/null poweroff
+# Fail-closed: tokenizer cannot resolve interpreter -e code → raw fallback DENY.
+denies "perl -e with sudo inside (fail-closed)" "sudo invocation" Bash \
+  "$(bash_cmd "perl -e 'system(\"sudo reboot\")'")"
+denies "bash -lc combined flags still deny" "sudo invocation" Bash \
+  "$(bash_cmd "bash -lc 'sudo reboot'")"
+
+echo "--- must ALLOW: spoof resistance (argv0 rules never see raw JSON) -----"
+
+allows "echo argv0: sudo does not forge a match" Bash \
+  "$(bash_cmd "echo 'argv0: sudo'")"
+allows "printf argv0: sudo does not forge a match" Bash \
+  "$(bash_cmd 'printf "argv0: sudo\n"')"
+denies "spoof plus real sudo still denies" "sudo invocation" Bash \
+  "$(bash_cmd "echo 'argv0: cargo' && sudo reboot")"
 
 echo "--- raw-scoped rules must be unaffected -------------------------------"
 
