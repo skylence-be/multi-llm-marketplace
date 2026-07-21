@@ -80,9 +80,155 @@ $(printf '%s\n' "$FPS" | sed 's/^/"file_path":"/; s/$/"/')"
     ;;
 esac
 
-# Compile rules to a TSV cache: tool, class, pattern/reason/judge_prompt (b64).
+# ARGV PROJECTION (false-positive fix, 2026-07-21).
+# A regex over the raw tool_input cannot tell an argument from a program. It
+# blocked `grep -n "...poweroff..." judge-rules.json` as a "system power
+# command" and a `sudo` string inside a JSON test fixture as "sudo invocation";
+# neither could execute anything. So for Bash-class calls, tokenize the command
+# the way a shell would and project ONLY the program actually invoked, one
+# `argv0: <basename>` line per pipeline stage. A rule opts in with
+# "match": "argv0" and is then grepped against this projection ALONE, never
+# the raw JSON, so command text such as `echo 'argv0: sudo'` cannot spoof it.
+# Wrappers (env, nice, xargs, ...) are transparent; sudo/doas are emitted AND
+# stepped past, so `env sudo reboot` yields both `sudo` and `reboot`; `sh -c`
+# payloads are rescanned. Heredoc bodies are dropped: they are data, not
+# commands. Anything perl cannot parse yields no line, which fails open in
+# keeping with the FAIL-OPEN CONTRACT above.
+ARGV_TEXT=""
+if [ "$CLASS_TOOL" = "Bash" ] && command -v perl >/dev/null 2>&1; then
+  read -r -d '' ARGV_SCAN_PL <<'PERL_EOF'
+my $WRAP  = qr/^(env|command|builtin|exec|nice|ionice|nohup|setsid|time|stdbuf|xargs)$/;
+my $PRIV  = qr/^(sudo|doas|pkexec|run0)$/;
+my $SHELL = qr/^(sh|bash|zsh|dash|ksh|fish)$/;
+# sudo flags that consume the next word; without this, `sudo -u root sh` would
+# read `root` as the escalated program.
+my $PRIV_VALUE_FLAG = qr/^-[ugpCThDrt]$/;
+my %seen;
+
+sub emit { my ($n) = @_; return if $seen{$n}++; print "argv0: $n\n"; }
+
+# Drop heredoc bodies: `cat <<EOF ... sudo rm ... EOF` names no command.
+# `<<<` is a herestring with no body, so it must not trigger the skip.
+sub strip_heredocs {
+  my @lines = split /\n/, $_[0], -1;
+  my @out;
+  for (my $i = 0; $i <= $#lines; $i++) {
+    push @out, $lines[$i];
+    next unless $lines[$i] =~ /(?<!<)<<-?\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))(?!<)/;
+    my $d = defined $1 ? $1 : defined $2 ? $2 : $3;
+    $i++;
+    $i++ while $i <= $#lines && $lines[$i] !~ /^\s*\Q$d\E\s*$/;
+  }
+  return join "\n", @out;
+}
+
+# Split into pipeline stages and tokens in one pass, honouring quotes so that
+# separators inside a quoted argument stay part of that argument.
+sub lex {
+  my ($s) = @_;
+  my (@stages, @cur, $tok, $has);
+  ($tok, $has) = ('', 0);
+  my ($i, $n) = (0, length $s);
+  while ($i < $n) {
+    my $c = substr($s, $i, 1);
+    if ($c eq '\\' && $i + 1 < $n) { $tok .= substr($s, $i + 1, 1); $has = 1; $i += 2; next; }
+    if ($c eq "'") {
+      my $j = index($s, "'", $i + 1);
+      $j = $n if $j < 0;
+      $tok .= substr($s, $i + 1, $j - $i - 1); $has = 1; $i = $j + 1; next;
+    }
+    if ($c eq '"') {
+      $i++;
+      while ($i < $n) {
+        my $d = substr($s, $i, 1);
+        last if $d eq '"';
+        if ($d eq '\\' && $i + 1 < $n) { $tok .= substr($s, $i + 1, 1); $i += 2; next; }
+        $tok .= $d; $i++;
+      }
+      $has = 1; $i++; next;
+    }
+    if ($c =~ /\s/) { push @cur, $tok if $has; ($tok, $has) = ('', 0); $i++; next; }
+    # Stage break. `(`/`)`/`{`/`}` cover subshells and `$(...)` substitution,
+    # whose body is itself a command and must be scanned as one.
+    if ($c =~ /[|;&\n()\{\}]/) {
+      push @cur, $tok if $has; ($tok, $has) = ('', 0);
+      push @stages, [@cur] if @cur; @cur = ();
+      $i++;
+      next;
+    }
+    $tok .= $c; $has = 1; $i++;
+  }
+  push @cur, $tok if $has;
+  push @stages, [@cur] if @cur;
+  return @stages;
+}
+
+sub scan {
+  my ($cmd, $depth) = @_;
+  return if $depth > 3 || !defined $cmd;
+  for my $st (lex(strip_heredocs($cmd))) {
+    my @t = @$st;
+    my $i = 0;
+    $i++ while $i < @t && $t[$i] =~ /^[A-Za-z_][A-Za-z0-9_]*=/;
+    while ($i < @t) {
+      (my $p = $t[$i]) =~ s{.*/}{};
+      if ($p =~ $WRAP) {
+        $i++;
+        $i++ while $i < @t && $t[$i] =~ /^-/;
+        $i++ while $i < @t && $t[$i] =~ /^[A-Za-z_][A-Za-z0-9_]*=/;
+        next;
+      }
+      if ($p =~ $PRIV) {
+        emit($p);
+        $i++;
+        while ($i < @t && $t[$i] =~ /^-/) {
+          my $f = $t[$i]; $i++;
+          $i++ if $f =~ $PRIV_VALUE_FLAG && $i < @t;
+        }
+        $i++ while $i < @t && $t[$i] =~ /^[A-Za-z_][A-Za-z0-9_]*=/;
+        next;
+      }
+      emit($p);
+      if ($p =~ $SHELL) {
+        for my $j ($i + 1 .. $#t) {
+          next unless $t[$j] =~ /^-[a-zA-Z]*c$/ && $j < $#t;
+          scan($t[$j + 1], $depth + 1);
+          last;
+        }
+      }
+      last;
+    }
+  }
+}
+
+# One base64 command per line: a command may contain newlines, quotes, or NULs,
+# and base64 is the only separator none of them can forge.
+use MIME::Base64 ();
+while (my $line = <STDIN>) {
+  chomp $line;
+  next unless length $line;
+  scan(MIME::Base64::decode_base64($line), 0);
+}
+PERL_EOF
+  # @sh shell-quotes each argv element, so a pre-tokenized skyline_run call and
+  # a raw Bash string go through one and the same tokenizer.
+  ARGV_TEXT=$(printf '%s' "$TOOL_INPUT_JSON" | jq -r '
+    [ (.command? // empty),
+      ((.argv? // []) | select(length > 0) | @sh),
+      ((.argv_list? // [])[] | @sh) ]
+    | .[] | tostring | @base64' 2>/dev/null \
+    | perl -e "$ARGV_SCAN_PL" 2>/dev/null)
+fi
+
+# Compile rules to a cache: tool, class, pattern/reason/judge_prompt (b64),
+# match scope. Fields are joined with "|", NOT a tab: a tab is IFS whitespace,
+# so `read` folds runs of them together and a rule with an empty judge_prompt
+# would shift every later column left by one. "|" cannot occur in base64, a
+# class, or a match scope, and as non-whitespace IFS it preserves empty fields.
+# The header carries a schema version so a cache written by an older hook is
+# recompiled rather than read back a column short.
 RULES_MTIME=$(stat -f %m "$RULES_FILE" 2>/dev/null || stat -c %Y "$RULES_FILE" 2>/dev/null || echo 0)
-HDR="$RULES_MTIME	$RULES_FILE"
+HDR="v2	$RULES_MTIME	$RULES_FILE"
 RULES_TSV=""
 if [ -f "$CACHE_FILE" ] && [ "$(head -n 1 "$CACHE_FILE" 2>/dev/null)" = "$HDR" ]; then
   RULES_TSV=$(tail -n +2 "$CACHE_FILE" 2>/dev/null)
@@ -90,22 +236,25 @@ fi
 if [ -z "$RULES_TSV" ]; then
   RULES_TSV=$(jq -r '.rules[]? | [(.tool // "*"), (.class // "allow"),
       ((.pattern // "") | @base64), ((.reason // "") | @base64),
-      ((.judge_prompt // "") | @base64)] | @tsv' "$RULES_FILE" 2>/dev/null) || exit 0
+      ((.judge_prompt // "") | @base64), (.match // "raw")] | join("|")' "$RULES_FILE" 2>/dev/null) || exit 0
   [ -n "$RULES_TSV" ] || exit 0
   { printf '%s\n' "$HDR"; printf '%s\n' "$RULES_TSV"; } > "$CACHE_FILE.tmp.$$" 2>/dev/null \
     && mv -f "$CACHE_FILE.tmp.$$" "$CACHE_FILE" 2>/dev/null || rm -f "$CACHE_FILE.tmp.$$" 2>/dev/null
 fi
 
 # Evaluate in declaration order; first match wins.
-while IFS='	' read -r R_TOOL R_CLASS R_PAT_B64 R_REASON_B64 R_PROMPT_B64; do
+while IFS='|' read -r R_TOOL R_CLASS R_PAT_B64 R_REASON_B64 R_PROMPT_B64 R_MATCH; do
   [ -n "$R_TOOL" ] || continue
   if [ "$R_TOOL" != "*" ] && [ "$R_TOOL" != "$RAW_TOOL" ] && [ "$R_TOOL" != "$CLASS_TOOL" ]; then
     continue
   fi
+  # "argv0" rules see the invoked-program projection ONLY, so text that merely
+  # names a command cannot match them. Any other value keeps raw-JSON matching.
+  if [ "$R_MATCH" = "argv0" ]; then R_TEXT="$ARGV_TEXT"; else R_TEXT="$MATCH_TEXT"; fi
   R_PATTERN=$(b64d "$R_PAT_B64")
   if [ -n "$R_PATTERN" ]; then
     # A malformed pattern makes grep exit 2; `|| continue` keeps that fail-open.
-    printf '%s' "$MATCH_TEXT" | grep -qE -- "$R_PATTERN" 2>/dev/null || continue
+    printf '%s' "$R_TEXT" | grep -qE -- "$R_PATTERN" 2>/dev/null || continue
   fi
   case "$R_CLASS" in
     deny)
