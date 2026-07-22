@@ -214,6 +214,30 @@ denies "sort --compress-program is executed" "sudo invocation" Bash \
 denies "ack --pager is executed" "sudo invocation" Bash \
   "$(bash_cmd "ack --pager='sudo reboot' foo")"
 
+echo "--- must DENY: a quoted flag must not evade the inert-flag audit ------"
+
+# The %INERT_IF_FLAGS audit used to skip quoted tokens (`next if $q[$k]`), but
+# the shell strips quotes before the program sees argv: `'-c'` and `-c` are the
+# same flag. Quoting the execute-surface flag slipped it past the gate and ran
+# the payload. Every dash-token is now audited regardless of quoting.
+denies "quoted -c git alias still runs a shell alias" "sudo invocation" Bash \
+  "$(bash_cmd "git '-c' alias.x='!sudo reboot' x")"
+denies "quoted -c and quoted value git alias" "sudo invocation" Bash \
+  "$(bash_cmd "git '-c' 'alias.x=!sudo reboot' x")"
+denies "double-quoted -c git alias" "sudo invocation" Bash \
+  "$(bash_cmd "git \"-c\" \"alias.x=!sudo reboot\" x")"
+denies "quoted -c git core.editor" "sudo invocation" Bash \
+  "$(bash_cmd "git '-c' 'core.editor=sudo reboot' commit")"
+denies "quoted -c hiding among a safe -m flag" "sudo invocation" Bash \
+  "$(bash_cmd "git '-c' 'alias.x=!sudo reboot' -m x")"
+denies "quoted --pre rg preprocessor" "sudo invocation" Bash \
+  "$(bash_cmd "rg '--pre' /tmp/x 'sudo reboot'")"
+denies "quoted --pre=VALUE rg preprocessor" "sudo invocation" Bash \
+  "$(bash_cmd "rg '--pre=/tmp/x' 'sudo reboot'")"
+# Generalises: a quoted flag on NO safe-list, plus real privilege text, denies.
+denies "unknown quoted flag fails the audit closed" "sudo invocation" Bash \
+  "$(bash_cmd "git '--frobnicate' 'sudo reboot'")"
+
 echo "--- must DENY: privilege text reaching a shell across stages ------------"
 
 # Per-stage reasoning cannot see this: stage 1 is inert so the quoted privilege
@@ -236,6 +260,20 @@ denies "power word reaching sh through a pipe" "system power command" Bash \
   "$(bash_cmd "printf 'shutdown -h now\n' | sh")"
 denies "privilege word followed by a backslash escape" "sudo invocation" Bash \
   "$(bash_cmd "printf 'sudo\nreboot\n' | sh")"
+# A shell/interpreter whose operand re-opens stdin (/dev/stdin, /dev/fd/N,
+# /proc/self/fd/N) or a process substitution `<(...)` still runs the piped text
+# as code; the operand check treats these fd-aliases as "no script operand".
+denies "echo into bash reading /dev/stdin" "sudo invocation" Bash \
+  "$(bash_cmd "echo 'sudo reboot' | bash /dev/stdin")"
+denies "echo into sh reading /dev/stdin" "sudo invocation" Bash \
+  "$(bash_cmd "echo 'sudo reboot' | sh /dev/stdin")"
+denies "echo into bash reading /dev/fd/0" "sudo invocation" Bash \
+  "$(bash_cmd "echo 'sudo reboot' | bash /dev/fd/0")"
+denies "echo into bash via process substitution" "sudo invocation" Bash \
+  "$(bash_cmd "echo 'sudo reboot' | bash <(cat)")"
+# Generalises: any /proc/self/fd/N or unlisted /dev/fd/N aliases stdin too.
+denies "echo into bash reading /proc/self/fd/0" "sudo invocation" Bash \
+  "$(bash_cmd "echo 'sudo reboot' | bash /proc/self/fd/0")"
 # KNOWN REMAINING HOLE, filed rather than folded in (todo 524, bounce 4):
 #   echo 'sudo reboot' > /tmp/x; sh /tmp/x        ALLOW here, DENY pre-argv0
 # The privilege text goes through a FILE, and the shell that runs it has a

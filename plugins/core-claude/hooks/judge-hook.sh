@@ -380,9 +380,18 @@ sub scan {
         # Given a script file it runs that file instead and the piped text is
         # data for the script to read (`printf '{json}' | bash some-hook.sh`),
         # which is a false positive worth keeping out.
+        # A shell/interpreter whose only "operand" re-opens stdin or an inherited
+        # fd (/dev/stdin, /dev/fd/N, /proc/self/fd/N, /proc/PID/fd/N) or a process
+        # substitution (`<(...)`, lexed here to a bare `<` token) still reads its
+        # code from the pipe, not from a script file, so it does NOT make the
+        # stage a non-executor. Skip such operands so the exec-stage flag sets and
+        # an earlier inert stage's privilege text is treated as code, not data.
         my $has_operand = 0;
         for my $j ($i + 1 .. $#t) {
-          if ($t[$j] !~ /^-/) { $has_operand = 1; last; }
+          next if $t[$j] =~ /^-/;
+          next if $t[$j] =~ m{^/dev/stdin$|^/dev/fd/[0-9]+$|^/proc/(?:self|[0-9]+)/fd/[0-9]+$};
+          next if $t[$j] =~ /^</;
+          $has_operand = 1; last;
         }
         $has_exec_stage = 1 unless $has_operand;
       }
@@ -420,7 +429,10 @@ sub scan {
       } elsif (my $safe_flags = $INERT_IF_FLAGS{$stage_prog}) {
         $inert = 1;
         for my $k (0 .. $#t) {
-          next if $q[$k];
+          # A flag being quoted is never a reason to trust it: the shell strips
+          # the quotes before the program sees argv, so `'-c'` and `-c` are the
+          # same flag. Audit every dash-token regardless of $q; skipping quoted
+          # ones let `git '-c' 'alias.x=!sudo reboot' x` evade the gate entirely.
           next unless $t[$k] =~ /^-/;
           (my $f = $t[$k]) =~ s/=.*$//s;
           next if $f eq '--';
