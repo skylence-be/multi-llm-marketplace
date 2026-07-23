@@ -11,16 +11,18 @@ Owner: Skylence (github.com/skylence-be).
 
 ## What's in here
 
-The agent-org plugins bundle the **Solo MCP server** (board / PTY / timer
-substrate) that the orchestration roles depend on. An orchestrator dispatches;
-planner, solo-worker, replacer, and org-audit fill the roles. capacity-check
-and build-slot provide machine-level guardrails.
+Two agent-org substrates ship here:
+
+- **Solo** (`soloterm-agent-org-*`): board / PTY / timer via Solo MCP. An
+  orchestrator dispatches; planner, solo-worker, replacer, and org-audit fill
+  the roles. build-slot provides the machine-wide compile gate.
+- **Herdr** (`herdr-agent-org-grok`): same doctrine on the
+  [Herdr](https://herdr.dev) agent multiplexer — real panes, semantic agent
+  state, CLI control. Filesystem board instead of Solo todos; no Solo MCP
+  required. Requires agents to run with `HERDR_ENV=1`.
 
 The core plugins install each agent's baseline: judge-hook (rules engine),
 writing-guard, research-nudge, and the shared guidelines.
-
-Everything is self-contained — the Solo MCP server ships with the plugin. No
-separate daemon is required.
 
 ## Plugins
 
@@ -34,10 +36,12 @@ plugin's manifest, not in this README.
   Includes native PreToolUse judge-hook, writing-guard, research-nudge.
   `/core-grok:doctor` audits the install (rules, guidelines, version, hooks).
   Uses Grok hook contract + `grok -p` escalation.
-- `soloterm-agent-org-grok`: Full agent-org stack. Orchestrator, planner,
-  solo-worker, replacer, org-audit + capacity-check. Bundles Solo MCP,
-  build-slot, ghost-probe, and Grok-adapted discipline hooks.
-
+- `soloterm-agent-org-grok`: Full agent-org stack on Solo. Orchestrator, planner,
+  solo-worker, replacer, org-audit. Bundles Solo MCP, build-slot, ghost-probe,
+  and Grok-adapted discipline hooks.
+- `herdr-agent-org-grok`: Full agent-org stack on Herdr. Orchestrator, planner,
+  herdr-worker, replacer, org-audit + herdr skill; filesystem board CLI;
+  dispatch-worker; build-slot; ghost-probe; Grok discipline hooks.
 **Claude Code** (`.claude-plugin/marketplace.json`):
 
 - `core-claude`: opinionated Claude Code baseline. `/core-claude:setup` installs
@@ -61,11 +65,15 @@ plugin's manifest, not in this README.
 ```
 grok plugin marketplace add skylence-be/multi-llm-marketplace
 grok plugin marketplace update multi-llm-marketplace
-grok plugin install soloterm-agent-org-grok@skylence-be/multi-llm-marketplace --trust
 grok plugin install core-grok@skylence-be/multi-llm-marketplace --trust
+# Solo substrate (board/PTY via Solo MCP):
+grok plugin install soloterm-agent-org-grok@skylence-be/multi-llm-marketplace --trust
+# OR Herdr substrate (real panes; requires herdr + HERDR_ENV=1):
+grok plugin install herdr-agent-org-grok@skylence-be/multi-llm-marketplace --trust
 ```
 
 Then run `/core-grok:setup` and use the org roles (orchestrator, planner, etc.).
+For Herdr: install Herdr (`brew install herdr` or https://herdr.dev), run agents inside `herdr` panes, and `board init <feature>` once.
 
 For full skyline MCP tools (skyline_read, skyline_edit with ¶path#TAG hash guards, skyline_grep, skyline_run, etc.) and the PreToolUse enforce hook that redirects native tools to skyline equivalents when the daemon is running:
 
@@ -106,7 +114,8 @@ trees on the next release of each variant.
 grok plugin list
 grok plugin details core-grok
 grok plugin details soloterm-agent-org-grok
-grok inspect | grep -E '(core-grok|soloterm-agent-org-grok|solo)'
+grok plugin details herdr-agent-org-grok
+grok inspect | grep -E '(core-grok|soloterm-agent-org-grok|herdr-agent-org-grok|solo|herdr)'
 /core-grok:setup
 /core-grok:doctor
 ```

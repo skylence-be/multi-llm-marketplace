@@ -1,0 +1,22 @@
+{
+  "name": "herdr-agent-org-grok",
+  "version": "1.0.0",
+  "description": "Grok agent-org on Herdr substrate. Orchestrator/planner/herdr-worker/replacer/org-audit skills + filesystem board CLI. Dispatches workers via herdr agent start in real panes; waits via herdr agent wait; no Solo MCP required. Session discipline hooks (lane mark, conduct refresh, stop gate) use exact ${GROK_PLUGIN_ROOT} load-time paths. Requires HERDR_ENV=1 and herdr >= 0.7.",
+  "author": {
+    "name": "Skylence",
+    "url": "https://github.com/skylence-be"
+  },
+  "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
+  "repository": "https://github.com/skylence-be/multi-llm-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "agent-org",
+    "herdr",
+    "orchestrator",
+    "multi-agent",
+    "grok",
+    "planner",
+    "terminal-multiplexer",
+    "build-slot"
+  ]
+}

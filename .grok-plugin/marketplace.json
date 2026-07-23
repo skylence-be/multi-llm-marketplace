@@ -1,6 +1,6 @@
 {
   "name": "multi-llm-marketplace",
-  "description": "Skylence multi-LLM marketplace: core baseline and soloterm agent-org plugins for Grok, Claude, Codex, Antigravity.",
+  "description": "Skylence multi-LLM marketplace: core baseline and agent-org plugins (Solo and Herdr substrates) for Grok, Claude, Codex, Antigravity.",
   "owner": {
     "name": "Skylence",
     "contact": "github.com/skylence-be"
@@ -38,6 +38,24 @@
         "orchestrator",
         "multi-agent",
         "planner"
+      ]
+    },
+    {
+      "name": "herdr-agent-org-grok",
+      "description": "Skylence agent-org for Grok on Herdr substrate. Orchestrator, planner, herdr-worker, replacer, org-audit + herdr control skill; filesystem board CLI; dispatch-worker; build-slot; ghost-probe. Dispatches via herdr agent start in real panes (no Solo MCP). Session-discipline hooks use exact ${GROK_PLUGIN_ROOT} load-time paths. Requires HERDR_ENV=1 and herdr >= 0.7.",
+      "source": {
+        "type": "local",
+        "path": "./plugins/herdr-agent-org-grok"
+      },
+      "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
+      "category": "agent-org",
+      "keywords": [
+        "agent-org",
+        "herdr",
+        "orchestrator",
+        "multi-agent",
+        "planner",
+        "terminal-multiplexer"
       ]
     }
   ]

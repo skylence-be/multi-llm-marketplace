@@ -1,0 +1,94 @@
+#!/bin/sh
+# dispatch-worker — split a sibling pane, start a named agent, send a pointer prompt.
+#
+# Usage:
+#   dispatch-worker --name NAME --kind KIND [--cwd PATH] [--direction right|down] \
+#                   [--todo SLUG] [--prompt TEXT] [--timeout MS] [-- -- agent-args...]
+#
+# Requires HERDR_ENV=1. Prints JSON-ish summary on stdout (pane_id, agent name).
+# Board side-effects when --todo is set: set-owner + set-status in_progress.
+set -eu
+
+HERDR="${HERDR_BIN_PATH:-herdr}"
+NAME=""
+KIND="grok"
+CWD=""
+DIR="right"
+TODO=""
+PROMPT=""
+TIMEOUT="60000"
+EXTRA_ARGS=""
+
+usage() {
+  sed -n '2,12p' "$0" | sed 's/^# \?//'
+  exit 2
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --name) NAME=$2; shift 2 ;;
+    --kind) KIND=$2; shift 2 ;;
+    --cwd) CWD=$2; shift 2 ;;
+    --direction) DIR=$2; shift 2 ;;
+    --todo) TODO=$2; shift 2 ;;
+    --prompt) PROMPT=$2; shift 2 ;;
+    --timeout) TIMEOUT=$2; shift 2 ;;
+    --) shift; EXTRA_ARGS=$*; break ;;
+    -h|--help) usage ;;
+    *) echo "dispatch-worker: unknown arg $1" >&2; usage ;;
+  esac
+done
+
+[ -n "$NAME" ] || { echo "dispatch-worker: --name required" >&2; exit 2; }
+[ "${HERDR_ENV:-}" = "1" ] || {
+  echo "dispatch-worker: HERDR_ENV!=1 — run inside a Herdr-managed pane" >&2
+  exit 1
+}
+
+if [ -z "$PROMPT" ] && [ -n "$TODO" ]; then
+  PROMPT="you own todo ${TODO}. Read the board brief (board get ${TODO}), then invoke the herdr-worker skill and implement it. Report milestones with board comment."
+fi
+[ -n "$PROMPT" ] || {
+  echo "dispatch-worker: --prompt or --todo required" >&2
+  exit 2
+}
+
+SPLIT_ARGS="pane split --current --direction $DIR --no-focus"
+if [ -n "$CWD" ]; then
+  SPLIT_ARGS="$SPLIT_ARGS --cwd $CWD"
+elif [ -n "${PWD:-}" ]; then
+  SPLIT_ARGS="$SPLIT_ARGS --cwd $PWD"
+fi
+
+# shellcheck disable=SC2086
+split_json=$($HERDR $SPLIT_ARGS)
+pane_id=$(printf '%s\n' "$split_json" | jq -r '.result.pane.pane_id // empty')
+[ -n "$pane_id" ] || {
+  echo "dispatch-worker: failed to parse pane_id from:" >&2
+  printf '%s\n' "$split_json" >&2
+  exit 1
+}
+
+if [ -n "$EXTRA_ARGS" ]; then
+  # shellcheck disable=SC2086
+  start_json=$($HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- $EXTRA_ARGS)
+else
+  start_json=$($HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT")
+fi
+
+# Point the worker at the brief
+$HERDR agent prompt "$NAME" "$PROMPT" >/dev/null
+
+if [ -n "$TODO" ] && command -v board >/dev/null 2>&1; then
+  board set-owner "$TODO" "$NAME" || true
+  board set-status "$TODO" in_progress || true
+elif [ -n "$TODO" ] && [ -n "${GROK_PLUGIN_ROOT:-}" ]; then
+  "$GROK_PLUGIN_ROOT/scripts/board" set-owner "$TODO" "$NAME" || true
+  "$GROK_PLUGIN_ROOT/scripts/board" set-status "$TODO" in_progress || true
+fi
+
+printf '{"agent":%s,"pane_id":%s,"kind":%s,"todo":%s}\n' \
+  "$(printf '%s' "$NAME" | jq -Rs .)" \
+  "$(printf '%s' "$pane_id" | jq -Rs .)" \
+  "$(printf '%s' "$KIND" | jq -Rs .)" \
+  "$(printf '%s' "$TODO" | jq -Rs .)"
