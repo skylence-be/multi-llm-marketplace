@@ -48,7 +48,7 @@ Mark sparingly at lane end or on a hard-won gotcha: `kind=decision|fact` + `why=
 
 ## Execution
 
-- Session entry smoke: `git branch --show-current` matches the brief; `git status --short` + `git log --oneline -1`. Default CWD is a **skyrift** workspace when the brief names one: never `git add -A` (untracked `.skyrift-workspace` + warm `target/`); stage paths explicitly.
+- Session entry smoke: `git branch --show-current` matches the brief; `git status --short` + `git log --oneline -1`. Default CWD is a skyline/skyrift **workspace** when the brief names one: never `git add -A` (untracked `.skyrift-workspace` + warm `target/`); stage paths explicitly. A fresh workspace lands on a detached HEAD, so check out the brief's branch first.
 - Same-branch co-workers are normal: pull --rebase before pushing; skyline stale-tag → re-read and retry. Additive commits only. One feature PR per shared branch.
 - Commit WIP at every milestone boundary (`wip:` prefix fine) — git is the real handover.
 - After mid-lane compaction: re-invoke this skill, then re-read your todo body + newest comments before continuing.

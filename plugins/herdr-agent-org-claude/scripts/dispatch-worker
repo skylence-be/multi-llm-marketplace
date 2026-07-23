@@ -7,13 +7,17 @@
 #                   [--todo SLUG] [--prompt TEXT] [--timeout MS] \
 #                   [--upgrade-reason TEXT] [-- agent-args...]
 #
-# The doctrinal default effort/model is filled in when you pass none, so silence
-# at dispatch cannot resolve to whatever the box happens to be installed at
-# (marketplace#32):
-#   --kind grok    and no --effort   -> --effort medium
-#   --kind claude  and no --model    -> --model sonnet
-# Asking for anything above that default REQUIRES --upgrade-reason; the reason is
-# filed on the lane todo as [EFFORT: ...] / [MODEL: ...] per L17.
+# Defaults to --kind claude. The doctrinal default model/effort is filled in
+# when you did not pass one, so silence at dispatch cannot resolve to whatever
+# the box happens to be installed at (marketplace#32):
+#   --kind claude  and no --model             -> --model sonnet
+#   --kind grok    and no --effort            -> --effort medium
+# Asking for anything above that default REQUIRES --upgrade-reason; the reason
+# is filed on the lane todo as [MODEL: ...] / [EFFORT: ...] per L17.
+#
+# A Claude lane worker also needs full-auto args, which are NOT applied for you:
+#   dispatch-worker --name impl-a --todo impl-a --cwd /abs/lane-tree \
+#     -- --permission-mode bypassPermissions
 #
 # The --cwd should be the lane tree the orchestrator already created MCP-first
 # (skyline_workspace_create with an absolute from_path), not a bare checkout.
@@ -27,7 +31,7 @@ set -eu
 
 HERDR="${HERDR_BIN_PATH:-herdr}"
 NAME=""
-KIND="grok"
+KIND="claude"
 CWD=""
 DIR="right"
 TODO=""
@@ -37,7 +41,7 @@ UPGRADE_REASON=""
 EXTRA_ARGS=""
 
 usage() {
-  sed -n '2,25p' "$0" | sed 's/^# \?//'
+  sed -n '2,29p' "$0" | sed 's/^# \?//'
   exit 2
 }
 
@@ -74,18 +78,18 @@ EFFORT=$(arg_value --effort "$EXTRA_ARGS")
 
 DEFAULTED=""
 case "$KIND" in
-  grok)
-    if [ -z "$EFFORT" ]; then
-      EFFORT=medium
-      EXTRA_ARGS="${EXTRA_ARGS:+$EXTRA_ARGS }--effort medium"
-      DEFAULTED="effort=medium"
-    fi
-    ;;
   claude)
     if [ -z "$MODEL" ]; then
       MODEL=sonnet
       EXTRA_ARGS="${EXTRA_ARGS:+$EXTRA_ARGS }--model sonnet"
       DEFAULTED="model=sonnet"
+    fi
+    ;;
+  grok)
+    if [ -z "$EFFORT" ]; then
+      EFFORT=medium
+      EXTRA_ARGS="${EXTRA_ARGS:+$EXTRA_ARGS }--effort medium"
+      DEFAULTED="effort=medium"
     fi
     ;;
 esac
@@ -107,6 +111,8 @@ MARKERS=""
 [ "$MODEL_UP" -eq 1 ] && MARKERS="[MODEL: $MODEL, $UPGRADE_REASON]"
 [ "$EFFORT_UP" -eq 1 ] && MARKERS="${MARKERS:+$MARKERS }[EFFORT: $EFFORT, $UPGRADE_REASON]"
 
+# Plain text, never a leading slash: a send that STARTS with a slash command is
+# eaten by Claude's command palette and the task text is silently dropped.
 if [ -z "$PROMPT" ] && [ -n "$TODO" ]; then
   PROMPT="you own todo ${TODO}. Read the board brief (board get ${TODO}), then invoke the herdr-worker skill and implement it. Report milestones with board comment."
 fi
@@ -152,8 +158,8 @@ state=$($HERDR agent get "$NAME" 2>/dev/null | jq -r '.result.agent.state // "un
 BOARD=""
 if command -v board >/dev/null 2>&1; then
   BOARD="board"
-elif [ -n "${GROK_PLUGIN_ROOT:-}" ] && [ -x "$GROK_PLUGIN_ROOT/scripts/board" ]; then
-  BOARD="$GROK_PLUGIN_ROOT/scripts/board"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -x "$CLAUDE_PLUGIN_ROOT/scripts/board" ]; then
+  BOARD="$CLAUDE_PLUGIN_ROOT/scripts/board"
 fi
 if [ -n "$TODO" ] && [ -n "$BOARD" ]; then
   # Silenced: stdout is the JSON summary contract, board chatter must not join it.

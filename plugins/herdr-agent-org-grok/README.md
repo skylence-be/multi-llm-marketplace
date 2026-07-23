@@ -70,7 +70,7 @@ export HERDR_ORG_ROOT="$HOME/.herdr-org/my-feature"
 | MCP required | Solo stdio MCP | None (CLI only) |
 | Run location | Any terminal Solo manages | **Must** be `HERDR_ENV=1` |
 
-Doctrine (LAWS, compile monopoly, no-fusion, verify-before-accept, skyrift-first
+Doctrine (LAWS, compile monopoly, no-fusion, verify-before-accept, MCP-first
 lane trees) is shared with the Solo siblings; only the control plane changes.
 
 ## Typical flow

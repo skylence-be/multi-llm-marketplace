@@ -16,10 +16,10 @@ Two agent-org substrates ship here:
 - **Solo** (`soloterm-agent-org-*`): board / PTY / timer via Solo MCP. An
   orchestrator dispatches; planner, solo-worker, replacer, and org-audit fill
   the roles. build-slot provides the machine-wide compile gate.
-- **Herdr** (`herdr-agent-org-grok`): same doctrine on the
-  [Herdr](https://herdr.dev) agent multiplexer — real panes, semantic agent
-  state, CLI control. Filesystem board instead of Solo todos; no Solo MCP
-  required. Requires agents to run with `HERDR_ENV=1`.
+- **Herdr** (`herdr-agent-org-*`): same doctrine on the
+  [Herdr](https://herdr.dev) agent multiplexer, meaning real panes, semantic
+  agent state, and CLI control. Filesystem board instead of Solo todos; no Solo
+  MCP required. Requires agents to run with `HERDR_ENV=1`.
 
 The core plugins install each agent's baseline: judge-hook (rules engine),
 writing-guard, research-nudge, and the shared guidelines.
@@ -42,15 +42,21 @@ plugin's manifest, not in this README.
 - `herdr-agent-org-grok`: Full agent-org stack on Herdr. Orchestrator, planner,
   herdr-worker, replacer, org-audit + herdr skill; filesystem board CLI;
   dispatch-worker; build-slot; ghost-probe; Grok discipline hooks.
+
 **Claude Code** (`.claude-plugin/marketplace.json`):
 
 - `core-claude`: opinionated Claude Code baseline. `/core-claude:setup` installs
   the judge-hook rules engine, the writing-guard, the core-hud statusline, and
   the CLAUDE.md guidelines.
 - `soloterm-agent-org`: the agent-org stack. Orchestrator, planner, solo-worker,
-  replacer, org-audit, and capacity-check skills, plus the Solo MCP server,
-  the build-slot compile serializer, the capacity-probe RAM gate, and the
+  replacer, and org-audit skills, plus the Solo MCP server, the build-slot
+  compile serializer, the ghost-probe no-fusion classifier, and the four
   session-discipline hooks.
+- `herdr-agent-org-claude`: the same agent-org stack on the Herdr multiplexer.
+  Orchestrator, planner, herdr-worker, replacer, org-audit, and a herdr control
+  skill, plus the filesystem board CLI, dispatch-worker, build-slot,
+  ghost-probe, and four session-discipline hooks. No Solo MCP; requires
+  `HERDR_ENV=1`.
 
 **Codex and Antigravity** (`.agents/plugins/marketplace.json`):
 
@@ -92,8 +98,11 @@ For install commands, use the full qualifier: `...@skylence-be/multi-llm-marketp
 
 ```
 /plugin marketplace add skylence-be/multi-llm-marketplace
-/plugin install soloterm-agent-org@multi-llm-marketplace
 /plugin install core-claude@multi-llm-marketplace
+# Solo substrate (board/PTY via Solo MCP):
+/plugin install soloterm-agent-org@multi-llm-marketplace
+# OR Herdr substrate (real panes; requires herdr + HERDR_ENV=1):
+/plugin install herdr-agent-org-claude@multi-llm-marketplace
 ```
 
 **Codex / Antigravity:** add this repo as a plugin source for the agent, then

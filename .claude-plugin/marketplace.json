@@ -27,6 +27,17 @@
         "ref": "main"
       },
       "homepage": "https://github.com/skylence-be/multi-llm-marketplace"
+    },
+    {
+      "name": "herdr-agent-org-claude",
+      "description": "The Skylence agent-org on the Herdr agent multiplexer instead of Solo. Six role skills (orchestrator, planner, herdr-worker, replacer, org-audit, and a herdr control surface) over a filesystem board CLI, so no MCP server is required: workers are real Herdr panes started with `herdr agent start`, steered with `herdr agent prompt`, and followed up with one-shot `herdr agent wait`. Ships dispatch-worker, the build-slot compile serializer, the ghost-probe no-fusion classifier, and four session-discipline hooks (org-lane-mark, org-stop-gate anti-idle with an evidence-based premise and sweep settling, org-conduct-refresh post-compaction, planner-singleton-gate sweeping every Herdr session). Doctrine accounts for Claude Code rendering in the alternate screen, so the board trail is the record rather than pane output. Requires herdr >= 0.7 and HERDR_ENV=1.",
+      "source": {
+        "source": "git-subdir",
+        "url": "skylence-be/multi-llm-marketplace",
+        "path": "plugins/herdr-agent-org-claude",
+        "ref": "main"
+      },
+      "homepage": "https://github.com/skylence-be/multi-llm-marketplace"
     }
   ]
 }
