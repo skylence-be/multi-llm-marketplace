@@ -37,7 +37,7 @@ UPGRADE_REASON=""
 EXTRA_ARGS=""
 
 usage() {
-  sed -n '2,25p' "$0" | sed 's/^# \?//'
+  awk 'NR > 1 { if (!/^#/) exit; s = $0; sub(/^# ?/, "", s); print s }' "$0"
   exit 2
 }
 
@@ -147,7 +147,7 @@ $HERDR agent prompt "$NAME" "$PROMPT" >/dev/null
 
 # VERIFY-AFTER-SEND: a fresh agent can swallow its first prompt. Report the
 # state the caller should sanity-check instead of assuming the send landed.
-state=$($HERDR agent get "$NAME" 2>/dev/null | jq -r '.result.agent.state // "unknown"' 2>/dev/null || echo unknown)
+state=$($HERDR agent get "$NAME" 2>/dev/null | jq -r '.result.agent.agent_status // "unknown"' 2>/dev/null || echo unknown)
 
 BOARD=""
 if command -v board >/dev/null 2>&1; then

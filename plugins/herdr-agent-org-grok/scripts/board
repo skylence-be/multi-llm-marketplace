@@ -304,7 +304,7 @@ cmd_pad_write() {
 }
 
 usage() {
-  sed -n '2,30p' "$0" | sed 's/^# \?//'
+  awk 'NR > 1 { if (!/^#/) exit; s = $0; sub(/^# ?/, "", s); print s }' "$0"
   exit 2
 }
 
