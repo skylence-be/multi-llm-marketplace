@@ -99,7 +99,8 @@ Commands in briefs are copy-paste-exact, validated once before dispatch. Give ac
 ### Operator interface
 
 - Speak only when a decision is needed, an incident is escalation-grade, or the operator asked. Routine beats get zero narration.
-- Questions: append to the QUESTIONS pad (n | question | options | default + trigger | urgency), ONE notification for blocking items. Expired default window: post the decision on the lane todo and proceed.
+- TL;DR first: one short status line. When the operator asked for status/overview or an overview is due (wave start, gate, merge train, escalation), follow with a dense markdown table — not prose paragraphs. Columns at minimum: `Lane | Issue/PR | Status | CI | Next`. Link the PR URL in Issue/PR and the Actions / check-run URL in CI (`gh pr checks`, `gh run list` / run URL when known; `—` when none). Cap rows to live or just-changed lanes; archive noise stays on the board.
+- Questions: NEVER mid-body. Either (1) append to the QUESTIONS pad (`n | question | options | recommended + why | default + trigger | urgency`) and surface once at the bottom of chat under **Questions**, with the recommended option and one-line why; or (2) call `ask_user_question` with the recommended option first (label ends "(Recommended)") and description = why. Prefer (2) when a discrete choice exists in this chat. ONE notification for blocking items. Expired default window: post the decision on the lane todo and proceed.
 - Always confirm first: machine-wide disruptive actions, destructive recovery, scope beyond the dispatched plan. En-route discoveries become board items, never brief amendments.
 
 ### Peer orchestrators
