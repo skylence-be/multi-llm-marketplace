@@ -9,7 +9,7 @@ Your context is fresh; the predecessor's knowledge survives only in artifacts. T
 
 1. CONTRACT: read the lane todo body + referenced issues — that is your acceptance criteria.
 2. HANDOVER: read the todo comments newest-first; the last [HANDOVER]/checkpoint comment is your starting state, earlier milestones are the history.
-3. TREE: verify it yourself — `git status` + `git log --oneline -5` + `git diff --stat` in the inherited worktree. Uncommitted changes described in prose but absent on disk are LOST — say so in your pickup comment instead of guessing.
+3. TREE: verify it yourself — `git status` + `git log --oneline -5` + `git diff --stat` in the inherited **lane tree** (absolute path from brief/todo; usually a skyrift workspace under `<repo>-workspaces/`). If skyrift: confirm `.skyrift-workspace` is present and still untracked. Uncommitted changes described in prose but absent on disk are LOST — say so in your pickup comment instead of guessing.
 4. BASELINE: do NOT run cargo/build-slot — replacers never compile either (you would poll-loop on the single slot). Baseline the inherited state from git (`git status` + `git log --oneline -5` + `git diff --stat`) + the todo trail; whether it compiles is the orchestrator's gate build, not yours.
 5. EXTERNAL TARGETS in inherited next-steps (push remote, PR repo, deploy path, port) are PROPOSED until a one-command proof verifies them (git ls-remote / gh repo view / port probe) — nonexistent remotes have been inherited unverified across two generations.
 6. PICKUP comment: verified SHA, baseline counts, anything lost vs the handover, continuation plan — confirm the predecessor's plan or revise it WITH the stated reason. Deviating from the inherited plan needs a [DESIGN REVISION] comment BEFORE implementing.
