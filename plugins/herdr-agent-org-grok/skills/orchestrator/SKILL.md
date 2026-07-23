@@ -28,7 +28,7 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 - **L2 NO BLIND DELEGATION.** Every delegated worker is a Herdr agent you can read (`agent read`) and steer (`agent prompt` / `send-keys`); never the Agent tool, background subagents, or workflow tools; workers do not sub-delegate. FP: claimed work with no live agent name and no board trail.
 - **L3 PLANNER SINGLETON.** At most ONE planner agent machine-wide named `planner`; sweep `herdr agent list` (and every Herdr session you can reach) before spawning; spawn only when none lives. FP: two live planner-named agents.
 - **L4 AGENT DIES AT VERIFIED DONE.** No worker agent survives its verified DONE as a working process; pending review/CI/merge is never an exception; any bounce is a fresh dispatch into the surviving **lane tree**, never a ping to a held agent. FP: a live working agent whose lane todo is verified/complete.
-- **L5 CLOSE-OUT AT MERGE.** A merged lane leaves nothing: its **lane tree** removed (`skyrift discard` or `git worktree remove`), branch deleted local AND remote, todo `complete`. FP: workspace/worktree/branch/open todo surviving its merged PR.
+- **L5 CLOSE-OUT AT MERGE.** A merged lane leaves nothing: its **lane tree** removed (`skyline_workspace_discard` for a skyline workspace, `skyrift discard` for a CLI-created one, `git worktree remove` for the fallback), branch deleted local AND remote, todo `complete`. FP: workspace/worktree/branch/open todo surviving its merged PR.
 - **L6 ONE ARMED WAIT PER RUNNING WORKER.** For each working agent you own, you either hold an in-flight `agent wait` or re-check on the next event with an explicit plan; never silent abandonment. Document which agent you are waiting on in a board comment when multi-wait. FP: a working worker with no orchestrator follow-up plan.
 - **L7 COMPILE MONOPOLY.** Workers never run cargo or build-slot; you gate ONCE per feature at integration via build-slot as a background run, on the branch tip AFTER rebasing onto current main. FP: a compile invocation in a worker pane; a merge without a green gate on the current-base tip.
 - **L8 MECH-EDIT VALVE.** You never write feature code. You MAY directly clear MECHANICAL gate errors (fmt, import fixes, doc-lint, dead-code, clippy one-liners, merge-conflict markers) after at least one worker fix-cycle, or immediately when the fix is compiler-forced and the lane worker cannot compile to see it; EVERY such edit is logged on the lane todo as [MECH-EDIT] with the SHA. Semantic changes stay banned. FP: orchestrator commit touching lane source without [MECH-EDIT].
@@ -39,6 +39,9 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 - **L13 COMPLY-AND-FILE.** Believing a law is wrong grants no override: comply AND file `[LAW-FRICTION: L<n>, …]` on the lane todo; halt only when compliance would destroy work. FP: a deviation with no filing.
 - **L14 DOCTRINE BY PR ONLY.** No agent pushes doctrine to marketplace main; amendments ship as PRs the OPERATOR merges. FP: doctrine commit on main by an agent.
 - **L15 BOARD IS TRUTH.** Derive ALL state from board reads + `herdr agent list`, never from memory; timestamps in durable writes are pasted `date -u` output; one todo per lane, body = current contract. FP: asserted state a board/agent-list read contradicts.
+- **L16 LANE TREE ORDER.** Lane trees are created MCP-FIRST: `skyline_workspace_create` with an ABSOLUTE `from_path` (it registers the source on first use, so there is no init step), then CLI `skyrift` with an absolute path only if those tools are absent from the session, then `git worktree` only if both are. Resolved absolute path plus the reported rung go on the lane todo BEFORE dispatch. FP: a lane todo naming a plain `git worktree` path while the skyline workspace tools were reachable. (marketplace#32, 2026-07-23)
+- **L17 DISPATCH DEFAULTS ARE EXPLICIT.** Worker effort and model are never left to the runtime's install default: silence at dispatch resolves to whatever the box is set to, which is not the doctrine default. Pass it explicitly, or let `dispatch-worker` fill it in; any upgrade above default carries `[EFFORT: high, reason]` or `[MODEL: <m>, reason]` on the lane todo. FP: a working worker running above default with no upgrade filing. (marketplace#32, 2026-07-23)
+- **L18 SIDEBAR IDENTITY.** The operator's view of this org IS the Herdr sidebar, so every agent the org owns carries a name saying which role and which lane it is, and you name YOURSELF before anyone else. Lane agents get the lane slug at `agent start`, panes get the same label so they stay legible after their agent is reaped, and a reaped lane's label is cleared at close-out. FP: a live org agent showing a bare runtime name (`grok`, `claude`) or a name belonging to a lane that already closed.
 
 ## PLAYBOOK
 
@@ -53,10 +56,22 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
    board pad get inbox
    ```
 
+   Then IDENTIFY YOURSELF (L18), before dispatching anything:
+
+   ```bash
+   herdr agent rename "$HERDR_PANE_ID" orchestrator   # orch-<feature> when peers share the box
+   herdr pane rename "$HERDR_PANE_ID" "orchestrator: <feature>"
+   ```
+
+   If `agent rename` fails because detection has not classified your pane as an agent yet, the `pane rename` alone still labels the sidebar; retry on the next beat.
+
+   NAMING (L18): the agent name IS the sidebar identity; `[a-z][a-z0-9_-]{0,31}`, unique among live agents. Lane slug for a lane worker, `rev-<lane>` for a reviewer, the SAME lane slug for a replacer inheriting it (the predecessor is gone, so the name is free), `planner` exactly for the singleton (L3). At L5 close-out clear the dead lane's pane label (`herdr pane rename <pane_id> --clear`).
+
 2. **DISPATCH** (one atomic beat per lane; big features = batch of beats):
    - PRE-STAGE when acceptance depends on runnable artifacts (prove binary/index/smoke; paste into brief).
    - Write the brief INTO the todo body (`board create` / edit body).
-   - Spawn: `dispatch-worker --name <lane> --kind <claude|codex|grok> --todo <slug> --cwd <lane-tree>` (or manual split + `agent start` + `agent prompt` pointer).
+   - Spawn: `dispatch-worker --name <lane> --kind <grok|claude|codex> --todo <slug> --cwd <lane-tree>` (or manual split + `agent start` + `agent prompt` pointer). `dispatch-worker` fills in the doctrine default (`--effort medium` for grok, `--model sonnet` for claude); a manual `agent start` does NOT, so pass it yourself there (L17).
+   - POST-START CHECK (L17): read the pane chrome (`herdr agent read <lane> --source visible --lines 5`) and confirm the worker came up at the intended effort. Above default with no `[EFFORT: ...]` filing on the todo means restart at the default.
    - `board set-status <slug> in_progress` + `set-owner`.
    - Arm wait: `herdr agent wait <name> --until idle --until done --until blocked --timeout <ms>` (background the wait when multi-lane).
 
@@ -72,7 +87,7 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 
 ### Workers
 
-- Runtime AUTO-DETECTED at dispatch: prefer kinds available on PATH (`herdr agent` lists kinds). Default grok workers with medium effort; upgrade to high only when YOU judge multi-file design / ambiguous acceptance / cross-repo blast / prior wrong-approach bounce — note `[EFFORT: high, reason]` on the todo.
+- Runtime AUTO-DETECTED at dispatch: prefer kinds available on PATH (`herdr agent` lists kinds). Grok workers run at medium effort, which `dispatch-worker` appends for you when you pass none (L17). Upgrading is an explicit act: `--upgrade-reason "<why>"` plus `-- --effort high`, which the script refuses to skip and files as `[EFFORT: high, reason]` on the todo. Upgrade only when YOU judge multi-file design, ambiguous acceptance, cross-repo blast radius, or a prior wrong-approach bounce.
 - RUST-LANE ROUTING: Rust-heavy lanes default to a CLAUDE worker (skyline_diagnostics without compile slot); grok defaults to non-Rust or mechanical lanes. JUDGMENT: note routing in the brief.
 - FAN OUT: default **one Herdr agent per lane, one lane tree per lane**. Independent lanes get own branch + PR + tree. Parallel is default; serialize only on real data/gate dependencies encoded as board blockers.
 - VERIFY-AFTER-SEND: after `agent prompt`, confirm lifecycle moves (`agent get` / short wait); stalled prompts need recovery.
@@ -82,10 +97,12 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 
 0. PRE-STAGE proofs when needed (binary path, index count, smoke).
 1. GOAL + acceptance criteria as measurable facts, each with EXACT proving check; NON-GOALS; idempotency check when re-dispatch possible.
-2. Repo / branch / dedicated **lane tree** for THIS lane — never shared main checkout.
-   - Default **skyrift** when on PATH: `skyrift doctor` → `skyrift init` if needed → `skyrift create <slug>` → CWD = printed path; `git checkout -B <branch> origin/main`.
-   - Fallback **git worktree**: `git worktree add /abs/path/<slug> -b <branch> origin/main`.
-   - Footguns: never `git add -A` in skyrift; never put CARGO_TARGET_DIR inside a lane tree.
+2. Repo / branch / dedicated **lane tree** for THIS lane, never the shared main checkout.
+   - **Default, skyline MCP workspace (L16):** `skyline_workspace_create` with `from_path` set to the repo's ABSOLUTE main-working-tree path and `name` set to the lane slug. It registers the source on first use (no init), clonefiles on APFS, and NAMES ITS RUNG (`cloned(apfs)` / `copied(filtered)`). CWD is the returned path, which lands on a detached HEAD, so `git checkout -B <branch> origin/main`. `skyline_workspace_list` confirms; discard at L5 with `skyline_workspace_discard`.
+   - **CLI FOOTGUN:** the skyline daemon runs with cwd `/`, so a bare `skyrift doctor` or `skyrift create` resolves against the wrong root and can fail while naming an unrelated repo ("<other-repo> is not a registered skyrift source"). That means no absolute path was passed; it does NOT mean skyrift is missing, and reading it as missing is the failure marketplace#32 records. Retry with the absolute path before dropping a rung.
+   - **Fallback, CLI skyrift** (only when the MCP tools are absent): `skyrift doctor`, `skyrift init` if needed, `skyrift create <slug>`, all against the absolute repo path and run from the main working tree.
+   - **Last resort, git worktree:** `git worktree add /abs/path/<slug> -b <branch> origin/main`.
+   - Footguns: never `git add -A` in a workspace; never put CARGO_TARGET_DIR inside a lane tree. Note tree kind, rung, and absolute path on the todo.
 3. GATES: worker edits + commits + pushes only. You gate at feature-end: `cargo fmt --check` inline, then build-slot clippy + test background. Worker opens PR, never merges.
 4. REPORT: milestone board comments with exact commands, counts, SHAs, paths; deviations declared.
 5. ESCALATE: [BLOCKER]/[INCIDENT] with evidence path, incidents BEFORE recovery.

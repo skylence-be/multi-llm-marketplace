@@ -23,8 +23,6 @@
 # Status values: pending | in_progress | blocked | verified | complete
 set -eu
 
-HERDR_BIN="${HERDR_BIN_PATH:-herdr}"
-
 board_root() {
   if [ -n "${HERDR_ORG_ROOT:-}" ]; then
     printf '%s\n' "$HERDR_ORG_ROOT"

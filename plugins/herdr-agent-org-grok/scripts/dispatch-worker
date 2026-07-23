@@ -1,12 +1,28 @@
 #!/bin/sh
-# dispatch-worker — split a sibling pane, start a named agent, send a pointer prompt.
+# dispatch-worker: split a sibling pane, start a named agent, send a pointer
+# prompt, and report what the agent actually came up as.
 #
 # Usage:
-#   dispatch-worker --name NAME --kind KIND [--cwd PATH] [--direction right|down] \
-#                   [--todo SLUG] [--prompt TEXT] [--timeout MS] [-- -- agent-args...]
+#   dispatch-worker --name NAME [--kind KIND] [--cwd PATH] [--direction right|down] \
+#                   [--todo SLUG] [--prompt TEXT] [--timeout MS] \
+#                   [--upgrade-reason TEXT] [-- agent-args...]
 #
-# Requires HERDR_ENV=1. Prints JSON-ish summary on stdout (pane_id, agent name).
-# Board side-effects when --todo is set: set-owner + set-status in_progress.
+# The doctrinal default effort/model is filled in when you pass none, so silence
+# at dispatch cannot resolve to whatever the box happens to be installed at
+# (marketplace#32):
+#   --kind grok    and no --effort   -> --effort medium
+#   --kind claude  and no --model    -> --model sonnet
+# Asking for anything above that default REQUIRES --upgrade-reason; the reason is
+# filed on the lane todo as [EFFORT: ...] / [MODEL: ...] per L17.
+#
+# The --cwd should be the lane tree the orchestrator already created MCP-first
+# (skyline_workspace_create with an absolute from_path), not a bare checkout.
+#
+# Requires HERDR_ENV=1. Prints a JSON summary on stdout.
+# Also labels the new pane "<name>: <todo>" so the lane stays identifiable in
+# the sidebar after its agent is reaped (L18).
+# Board side-effects when --todo is set: set-owner, set-status in_progress, and
+# the upgrade filing when there is one.
 set -eu
 
 HERDR="${HERDR_BIN_PATH:-herdr}"
@@ -17,11 +33,17 @@ DIR="right"
 TODO=""
 PROMPT=""
 TIMEOUT="60000"
+UPGRADE_REASON=""
 EXTRA_ARGS=""
 
 usage() {
-  sed -n '2,12p' "$0" | sed 's/^# \?//'
+  sed -n '2,25p' "$0" | sed 's/^# \?//'
   exit 2
+}
+
+# Value following FLAG in a space-joined argument string, or empty.
+arg_value() {
+  printf '%s\n' "$2" | awk -v f="$1" '{for(i=1;i<=NF;i++) if($i==f && i<NF){print $(i+1); exit}}'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -33,6 +55,7 @@ while [ "$#" -gt 0 ]; do
     --todo) TODO=$2; shift 2 ;;
     --prompt) PROMPT=$2; shift 2 ;;
     --timeout) TIMEOUT=$2; shift 2 ;;
+    --upgrade-reason) UPGRADE_REASON=$2; shift 2 ;;
     --) shift; EXTRA_ARGS=$*; break ;;
     -h|--help) usage ;;
     *) echo "dispatch-worker: unknown arg $1" >&2; usage ;;
@@ -41,9 +64,48 @@ done
 
 [ -n "$NAME" ] || { echo "dispatch-worker: --name required" >&2; exit 2; }
 [ "${HERDR_ENV:-}" = "1" ] || {
-  echo "dispatch-worker: HERDR_ENV!=1 — run inside a Herdr-managed pane" >&2
+  echo "dispatch-worker: HERDR_ENV!=1, run inside a Herdr-managed pane" >&2
   exit 1
 }
+
+MODEL=$(arg_value --model "$EXTRA_ARGS")
+EFFORT=$(arg_value --effort "$EXTRA_ARGS")
+[ -n "$EFFORT" ] || EFFORT=$(arg_value --reasoning-effort "$EXTRA_ARGS")
+
+DEFAULTED=""
+case "$KIND" in
+  grok)
+    if [ -z "$EFFORT" ]; then
+      EFFORT=medium
+      EXTRA_ARGS="${EXTRA_ARGS:+$EXTRA_ARGS }--effort medium"
+      DEFAULTED="effort=medium"
+    fi
+    ;;
+  claude)
+    if [ -z "$MODEL" ]; then
+      MODEL=sonnet
+      EXTRA_ARGS="${EXTRA_ARGS:+$EXTRA_ARGS }--model sonnet"
+      DEFAULTED="model=sonnet"
+    fi
+    ;;
+esac
+
+# Anything above the doctrine default is an explicit, filed act (L17).
+MODEL_UP=0
+EFFORT_UP=0
+case "$MODEL" in ""|*sonnet*|*haiku*) ;; *) MODEL_UP=1 ;; esac
+case "$EFFORT" in ""|low|medium) ;; *) EFFORT_UP=1 ;; esac
+if [ "$MODEL_UP" -eq 1 ] || [ "$EFFORT_UP" -eq 1 ]; then
+  if [ -z "$UPGRADE_REASON" ]; then
+    echo "dispatch-worker: model=${MODEL:-default} effort=${EFFORT:-default} is above the doctrine default." >&2
+    echo "dispatch-worker: pass --upgrade-reason \"<why this lane needs it>\"; it is filed on the todo (L17)." >&2
+    exit 2
+  fi
+fi
+
+MARKERS=""
+[ "$MODEL_UP" -eq 1 ] && MARKERS="[MODEL: $MODEL, $UPGRADE_REASON]"
+[ "$EFFORT_UP" -eq 1 ] && MARKERS="${MARKERS:+$MARKERS }[EFFORT: $EFFORT, $UPGRADE_REASON]"
 
 if [ -z "$PROMPT" ] && [ -n "$TODO" ]; then
   PROMPT="you own todo ${TODO}. Read the board brief (board get ${TODO}), then invoke the herdr-worker skill and implement it. Report milestones with board comment."
@@ -71,24 +133,42 @@ pane_id=$(printf '%s\n' "$split_json" | jq -r '.result.pane.pane_id // empty')
 
 if [ -n "$EXTRA_ARGS" ]; then
   # shellcheck disable=SC2086
-  start_json=$($HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- $EXTRA_ARGS)
+  $HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- $EXTRA_ARGS >/dev/null
 else
-  start_json=$($HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT")
+  $HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" >/dev/null
 fi
 
-# Point the worker at the brief
+# L18: label the pane too. The agent name carries sidebar identity while the
+# agent lives; the pane label outlives it, so a reaped lane stays legible.
+$HERDR pane rename "$pane_id" "${NAME}${TODO:+: $TODO}" >/dev/null 2>&1 || true
+
+# Point the worker at the brief.
 $HERDR agent prompt "$NAME" "$PROMPT" >/dev/null
 
-if [ -n "$TODO" ] && command -v board >/dev/null 2>&1; then
-  board set-owner "$TODO" "$NAME" || true
-  board set-status "$TODO" in_progress || true
-elif [ -n "$TODO" ] && [ -n "${GROK_PLUGIN_ROOT:-}" ]; then
-  "$GROK_PLUGIN_ROOT/scripts/board" set-owner "$TODO" "$NAME" || true
-  "$GROK_PLUGIN_ROOT/scripts/board" set-status "$TODO" in_progress || true
+# VERIFY-AFTER-SEND: a fresh agent can swallow its first prompt. Report the
+# state the caller should sanity-check instead of assuming the send landed.
+state=$($HERDR agent get "$NAME" 2>/dev/null | jq -r '.result.agent.state // "unknown"' 2>/dev/null || echo unknown)
+
+BOARD=""
+if command -v board >/dev/null 2>&1; then
+  BOARD="board"
+elif [ -n "${GROK_PLUGIN_ROOT:-}" ] && [ -x "$GROK_PLUGIN_ROOT/scripts/board" ]; then
+  BOARD="$GROK_PLUGIN_ROOT/scripts/board"
+fi
+if [ -n "$TODO" ] && [ -n "$BOARD" ]; then
+  # Silenced: stdout is the JSON summary contract, board chatter must not join it.
+  "$BOARD" set-owner "$TODO" "$NAME" >/dev/null || true
+  "$BOARD" set-status "$TODO" in_progress >/dev/null || true
+  [ -n "$MARKERS" ] && { "$BOARD" comment "$TODO" "**$MARKERS** dispatched as $NAME (kind $KIND, pane $pane_id)" >/dev/null || true; }
 fi
 
-printf '{"agent":%s,"pane_id":%s,"kind":%s,"todo":%s}\n' \
+printf '{"agent":%s,"pane_id":%s,"kind":%s,"todo":%s,"state":%s,"model":%s,"effort":%s,"defaulted":%s,"upgrade":%s}\n' \
   "$(printf '%s' "$NAME" | jq -Rs .)" \
   "$(printf '%s' "$pane_id" | jq -Rs .)" \
   "$(printf '%s' "$KIND" | jq -Rs .)" \
-  "$(printf '%s' "$TODO" | jq -Rs .)"
+  "$(printf '%s' "$TODO" | jq -Rs .)" \
+  "$(printf '%s' "$state" | jq -Rs .)" \
+  "$(printf '%s' "$MODEL" | jq -Rs .)" \
+  "$(printf '%s' "$EFFORT" | jq -Rs .)" \
+  "$(printf '%s' "$DEFAULTED" | jq -Rs .)" \
+  "$(printf '%s' "$MARKERS" | jq -Rs .)"
