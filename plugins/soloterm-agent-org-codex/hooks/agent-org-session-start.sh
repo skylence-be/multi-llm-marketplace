@@ -12,7 +12,6 @@ solo-worker and read the todo body before implementing. Workers NEVER compile
 (no cargo/go build/test/clippy, no build-slot) — the orchestrator runs the
 single gate build at feature-end via build-slot; cargo nextest stays banned.
 Milestone reports need exact commands, counts, SHAs, and artifact paths.
-Spawns gate on the capacity probe (capacity-check skill / capacity-probe.sh),
 and the PLANNER is a machine-wide singleton — find the live one across all
 projects before spawning another.
 If this block arrived after a COMPACTION: re-invoke your role skill and

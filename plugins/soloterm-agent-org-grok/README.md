@@ -5,14 +5,13 @@ Grok port of the Skylence soloterm-agent-org (agent orchestration substrate).
 ## What it provides
 
 - Solo MCP server registration (`solo` via `/Applications/Solo.app/Contents/MacOS/mcp`) — the board, PTY, timers, process management that powers every role.
-- Skills (all five roles + helpers):
+- Skills (all five roles):
   - `orchestrator`
   - `planner`
   - `solo-worker`
   - `replacer`
   - `org-audit`
-  - `capacity-check`
-- Scripts: `build-slot`, `capacity-probe.sh`, `ghost-probe.sh`
+- Scripts: `build-slot`, `ghost-probe.sh`
 - Session discipline hooks (adapted for Grok hook JSON + env):
   - org-lane-mark (PreToolUse on spawn/timer MCP tools)
   - org-conduct-refresh (SessionStart compact)
@@ -35,7 +34,6 @@ After install, the `solo` MCP tools become available and the skills are listed (
 Typical flow:
 - Orchestrator dispatches via Solo MCP `spawn_*` + `todo_write`.
 - Workers run with the solo-worker skill.
-- Capacity check gates heavy spawns on macOS.
 - Post-compaction the conduct refresh fires automatically in marked sessions.
 - Stop gate forces lane hygiene before idle.
 

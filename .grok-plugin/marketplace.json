@@ -15,18 +15,30 @@
       },
       "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
       "category": "core",
-      "keywords": ["core", "baseline", "judge-hook", "guidelines", "safety"]
+      "keywords": [
+        "core",
+        "baseline",
+        "judge-hook",
+        "guidelines",
+        "safety"
+      ]
     },
     {
       "name": "soloterm-agent-org-grok",
-      "description": "Skylence agent-org v2 for Grok. Bundles the Solo MCP server (board/PTY/timer substrate) + orchestrator, planner (max-effort grounded plans), solo-worker, replacer, org-audit skills, capacity-check gate, build-slot serializer, ghost-probe, capacity-probe scripts. Session-discipline hooks (lane mark, conduct refresh, stop gate) use exact ${GROK_PLUGIN_ROOT} load-time paths.",
+      "description": "Skylence agent-org v2 for Grok. Bundles the Solo MCP server (board/PTY/timer substrate) + orchestrator, planner (max-effort grounded plans), solo-worker, replacer, org-audit skills, build-slot serializer, ghost-probe scripts. Session-discipline hooks (lane mark, conduct refresh, stop gate) use exact ${GROK_PLUGIN_ROOT} load-time paths.",
       "source": {
         "type": "local",
         "path": "./plugins/soloterm-agent-org-grok"
       },
       "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
       "category": "agent-org",
-      "keywords": ["agent-org", "solo", "orchestrator", "multi-agent", "planner"]
+      "keywords": [
+        "agent-org",
+        "solo",
+        "orchestrator",
+        "multi-agent",
+        "planner"
+      ]
     }
   ]
 }

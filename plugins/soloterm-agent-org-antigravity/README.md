@@ -14,15 +14,12 @@ role playbooks plus the machine-law helper scripts.
   makes every role skill runnable: orchestrator/worker/replacer/audit are all
   built on Solo's todo, process, and timer tools.
 - **skills/** — the five host-neutral role playbooks (`orchestrator`,
-  `planner`, `solo-worker`, `replacer`, `org-audit`) plus the
-  `capacity-check` spawn gate, invocable as
+  `planner`, `solo-worker`, `replacer`, `org-audit`), invocable as
   `soloterm-agent-org-antigravity:<skill>`.
 - **scripts/build-slot** — machine-wide compile serializer (one build at a
   time; install to `~/.local/bin/`).
 - **scripts/ghost-probe.sh** — the no-fusion law's input-line classifier for
   Solo PTYs.
-- **scripts/capacity-probe.sh** — macOS RAM probe behind capacity-check:
-  `VERDICT=GREEN|YELLOW|RED` spawn verdicts, exit code 0/1/2 (3 = non-macOS).
 - **AGENTS.md** — portable worker guidance.
 
 ## Siblings

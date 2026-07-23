@@ -28,9 +28,6 @@ field validation, promote ritual, risks):
     (todo trail, committed WIP) after context exhaustion, a kill, or a stall.
   - `org-audit` — on-demand cold review of the running org; operator-invoked
     only, never scheduled.
-  - `capacity-check` — the spawn gate: run `scripts/capacity-probe.sh` before
-    every spawn; the GREEN/YELLOW/RED verdict decides spawn now,
-    free-then-spawn, or defer with a one-shot wake.
 - **hooks/** (`hooks.json`):
   - `org-lane-mark.sh` — PreToolUse on
     `mcp__solo__spawn_agent|spawn_process|timer_set|timer_fire_when_idle_*`;
@@ -68,10 +65,6 @@ field validation, promote ritual, risks):
   space, `live` on two tails moments apart). Exit 0 = safe to send,
   1 = DO NOT SEND, 2 = ambiguous. Probe once, never in a loop; restore with
   backspace (bytes `[127]`) after every probe space.
-- **scripts/capacity-probe.sh** — the capacity-check skill's macOS RAM probe:
-  reclaimable memory + kernel pressure + live agent RSS → one
-  `VERDICT=GREEN|YELLOW|RED` line; the exit code IS the verdict (0/1/2,
-  3 = non-macOS). Tunables: `SOLO_CAP_GREEN_GB` (2.0), `SOLO_CAP_RED_GB` (1.0).
 - **codex/** — the Codex CLI side of the org:
   - `AGENTS.md` — worker conduct for Codex full-auto lane workers; install to
     `~/.codex/AGENTS.md`.
