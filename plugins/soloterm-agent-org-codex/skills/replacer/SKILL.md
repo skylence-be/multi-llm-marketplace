@@ -17,3 +17,7 @@ Your context is fresh; the predecessor's knowledge survives only in artifacts. T
 
 Note: skyline_run's UNCHANGED dedup is daemon-global — your verification re-runs may return "unchanged since last call" because the PREDECESSOR ran the identical command; the raw tee path in that message is fresh, read it.
 - Same closure sequence applies to you: verification, supervisor retrospective (mention you were a replacer — handover quality is retro material), dispositions, then close.
+
+## Skylore
+
+On pickup: one `skyline_lore_recall` with the lane keywords + `repo=` (and unscoped if the failure mode smelled machine-wide). Prefer the todo trail for contract; use lore only so you do not re-burn a gotcha the predecessor or a peer already paid for. Mark only if you discover a new durable fact the next successor needs.
