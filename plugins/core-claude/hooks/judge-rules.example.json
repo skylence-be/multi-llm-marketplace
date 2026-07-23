@@ -1,6 +1,7 @@
 {
   "_comment": "Copy to ~/.claude/judge-rules.json and customize. Rules evaluate in declaration order; first match wins. Three classes: 'deny' blocks (exit 2); 'allow' short-circuits to allow (use for allowlist patterns above broader denies); 'escalate' spawns `claude -p` with judge_prompt (the hook appends the last few user messages from the transcript, so prompts that reference user intent are decidable) and parses the first word of the response (ALLOW or BLOCK). 'pattern' is a POSIX extended regex matched against the tool_input JSON plus the hook's normalization lines: rules with tool 'Bash' also bind *skyline_run (match text gains one 'cmd: <argv joined>' line per command), 'Write' also binds *skyline_create and 'Edit' also binds *skyline_edit (match text gains \"file_path\":\"<path>\" lines), so skyline routing cannot bypass a rule. Patterns are case-sensitive. Portable across GNU grep and BSD grep — avoid \\s inside [], use [[:space:]]; avoid [^\\n], use .* (which already excludes newlines). The '_category' field is an inline label, ignored by the hook.",
   "_categories": "fs | net | privilege | git-destructive | git-review | github | secrets | db | cloud | deps | system",
+  "_match_scopes": "Optional per-rule 'match' field selects WHAT the pattern is tested against. 'raw' (default, and the behaviour of every rule without the field) matches the whole tool_input JSON. 'argv0' matches the hook's invoked-program projection: one 'argv0: <program basename>' line per pipeline stage, with wrappers (env, nice, timeout, xargs, ...) stripped and their flag values consumed, sudo/doas emitted and stepped past, and `sh -c` / eval / backtick payloads rescanned. When the tokenizer cannot fully understand a construct it marks the command uncertain and argv0 rules fall back to a raw word-boundary match (fail-closed — never weaker than pre-argv0 on exotic shapes). Use 'argv0' for rules about a program BEING RUN, so that merely naming it in an argument, a path, a JSON payload, or a heredoc does not trigger them. Use 'raw' when the rule needs arguments or flags (git push --force, dd of=/dev/disk, SQL text).",
   "_caveats": "Regex bypasses exist (rm -fr vs rm -rf, alternative interpreters, base64-decoded commands). This is a safety net, not a security boundary.",
   "rules": [
     {
@@ -50,7 +51,8 @@
     {
       "_category": "privilege",
       "tool": "Bash",
-      "pattern": "(^|[^a-zA-Z_/])sudo\\s",
+      "pattern": "^argv0: (sudo|doas|pkexec|run0)$",
+      "match": "argv0",
       "class": "deny",
       "reason": "sudo invocation"
     },
@@ -200,7 +202,8 @@
     {
       "_category": "system",
       "tool": "Bash",
-      "pattern": "\\b(shutdown|reboot|halt|poweroff)\\s",
+      "pattern": "^argv0: (shutdown|reboot|halt|poweroff)$",
+      "match": "argv0",
       "class": "deny",
       "reason": "system power command"
     },
