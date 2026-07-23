@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Read-only health check of the core-grok install — judge-rules.json vs plugin example, ~/.grok/AGENTS.md guidelines sync, version stamp, and notes on plugin-provided hooks. Run /core-grok:doctor when hooks look inert, after a plugin update, or on a machine you don't trust. Writes nothing.
+description: Read-only health check of the core-grok install — judge-rules.json vs plugin example, ~/.grok/AGENTS.md guidelines sync, version stamp, [cli] auto_update=false + fork CLI pin notes, and notes on plugin-provided hooks. Run /core-grok:doctor when hooks look inert, after a plugin update, or on a machine you don't trust. Writes nothing.
 ---
 
 # /core-grok:doctor
@@ -62,11 +62,30 @@ if [ -f "$PLUGIN_ROOT/hooks/hooks.json" ]; then
   fi
 fi
 echo ""
+echo ''
 echo '== compat check =='
 if grep -q '^\[compat.claude\]' ~/.grok/config.toml 2>/dev/null && grep -q 'hooks = false' ~/.grok/config.toml; then
   echo "[compat.claude] hooks = false : set (good, prevents loading Claude hooks)"
 else
   echo "[compat.claude] hooks = false : missing — re-run /core-grok:setup"
+fi
+
+echo ''
+echo '== fork CLI pin =='
+if grep -E '^[[:space:]]*auto_update[[:space:]]*=[[:space:]]*false' ~/.grok/config.toml >/dev/null 2>&1; then
+  echo "[cli] auto_update = false : set (official channel will not overwrite fork)"
+else
+  echo "[cli] auto_update = false : MISSING — re-run /core-grok:setup or set it by hand"
+fi
+if command -v grok >/dev/null 2>&1; then
+  echo "which grok: $(command -v grok)"
+  if [ -L "$HOME/.grok/bin/grok" ]; then
+    echo "~/.grok/bin/grok -> $(readlink "$HOME/.grok/bin/grok")"
+  fi
+  grok --version 2>&1 | head -1 || true
+  echo "note: official internal installer publishes plain 0.2.X builds; fork releases often report 0.2.110 (fork tip SHA) and live under ~/.grok/downloads/grok-*-mcp-progress* or similar"
+else
+  echo "grok: not on PATH"
 fi
 
 echo ''
