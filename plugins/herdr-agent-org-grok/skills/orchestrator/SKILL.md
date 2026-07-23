@@ -27,7 +27,7 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 - **L1 HERDR-MANAGED.** You run as a Herdr-managed pane (`HERDR_ENV=1`); a plain terminal session cannot own agent lifecycle waits and must not orchestrate. FP: orchestrating with `HERDR_ENV` unset.
 - **L2 NO BLIND DELEGATION.** Every delegated worker is a Herdr agent you can read (`agent read`) and steer (`agent prompt` / `send-keys`); never the Agent tool, background subagents, or workflow tools; workers do not sub-delegate. FP: claimed work with no live agent name and no board trail.
 - **L3 PLANNER SINGLETON.** At most ONE planner agent machine-wide named `planner`; sweep `herdr agent list` (and every Herdr session you can reach) before spawning; spawn only when none lives. FP: two live planner-named agents.
-- **L4 AGENT DIES AT VERIFIED DONE.** No worker agent survives its verified DONE as a working process; pending review/CI/merge is never an exception; any bounce is a fresh dispatch into the surviving **lane tree**, never a ping to a held agent. FP: a live working agent whose lane todo is verified/complete.
+- **L4 AGENT DIES AT VERIFIED DONE.** No worker/reviewer agent the org owns survives its verified DONE as a live Herdr agent — any lifecycle state counts (`working`, `idle`, `blocked`, `done`). Pending review/CI/merge is never an exception for *keeping the agent process*; L5 alone owns the lane tree/branch. Same-beat as the accepting board verdict: (1) `board set-status … verified` + `[ORCH L9 ACCEPT]`/`[REVIEW-OK]` comment, (2) clear owner, (3) reap the pane you created (`herdr pane close <pane_id>` or leave shell only after the agent binary has exited — idle grok/claude still named is NOT reaped). Operator status prose is forbidden until steps 1–3 finished. Any bounce is a fresh dispatch into the surviving **lane tree**, never a ping to a held agent. FP: a live agent (any state, including idle) whose lane todo is verified/complete; FP: operator-facing "lane done" message while that agent still appears in `herdr agent list`. (marketplace#32, 2026-07-23)
 - **L5 CLOSE-OUT AT MERGE.** A merged lane leaves nothing: its **lane tree** removed (`skyline_workspace_discard` for a skyline workspace, `skyrift discard` for a CLI-created one, `git worktree remove` for the fallback), branch deleted local AND remote, todo `complete`. FP: workspace/worktree/branch/open todo surviving its merged PR.
 - **L6 ONE ARMED WAIT PER RUNNING WORKER.** For each working agent you own, you either hold an in-flight `agent wait` or re-check on the next event with an explicit plan; never silent abandonment. Document which agent you are waiting on in a board comment when multi-wait. FP: a working worker with no orchestrator follow-up plan.
 - **L7 COMPILE MONOPOLY.** Workers never run cargo or build-slot; you gate ONCE per feature at integration via build-slot as a background run, on the branch tip AFTER rebasing onto current main. FP: a compile invocation in a worker pane; a merge without a green gate on the current-base tip.
@@ -78,10 +78,18 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 3. **SLEEP** only after ready work is in flight. Scan for independent ready (unblocked) todos first.
 
 4. **WAKE** (agent settled or blocked): read board comments + `agent read` tail, then exactly one of:
-   - **DONE**: verify per L9; accept or BOUNCE with pasted exact errors into the todo, then fresh dispatch/replacer into surviving lane tree (L4).
+   - **DONE**: verify per L9. On ACCEPT, run the **ACCEPT SEQUENCE** below in one beat — never split accept and reap across turns. On BOUNCE: paste exact errors into the todo, then fresh dispatch/replacer into surviving lane tree (L4); do not keep the failed agent.
    - **BLOCKED/ASKING**: answer via `agent prompt` (L11 first) or route to operator via inbox pad.
    - **STALLED/DEAD**: dispatch a REPLACER into surviving work, never a silent re-prompt hoping.
    Then re-arm waits for every still-running worker (L6).
+
+   **ACCEPT SEQUENCE** (L9 + L4; all steps before any operator chat):
+   1. Re-run claimed command; record exit + summary on the todo.
+   2. `board set-status <slug> verified` + comment with SHA/PR/evidence (`[ORCH L9 ACCEPT]` or accept `[REVIEW-OK]`).
+   3. `board set-owner <slug> ""`.
+   4. **Reap** the owned agent/pane now (L4): prefer `herdr pane close <pane_id>` for panes this org opened; do not leave a named idle agent "for merge" or "for the operator to inspect".
+   5. `herdr agent list` — confirm the name is gone. If still listed, you are not done.
+   6. Only then: optional operator one-liner (merge decision, next mission). Lane tree and branch stay until L5 merge close-out.
 
 5. Stop hook anti-idle: run the fingerprint sweep for real, then stop.
 
@@ -106,7 +114,7 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 3. GATES: worker edits + commits + pushes only. You gate at feature-end: `cargo fmt --check` inline, then build-slot clippy + test background. Worker opens PR, never merges.
 4. REPORT: milestone board comments with exact commands, counts, SHAs, paths; deviations declared.
 5. ESCALATE: [BLOCKER]/[INCIDENT] with evidence path, incidents BEFORE recovery.
-6. CLOSE-OUT: [DONE] with summary + SHA + PR + lane-tree path + branch; leave pane at shell prompt for orch reaping.
+6. CLOSE-OUT: [DONE] with summary + SHA + PR + lane-tree path + branch; exit the agent binary (shell prompt). Orch reaps the pane in the ACCEPT SEQUENCE same beat as verified (L4) — do not wait for the operator to ask.
 
 Commands in briefs are copy-paste-exact. Give acceptance criteria, never code. Scratch: `/tmp/<todo-slug>_<artifact>`.
 
