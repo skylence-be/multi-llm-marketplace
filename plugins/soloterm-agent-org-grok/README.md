@@ -44,7 +44,9 @@ See the skills for detailed playbooks. The conduct is the same as the Claude/Cod
 ## Notes
 
 - The Solo binary path is the one used by the rest of the Skylence multi-LLM stack. If you use a different packaging, edit `mcp_config.json`.
+- Hook commands use exact `${GROK_PLUGIN_ROOT}/hooks/...` load-time substitution (same Grok gotcha as core-grok / skylence-plugins: nested `${VAR:-default}` expands empty and leaves hooks inert).
 - Hook markers use `/tmp/grok-org-lanes-<sessionId>` (falls back to claude names for mixed environments).
 - Skills are host-agnostic; only spawn flags and a few env references are host specific in comments.
+- Grok SessionStart is often observe-only; org-conduct-refresh still runs on compact, but injected stdout may not reach the model depending on Grok version.
 
 This plugin + core-grok together give you the full "super" Grok baseline + org.

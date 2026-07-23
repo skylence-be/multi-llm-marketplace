@@ -50,7 +50,7 @@ while [ "$i" -lt "$COUNT" ]; do
       OUT=$(perl -e '
         $SIG{ALRM} = sub { die "timeout\n" };
         alarm $ARGV[0];
-        open(my $f, "-|", "grok", "-p", $ARGV[1], "--output-format", "json", "--always-approve", "--max-turns", "1", "--disallowed-tools", "run_terminal_command,search_replace,web_search,web_fetch,task,todo_write,Agent,read_file,grep,list_dir") or die "spawn: $!";
+        open(my $f, "-|", "grok", "-p", $ARGV[1], "--effort", "medium", "--output-format", "json", "--always-approve", "--max-turns", "1", "--disallowed-tools", "run_terminal_command,search_replace,web_search,web_fetch,task,todo_write,Agent,read_file,grep,list_dir") or die "spawn: $!";
         local $/; my $o = <$f>; close($f); print $o;
       ' "$LLM_TIMEOUT_SECONDS" "$PROMPT" 2>/dev/null) || allow
       # Extract from JSON text field or plain

@@ -1,5 +1,5 @@
 {
-  "description": "Agent-org session discipline for Grok: org-lane-mark marks sessions that dispatch Solo workers or arm timers (PreToolUse on solo MCP spawn/timer tools); org-conduct-refresh re-injects role-skill re-read order after compaction (SessionStart compact matcher) — summaries keep facts not conduct; org-stop-gate blocks a marked session's first Stop with anti-idle checklist. All inert if never spawned workers.",
+  "description": "Agent-org session discipline for Grok: org-lane-mark marks sessions that dispatch Solo workers or arm timers (PreToolUse on solo MCP spawn/timer tools); org-conduct-refresh re-injects role-skill re-read order after compaction (SessionStart compact matcher) — summaries keep facts not conduct; org-stop-gate blocks a marked session's first Stop with anti-idle checklist. All inert if never spawned workers. Commands use exact ${GROK_PLUGIN_ROOT} load-time substitution (nested ${VAR:-default} expands empty against process env).",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; sh \"$PLUGIN_ROOT/hooks/org-lane-mark.sh\"",
+            "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/org-lane-mark.sh\"",
             "statusMessage": "org-lane-mark"
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; sh \"$PLUGIN_ROOT/hooks/org-conduct-refresh.sh\"",
+            "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/org-conduct-refresh.sh\"",
             "statusMessage": "org-conduct-refresh"
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; sh \"$PLUGIN_ROOT/hooks/org-stop-gate.sh\"",
+            "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/org-stop-gate.sh\"",
             "statusMessage": "org-stop-gate"
           }
         ]

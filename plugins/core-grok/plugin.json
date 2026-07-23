@@ -1,7 +1,7 @@
 {
   "name": "core-grok",
-  "version": "0.2.0",
-  "description": "Grok port of the core baseline. Ships Grok-native judge-hook (PreToolUse rules engine with JSON decision, escalate via grok -p), writing-guard (PreToolUse AI-tells guard), research-nudge (Stop hook), and the core guidelines for ~/.grok/AGENTS.md. /core-grok:setup seeds ~/.grok/judge-rules.json and writes the guidelines block. Compatible with Grok plugin layout and CLAUDE_* alias envs.",
+  "version": "0.2.3",
+  "description": "Grok port of the core baseline. Ships Grok-native judge-hook (PreToolUse rules engine with JSON decision, escalate via grok -p --effort medium; also fires on skyline_run), writing-guard (PreToolUse AI-tells guard), research-nudge (Stop hook), and the core guidelines for ~/.grok/AGENTS.md (including default-medium Grok spawn effort). /core-grok:setup seeds ~/.grok/judge-rules.json and writes the guidelines block. Hook commands use exact ${GROK_PLUGIN_ROOT} load-time substitution.",
   "author": {
     "name": "Skylence",
     "url": "https://github.com/skylence-be"

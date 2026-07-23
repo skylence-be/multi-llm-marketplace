@@ -31,7 +31,7 @@ PROMPT=$(printf 'The assistant response below ends a turn. Does it make a FACTUA
 OUT=$(perl -e '
   $SIG{ALRM} = sub { die "timeout\n" };
   alarm $ARGV[0];
-  open(my $f, "-|", "grok", "-p", $ARGV[1], "--output-format", "json", "--always-approve", "--max-turns", "1", "--disallowed-tools", "run_terminal_command,search_replace,web_search,web_fetch,task,todo_write,Agent") or die "spawn: $!";
+  open(my $f, "-|", "grok", "-p", $ARGV[1], "--effort", "medium", "--output-format", "json", "--always-approve", "--max-turns", "1", "--disallowed-tools", "run_terminal_command,search_replace,web_search,web_fetch,task,todo_write,Agent") or die "spawn: $!";
   local $/; my $o = <$f>; close($f); print $o;
 ' "$TIMEOUT" "$PROMPT" 2>/dev/null) || allow
 
