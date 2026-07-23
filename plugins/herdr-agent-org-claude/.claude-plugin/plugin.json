@@ -1,0 +1,23 @@
+{
+  "name": "herdr-agent-org-claude",
+  "version": "1.0.0",
+  "description": "Skylence agent-org on the Herdr substrate, for Claude Code. Six role skills (orchestrator, planner, herdr-worker, replacer, org-audit, herdr control surface) + a filesystem board CLI, so no Solo MCP is needed: workers are real Herdr panes started with `herdr agent start`, steered with `herdr agent prompt`, and followed up with one-shot `herdr agent wait`. Four session-discipline hooks (org-lane-mark, org-stop-gate anti-idle with evidence-based premise and sweep settling, org-conduct-refresh post-compaction, planner-singleton-gate across Herdr sessions) use ${CLAUDE_PLUGIN_ROOT}. Ships build-slot (machine-wide compile serializer) and ghost-probe (no-fusion input-line classifier). Requires herdr >= 0.7 and HERDR_ENV=1.",
+  "author": {
+    "name": "Skylence",
+    "url": "https://github.com/skylence-be"
+  },
+  "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
+  "repository": "https://github.com/skylence-be/multi-llm-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "agent-org",
+    "herdr",
+    "orchestrator",
+    "multi-agent",
+    "claude",
+    "planner",
+    "terminal-multiplexer",
+    "no-fusion",
+    "build-slot"
+  ]
+}

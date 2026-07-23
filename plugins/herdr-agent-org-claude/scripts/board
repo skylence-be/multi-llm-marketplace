@@ -1,0 +1,330 @@
+#!/bin/sh
+# board: filesystem board for herdr-agent-org (todos, comments, pads, blockers).
+# Root resolution (first hit):
+#   1. $HERDR_ORG_ROOT
+#   2. $PWD/.herdr-org  if it exists
+#   3. $HOME/.herdr-org/default
+#
+# Usage:
+#   board init [org-name]
+#   board path
+#   board list [--status STATUS]
+#   board get <slug>
+#   board create <slug> [--title TEXT] [--status STATUS] [--owner NAME] [--body-file PATH]
+#   board set-status <slug> <status>
+#   board set-owner <slug> <agent-name|"">
+#   board set-blockers <slug> <slug,slug,...|"">
+#   board comment <slug> <text...>
+#   board pad list
+#   board pad get <name>
+#   board pad append <name> <text...>
+#   board pad write <name>   # body from stdin
+#
+# Status values: pending | in_progress | blocked | verified | complete
+set -eu
+
+board_root() {
+  if [ -n "${HERDR_ORG_ROOT:-}" ]; then
+    printf '%s\n' "$HERDR_ORG_ROOT"
+    return
+  fi
+  if [ -d "$PWD/.herdr-org" ]; then
+    printf '%s\n' "$PWD/.herdr-org"
+    return
+  fi
+  printf '%s\n' "${HOME}/.herdr-org/default"
+}
+
+ROOT=$(board_root)
+TODOS="$ROOT/todos"
+PADS="$ROOT/pads"
+META="$ROOT/meta"
+
+need_root() {
+  if [ ! -d "$TODOS" ]; then
+    echo "board: no board at $ROOT (run: board init)" >&2
+    exit 1
+  fi
+}
+
+now_utc() {
+  date -u +%Y-%m-%dT%H:%M:%SZ
+}
+
+slug_ok() {
+  case "$1" in
+    ''|*[!a-z0-9_-]*|-*|_*|[0-9]*) return 1 ;;
+  esac
+  return 0
+}
+
+todo_path() {
+  printf '%s/%s.md\n' "$TODOS" "$1"
+}
+
+front_get() {
+  # front_get FILE KEY
+  awk -v k="$2" '
+    BEGIN { in_fm=0 }
+    NR==1 && $0=="---" { in_fm=1; next }
+    in_fm && $0=="---" { exit }
+    in_fm {
+      if (index($0, k ":") == 1) {
+        v = substr($0, length(k)+2)
+        sub(/^[ \t]+/, "", v)
+        gsub(/^["'"'"']|["'"'"']$/, "", v)
+        print v
+        exit
+      }
+    }
+  ' "$1"
+}
+
+# Rewrites one frontmatter key in place. Kept separate from set_field so the
+# updated: stamp can reuse it without recursing.
+front_set_simple() {
+  f=$1; k=$2; v=$3
+  tmp=$(mktemp "${TMPDIR:-/tmp}/herdr-board.XXXXXX")
+  awk -v k="$k" -v v="$v" '
+    BEGIN { in_fm=0; done=0 }
+    NR==1 && $0=="---" { in_fm=1; print; next }
+    in_fm && $0=="---" {
+      if (!done) print k ": " v
+      in_fm=0; print; next
+    }
+    in_fm {
+      if (index($0, k ":") == 1) {
+        print k ": " v
+        done=1
+        next
+      }
+      print
+      next
+    }
+    { print }
+  ' "$f" > "$tmp" && mv "$tmp" "$f"
+}
+
+set_field() {
+  f=$1; k=$2; v=$3
+  front_set_simple "$f" "$k" "$v"
+  front_set_simple "$f" "updated" "$(now_utc)"
+}
+
+cmd_init() {
+  name=${1:-default}
+  case "$name" in
+    /*|./*|../*) target=$name ;;
+    *) target="${HOME}/.herdr-org/${name}" ;;
+  esac
+  mkdir -p "$target/todos" "$target/pads" "$target/meta"
+  if [ ! -f "$target/meta/org.json" ]; then
+    cat > "$target/meta/org.json" <<EOF
+{
+  "name": "$(basename "$target")",
+  "created": "$(now_utc)",
+  "substrate": "herdr",
+  "runtime": "claude",
+  "version": 1
+}
+EOF
+  fi
+  if [ ! -f "$target/pads/inbox.md" ]; then
+    printf '# Inbox\n\nOperator questions and escalations land here.\n' > "$target/pads/inbox.md"
+  fi
+  printf 'board root: %s\n' "$target"
+  printf 'export HERDR_ORG_ROOT=%s\n' "$target"
+}
+
+cmd_list() {
+  need_root
+  filter=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --status) filter=$2; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  printf '%-20s %-12s %-16s %s\n' "SLUG" "STATUS" "OWNER" "TITLE"
+  printf '%-20s %-12s %-16s %s\n' "----" "------" "-----" "-----"
+  for f in "$TODOS"/*.md; do
+    [ -f "$f" ] || continue
+    slug=$(basename "$f" .md)
+    st=$(front_get "$f" status)
+    ow=$(front_get "$f" owner)
+    ti=$(front_get "$f" title)
+    if [ -n "$filter" ] && [ "$st" != "$filter" ]; then
+      continue
+    fi
+    printf '%-20s %-12s %-16s %s\n' "$slug" "$st" "${ow:--}" "${ti:--}"
+  done
+}
+
+cmd_get() {
+  need_root
+  slug=$1
+  p=$(todo_path "$slug")
+  [ -f "$p" ] || { echo "board: no todo $slug" >&2; exit 1; }
+  cat "$p"
+}
+
+cmd_create() {
+  need_root
+  slug=$1; shift
+  slug_ok "$slug" || { echo "board: bad slug (use [a-z][a-z0-9_-]*)" >&2; exit 2; }
+  p=$(todo_path "$slug")
+  [ ! -f "$p" ] || { echo "board: todo $slug exists" >&2; exit 1; }
+  title=$slug
+  status=pending
+  owner=""
+  body_file=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --title) title=$2; shift 2 ;;
+      --status) status=$2; shift 2 ;;
+      --owner) owner=$2; shift 2 ;;
+      --body-file) body_file=$2; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  ts=$(now_utc)
+  {
+    printf '%s\n' "---"
+    printf 'id: %s\n' "$slug"
+    printf 'title: %s\n' "$title"
+    printf 'status: %s\n' "$status"
+    printf 'owner: %s\n' "$owner"
+    printf 'blockers: []\n'
+    printf 'created: %s\n' "$ts"
+    printf 'updated: %s\n' "$ts"
+    printf '%s\n\n' "---"
+    if [ -n "$body_file" ]; then
+      cat "$body_file"
+    else
+      printf '# %s\n\n(brief body)\n' "$title"
+    fi
+    printf '\n## Comments\n'
+  } > "$p"
+  printf 'created %s\n' "$p"
+}
+
+cmd_set_status() {
+  need_root
+  slug=$1; st=$2
+  p=$(todo_path "$slug")
+  [ -f "$p" ] || { echo "board: no todo $slug" >&2; exit 1; }
+  case "$st" in
+    pending|in_progress|blocked|verified|complete) ;;
+    *) echo "board: bad status" >&2; exit 2 ;;
+  esac
+  set_field "$p" status "$st"
+  printf 'status %s -> %s\n' "$slug" "$st"
+}
+
+cmd_set_owner() {
+  need_root
+  slug=$1; ow=${2:-}
+  p=$(todo_path "$slug")
+  [ -f "$p" ] || { echo "board: no todo $slug" >&2; exit 1; }
+  set_field "$p" owner "$ow"
+  printf 'owner %s -> %s\n' "$slug" "${ow:-(cleared)}"
+}
+
+cmd_set_blockers() {
+  need_root
+  slug=$1; raw=${2:-}
+  p=$(todo_path "$slug")
+  [ -f "$p" ] || { echo "board: no todo $slug" >&2; exit 1; }
+  if [ -z "$raw" ]; then
+    val="[]"
+  else
+    val="[$(printf '%s' "$raw" | sed 's/,/", "/g; s/^/"/; s/$/"/') ]"
+  fi
+  set_field "$p" blockers "$val"
+  printf 'blockers %s -> %s\n' "$slug" "$val"
+}
+
+cmd_comment() {
+  need_root
+  slug=$1; shift
+  p=$(todo_path "$slug")
+  [ -f "$p" ] || { echo "board: no todo $slug" >&2; exit 1; }
+  text=$*
+  [ -n "$text" ] || { echo "board: empty comment" >&2; exit 2; }
+  ts=$(now_utc)
+  printf '\n### %s\n\n%s\n' "$ts" "$text" >> "$p"
+  front_set_simple "$p" "updated" "$ts"
+  printf 'commented %s\n' "$slug"
+}
+
+cmd_pad_list() {
+  need_root
+  for f in "$PADS"/*; do
+    [ -f "$f" ] || continue
+    basename "$f"
+  done
+}
+
+cmd_pad_get() {
+  need_root
+  name=$1
+  p="$PADS/$name"
+  [ -f "$p" ] || p="$PADS/${name}.md"
+  [ -f "$p" ] || { echo "board: no pad $name" >&2; exit 1; }
+  cat "$p"
+}
+
+cmd_pad_append() {
+  need_root
+  name=$1; shift
+  p="$PADS/$name"
+  case "$name" in
+    *.md) ;;
+    *) p="$PADS/${name}.md" ;;
+  esac
+  [ -f "$p" ] || printf '# %s\n\n' "$(basename "$p" .md)" > "$p"
+  printf '\n### %s\n\n%s\n' "$(now_utc)" "$*" >> "$p"
+  printf 'appended %s\n' "$p"
+}
+
+cmd_pad_write() {
+  need_root
+  name=$1
+  p="$PADS/$name"
+  case "$name" in
+    *.md) ;;
+    *) p="$PADS/${name}.md" ;;
+  esac
+  cat > "$p"
+  printf 'wrote %s\n' "$p"
+}
+
+usage() {
+  sed -n '2,30p' "$0" | sed 's/^# \?//'
+  exit 2
+}
+
+[ "$#" -ge 1 ] || usage
+cmd=$1; shift
+case "$cmd" in
+  init) cmd_init "${1:-default}" ;;
+  path) printf '%s\n' "$ROOT" ;;
+  list) cmd_list "$@" ;;
+  get) [ "$#" -ge 1 ] || usage; cmd_get "$1" ;;
+  create) [ "$#" -ge 1 ] || usage; cmd_create "$@" ;;
+  set-status) [ "$#" -ge 2 ] || usage; cmd_set_status "$1" "$2" ;;
+  set-owner) [ "$#" -ge 1 ] || usage; cmd_set_owner "$1" "${2:-}" ;;
+  set-blockers) [ "$#" -ge 1 ] || usage; cmd_set_blockers "$1" "${2:-}" ;;
+  comment) [ "$#" -ge 2 ] || usage; cmd_comment "$@" ;;
+  pad)
+    sub=${1:-}; shift || true
+    case "$sub" in
+      list) cmd_pad_list ;;
+      get) [ "$#" -ge 1 ] || usage; cmd_pad_get "$1" ;;
+      append) [ "$#" -ge 2 ] || usage; cmd_pad_append "$@" ;;
+      write) [ "$#" -ge 1 ] || usage; cmd_pad_write "$1" ;;
+      *) usage ;;
+    esac
+    ;;
+  *) usage ;;
+esac
