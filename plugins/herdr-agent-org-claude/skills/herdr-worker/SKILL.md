@@ -14,7 +14,7 @@ $BOARD get <slug>
 
 You implement; the orchestrator verifies and merges. Your PTY is a Herdr pane.
 
-**Your board comments are the only durable record of your work.** Claude Code renders in the terminal's alternate screen, which never enters Herdr's host scrollback, so `herdr agent read` gives the conductor the current frame and nothing before it. Anything you do not write to the board effectively did not happen. Comment at every phase boundary, not at the end.
+**Your board comments are the durable record of your work.** Your pane's scrollback holds what you have already committed to screen, but it dies with the pane, and the orchestrator reaps your agent as soon as your lane is verified (L4). Anything you do not write to the board effectively did not happen. Comment at every phase boundary, not at the end.
 
 ## Non-negotiables
 

@@ -5,7 +5,7 @@ description: Successor pickup on the Herdr substrate. Inherit a predecessor work
 
 # Replacer (successor pickup)
 
-Your context is fresh; the predecessor's knowledge survives only in artifacts. Trust artifacts, never prose. On Herdr this bites harder than on Solo: your predecessor's pane output lived in Claude's alternate screen and is gone, so the board todo and git are all there is.
+Your context is fresh; the predecessor's knowledge survives only in artifacts. Trust artifacts, never prose. On Herdr this bites harder than on Solo: your predecessor's pane was reaped and its scrollback went with it, so the board todo and git are all there is.
 
 1. CONTRACT: read the lane todo body and the issues it references (`board get <slug>`). That is your acceptance criteria.
 2. HANDOVER: read the todo comments newest-first. The last [HANDOVER] or checkpoint comment is your starting state; earlier milestones are history.
