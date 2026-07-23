@@ -61,7 +61,7 @@ if [ -f "$PLUGIN_ROOT/hooks/hooks.json" ]; then
     echo "hooks.json: present (could not confirm \${GROK_PLUGIN_ROOT} path form)"
   fi
 fi
-echo ""
+fi
 echo ''
 echo '== compat check =='
 if grep -q '^\[compat.claude\]' ~/.grok/config.toml 2>/dev/null && grep -q 'hooks = false' ~/.grok/config.toml; then
