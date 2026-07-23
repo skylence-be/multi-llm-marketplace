@@ -17,7 +17,7 @@ The LAWS bind absolutely; the PLAYBOOK explains and equips. Discretion is legal 
 | scratchpad | `board pad list|get|append|write` |
 | spawn_agent plus PTY | `scripts/dispatch-worker`, or `pane split` then `agent start` |
 | send_input | `herdr agent prompt` / `agent send-keys` (after the no-fusion check) |
-| get_process_output | `herdr agent read` / `pane read` (snapshot only, see ALTERNATE SCREEN) |
+| get_process_output | `herdr agent read` / `pane read` (frame plus scrollback, see READS AND WHAT SURVIVES) |
 | list_processes | `herdr agent list` plus `herdr pane list` |
 | timer_fire_when_idle | `herdr agent wait --until idle --until done --until blocked` (one-shot) |
 | close_process | worker leaves the pane at a shell prompt; you reap the agent |
@@ -49,13 +49,13 @@ PEER SWEEP: at every ANCHOR, run the FP column against peer orgs too (`herdr ses
 
 ## PLAYBOOK
 
-### ALTERNATE SCREEN (read this before trusting any read)
+### READS AND WHAT SURVIVES (read this before trusting any read)
 
-Claude Code renders its TUI in the terminal's alternate screen, and alternate-screen rows never enter Herdr's host scrollback. `herdr agent read --source visible` (or `--source detection`) shows the CURRENT frame; `recent` and `recent-unwrapped` are thin or empty for a Claude worker, and a bigger `--lines` cannot recover history that was never in scrollback. Three consequences bind you:
+`herdr agent read --source visible` (or `--source detection`) shows the CURRENT frame. `recent` and `recent-unwrapped` reach back through the pane's host scrollback, which on the measured Claude Code build does carry committed transcript, so a bigger `--lines` recovers past turns. MEASURE, never assume: Herdr's docs say alternate-screen rows never enter host scrollback and count Claude Code as full-screen, and that is not what herdr 0.7.5 did with this build on 2026-07-23. One call settles it for the box you are on: `herdr pane read <pane> --source recent --lines 300`. Three consequences bind you:
 
-1. A worker's board comments are the record. If a claim is not on the board, it does not exist, however clearly you remember reading it in a tail (L15).
+1. A worker's board comments are the record. Scrollback dies with the pane, so the moment you reap an agent (L4) its history goes with it; a claim that is not on the board does not exist, however clearly you remember reading it in a tail (L15).
 2. Every brief orders milestone comments at phase boundaries, not one summary at the end. A worker that reports only at the end and then dies takes its evidence with it.
-3. When you need bulk output from a worker (a full test log, a long diff), ask it to write the file and name the path, then read the file. Do not fish with `--lines`.
+3. A worker mid-turn has scrolled nothing yet, so `recent` equals `visible` until it commits output: an empty `recent` on a `working` agent means "not yet", not "never". For bulk output (a full test log, a long diff) still ask the worker to write the file and name the path, because a file outlives the pane.
 
 Also: `herdr integration install claude` installs a session-identity hook for pane restore only. Claude Code is NOT authoritative for lifecycle state; state comes from Herdr's screen-manifest detection, and `blocked` is only reported when a known approval or permission UI is on screen. Waits are a good-enough settle signal, not a contract. `herdr agent explain <target>` diagnoses a state that looks wrong.
 

@@ -28,7 +28,7 @@ Your durable surfaces are the **filesystem board** (`board *`) and GitHub. You n
 
 - Confirm `HERDR_ENV=1`. You live in a Herdr pane like everyone else.
 - Briefs must name the board root explicitly (`HERDR_ORG_ROOT`), because a worker pane that did not inherit it resolves the board somewhere else and writes its milestones into the void.
-- Claude workers render in the alternate screen, so pane reads are snapshots and not transcripts. Every brief you write orders milestone comments AT PHASE BOUNDARIES, never one summary at the end. A lane whose evidence exists only in pane output has no evidence.
+- Pane scrollback dies with the pane, and a lane's agent is reaped as soon as it is verified, so a lane whose evidence exists only in pane output has no evidence. Every brief you write orders milestone comments AT PHASE BOUNDARIES, never one summary at the end.
 - You never spawn agents, so `agent start` is not yours to run. Requests reach you as prompts into your pane; answers go on the board.
 
 ## Skylore
