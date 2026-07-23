@@ -1,6 +1,6 @@
 {
   "name": "soloterm-agent-org-grok",
-  "version": "1.3.5",
+  "version": "1.3.6",
   "description": "Grok port of Skylence agent-org. Bundles Solo MCP server (board/PTY/timer) + the five role skills (orchestrator, planner, solo-worker, replacer, org-audit), build-slot, ghost-probe. Includes session discipline hooks adapted for Grok lifecycle (org-lane-mark, org-stop-gate, org-conduct-refresh) with exact ${GROK_PLUGIN_ROOT} load-time paths. mcpServers points at the Solo stdio binary.",
   "author": {
     "name": "Skylence",
