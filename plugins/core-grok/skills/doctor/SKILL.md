@@ -52,6 +52,15 @@ echo "Hooks (judge-hook, writing-guard, research-nudge) are declared in the plug
 echo "They are loaded automatically when the core-grok plugin is trusted and active in the session."
 echo "There is no manual copy into ~/.grok/hooks/ (unlike some Claude setups)."
 echo "To force reload: open /plugins and press 'r', or run 'grok plugin reload'."
+if [ -f "$PLUGIN_ROOT/hooks/hooks.json" ]; then
+  if grep -qE 'GROK_PLUGIN_ROOT:-\$\{|GROK_PLUGIN_ROOT:-\$\{CLAUDE|PLUGIN_ROOT="\$\{GROK_PLUGIN_ROOT:-' "$PLUGIN_ROOT/hooks/hooks.json" 2>/dev/null; then
+    echo "hooks.json: BROKEN path form — nested \${GROK_PLUGIN_ROOT:-...} expands empty at load time; commands must be sh \"\${GROK_PLUGIN_ROOT}/hooks/....sh\""
+  elif grep -q '\${GROK_PLUGIN_ROOT}/hooks/' "$PLUGIN_ROOT/hooks/hooks.json" 2>/dev/null; then
+    echo "hooks.json: exact \${GROK_PLUGIN_ROOT} load-time paths OK"
+  else
+    echo "hooks.json: present (could not confirm \${GROK_PLUGIN_ROOT} path form)"
+  fi
+fi
 echo ""
 echo '== compat check =='
 if grep -q '^\[compat.claude\]' ~/.grok/config.toml 2>/dev/null && grep -q 'hooks = false' ~/.grok/config.toml; then

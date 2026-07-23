@@ -12,7 +12,7 @@ Installs opinionated safety and quality guardrails that work with Grok's native 
 - `hooks/judge-rules.example.json` — the shared Skylence safety ruleset.
 - `skills/setup/` — `/core-grok:setup` seeds the rules file, writes the guidelines block, and stamps the version.
 - `skills/doctor/` — `/core-grok:doctor` performs a read-only audit of judge-rules, AGENTS.md, version stamp, and hook notes.
-- `templates/agents-md.md` — the canonical Advisor/Decisive/Coding/Review/Writing guidelines (compaction-surviving fenced block).
+- `templates/agents-md.md` — the canonical Advisor/Decisive/Coding/Review/Writing guidelines (compaction-surviving fenced block), including Grok worker/subagent effort: default medium, high only when complexity warrants it.
 - `plugin.json` — Grok plugin manifest.
 
 ## Install (after adding the marketplace)
@@ -33,10 +33,12 @@ Or from CLI: `grok -p "/core-grok:setup" --always-approve`
 
 ## Notes on compatibility
 
-- Uses `GROK_PLUGIN_ROOT` with `CLAUDE_PLUGIN_ROOT` fallback so the same plugin files are robust.
+- Hook commands must use exact `${GROK_PLUGIN_ROOT}/hooks/...` (load-time substitution). Nested forms like `${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}` expand empty against process env and leave hooks fail-open — do not reintroduce them.
+- Judge also matches `skyline_run` so shell still goes through the rules engine when skyline-grok redirects bash.
 - Writes user guidelines to `~/.grok/AGENTS.md` (Grok scans `~/.grok/` and project `AGENTS.md`).
 - Hook contract matches Grok's documented stdin JSON (`toolName`/`toolInput`) + stdout decision JSON.
-- The judge and nudge call back into `grok` headless for LLM verdicts; the inner call disables side-effect tools to reduce recursion risk.
+- The judge and nudge call back into `grok` headless for LLM verdicts at `--effort medium`; the inner call disables side-effect tools to reduce recursion risk.
+- Guidelines tell agents to spawn Grok workers/subagents at medium effort by default (high only on judged complexity) — same policy as soloterm-agent-org.
 
 ## Verification
 

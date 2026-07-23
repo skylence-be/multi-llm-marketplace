@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "core-grok",
-      "description": "Opinionated Grok baseline: /core-grok:setup seeds ~/.grok/judge-rules.json and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing + compaction survival) into ~/.grok/AGENTS.md. Ships Grok-native judge-hook (PreToolUse), writing-guard, research-nudge Stop hook. Uses GROK_PLUGIN_ROOT with Claude alias fallbacks.",
+      "description": "Opinionated Grok baseline: /core-grok:setup seeds ~/.grok/judge-rules.json and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing + compaction survival) into ~/.grok/AGENTS.md. Ships Grok-native judge-hook (PreToolUse, including skyline_run), writing-guard, research-nudge Stop hook. Hook paths use exact ${GROK_PLUGIN_ROOT} load-time substitution.",
       "source": {
         "type": "local",
         "path": "./plugins/core-grok"
@@ -19,7 +19,7 @@
     },
     {
       "name": "soloterm-agent-org-grok",
-      "description": "Skylence agent-org v2 for Grok. Bundles the Solo MCP server (board/PTY/timer substrate) + orchestrator, planner (max-effort grounded plans), solo-worker, replacer, org-audit skills, capacity-check gate, build-slot serializer, ghost-probe, capacity-probe scripts. Includes session-discipline hooks adapted for Grok (lane marking, conduct refresh, stop gate).",
+      "description": "Skylence agent-org v2 for Grok. Bundles the Solo MCP server (board/PTY/timer substrate) + orchestrator, planner (max-effort grounded plans), solo-worker, replacer, org-audit skills, capacity-check gate, build-slot serializer, ghost-probe, capacity-probe scripts. Session-discipline hooks (lane mark, conduct refresh, stop gate) use exact ${GROK_PLUGIN_ROOT} load-time paths.",
       "source": {
         "type": "local",
         "path": "./plugins/soloterm-agent-org-grok"

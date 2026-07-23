@@ -1,4 +1,5 @@
 {
+  "description": "core-grok baseline guards for Grok. PreToolUse: judge-hook on shell (run_terminal_command/Bash and skyline_run when skyline redirects bash); writing-guard on edit/write tools. Stop: research-nudge on hedged factual claims. Commands use exact ${GROK_PLUGIN_ROOT} load-time substitution (Grok expands ${VAR:-default} against process env where plugin root is unset, so nested defaults fail-open).",
   "hooks": {
     "PreToolUse": [
       {
@@ -6,17 +7,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/judge-hook.sh\" ]; then printf '{\"decision\":\"allow\"}\\n'; exit 0; fi; sh \"$PLUGIN_ROOT/hooks/judge-hook.sh\"",
+            "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/judge-hook.sh\"",
             "statusMessage": "judge-hook"
           }
         ]
       },
       {
-        "matcher": "search_replace|Write|Edit|replace_file_content|write_to_file",
+        "matcher": "skyline_run|.*skyline_run$",
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/writing-guard.sh\" ]; then printf '{\"decision\":\"allow\"}\\n'; exit 0; fi; sh \"$PLUGIN_ROOT/hooks/writing-guard.sh\"",
+            "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/judge-hook.sh\"",
+            "statusMessage": "judge-hook"
+          }
+        ]
+      },
+      {
+        "matcher": "search_replace|write|Write|Edit|replace_file_content|write_to_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/writing-guard.sh\"",
             "statusMessage": "writing-guard"
           }
         ]
@@ -27,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PLUGIN_ROOT=\"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}\"; if [ -z \"$PLUGIN_ROOT\" ] || [ ! -f \"$PLUGIN_ROOT/hooks/research-nudge.sh\" ]; then printf '{\"decision\":\"allow\"}\\n'; exit 0; fi; sh \"$PLUGIN_ROOT/hooks/research-nudge.sh\"",
+            "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/research-nudge.sh\"",
             "statusMessage": "research-nudge"
           }
         ]
