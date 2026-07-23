@@ -1,7 +1,7 @@
 {
   "name": "soloterm-agent-org-codex",
-  "version": "0.9.6",
-  "description": "Codex package for the full Skylence agent org: bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus orchestrator, planner, replacer, org-audit, solo-worker conduct, the capacity-check spawn gate, build-slot serializer, execpolicy rules, ghost-probe and capacity-probe helpers, and Codex lifecycle hooks.",
+  "version": "0.9.7",
+  "description": "Codex package for the full Skylence agent org: bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus orchestrator, planner, replacer, org-audit, solo-worker conduct build-slot serializer, execpolicy rules, ghost-probe and helpers, and Codex lifecycle hooks.",
   "author": {
     "name": "Skylence",
     "url": "https://github.com/skylence-be"
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "Agent Org Codex",
     "shortDescription": "Full Skylence agent-org skills and Codex hooks.",
-    "longDescription": "A Codex-native companion to the Claude Code agent-org plugin. It packages the shared orchestrator, planner, replacer, org-audit, and capacity-check skills from the Claude package, keeps the Codex solo-worker variant, and includes AGENTS.md guidance, execpolicy rules for build-slot and nextest safety, helper scripts used by Solo-orchestrated lanes (build-slot, ghost-probe, capacity-probe), and Codex lifecycle hooks for SessionStart steering plus PreToolUse build-slot checks.",
+    "longDescription": "A Codex-native companion to the Claude Code agent-org plugin. It packages the shared orchestrator, planner, replacer, org-audit, and skills from the Claude package, keeps the Codex solo-worker variant, and includes AGENTS.md guidance, execpolicy rules for build-slot and nextest safety, helper scripts used by Solo-orchestrated lanes (build-slot, ghost-probe), and Codex lifecycle hooks for SessionStart steering plus PreToolUse build-slot checks.",
     "developerName": "Skylence",
     "category": "Developer Tools",
     "capabilities": [
