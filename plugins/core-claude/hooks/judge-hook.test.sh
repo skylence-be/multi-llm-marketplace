@@ -142,7 +142,7 @@ denies "eval runs sudo" "sudo invocation" Bash \
 # shellcheck disable=SC2016  # literal backticks are the payload under test
 denies "backticks hide sudo" "sudo invocation" Bash \
   "$(bash_cmd 'echo `sudo reboot`')"
-# Pre-existing gaps (ALLOW on old AND new) — file separately; not asserted here:
+# Both gaps that review left open are asserted below, in the #25 sections:
 #   su -c reboot ; script -q /dev/null poweroff
 # Fail-closed: tokenizer cannot resolve interpreter -e code → raw fallback DENY.
 denies "perl -e with sudo inside (fail-closed)" "sudo invocation" Bash \
@@ -167,8 +167,96 @@ denies "chrt PRIO wraps sudo" "sudo invocation" Bash \
   "$(bash_cmd 'chrt 1 sudo reboot')"
 denies "script FILE wraps sudo" "sudo invocation" Bash \
   "$(bash_cmd 'script -q /dev/null sudo reboot')"
+# Filed as an open gap by #25. Verified already closed by the %WRAP_POS entry
+# #24 gave `script`, and pinned here so it cannot quietly reopen: the wrapper
+# and its positional are both modelled, so the real command still projects.
+denies "script FILE wraps a power command" "system power command" Bash \
+  "$(bash_cmd 'script -q /dev/null poweroff')"
 denies "env -S splits and runs the string" "sudo invocation" Bash \
   "$(bash_cmd 'env -S "sudo reboot"')"
+
+echo "--- must DENY: privilege programs beyond sudo (#25) -------------------"
+
+# $PRIV covered sudo|doas|pkexec|run0 only, so `su -c reboot`, `su root` and
+# `sudoedit /etc/hosts` were all ALLOW on the shipped hook. su is the awkward
+# one: sudo takes a PROGRAM as its operand, su takes a USER and hides the
+# command in a -c string, so walking the sudo path would have named the user as
+# the program and thrown the payload away. The -c body is rescanned instead,
+# the way `sh -c` already was.
+denies "su -c runs the command string" "sudo invocation" Bash \
+  "$(bash_cmd 'su -c reboot')"
+denies "su -- user -c runs the command string" "sudo invocation" Bash \
+  "$(bash_cmd 'su -- root -c reboot')"
+denies "su - user -c keeps the login dash" "sudo invocation" Bash \
+  "$(bash_cmd 'su - root -c reboot')"
+denies "su --command= joined form" "sudo invocation" Bash \
+  "$(bash_cmd 'su --command=reboot')"
+# No -c at all: switching user IS the escalation, there is nothing to recurse.
+denies "bare su to another user" "sudo invocation" Bash \
+  "$(bash_cmd 'su root')"
+denies "wrapper-hidden su" "sudo invocation" Bash \
+  "$(bash_cmd 'timeout 5 su -c reboot')"
+denies "sudoedit is a sudo by another name" "sudo invocation" Bash \
+  "$(bash_cmd 'sudoedit /etc/hosts')"
+# sudoedit is in $PRIV_IN_TEXT too, so a non-inert program's quoted payload
+# cannot smuggle it. Bare `su` is deliberately NOT in that regex; the comment
+# on it in judge-hook.sh says why, and the ALLOW cases below are the cost of
+# putting a two-letter word there.
+denies "awk payload runs sudoedit" "sudo invocation" Bash \
+  "$(bash_cmd "awk 'BEGIN{system(\"sudoedit /etc/shadow\")}'")"
+
+# The other half of every deny in this file: text that merely NAMES the program
+# stays ALLOW, which is the whole reason these rules match argv0 and not raw.
+allows "grep whose pattern names sudoedit" Bash \
+  "$(bash_cmd "grep -n 'sudoedit' /etc/sudoers")"
+allows "echoing su -c as text" Bash \
+  "$(bash_cmd "echo 'su -c reboot'")"
+allows "commit message explaining the su rule" Bash \
+  "$(bash_cmd 'git commit -m "explain why su -c is now blocked"')"
+
+echo "--- must DENY: the setuid bit (#25) -----------------------------------"
+
+# `chmod u+s f` and `install -m 4755 f` were ALLOW, and they outlast the sudo
+# call the gate already blocks: sudo escalates once, a setuid bit escalates
+# forever. Neither can be an argv0 rule naming a privileged program, because
+# the program really is chmod and the fact that matters is an argument. The
+# projection decides and publishes `argv0: setuid-mode` for the rule to match,
+# so the false-positive property survives; the ALLOW half below proves it.
+denies "chmod u+s sets the setuid bit" "setuid/setgid bit" Bash \
+  "$(bash_cmd 'chmod u+s /usr/local/bin/x')"
+denies "chmod +s with no who-list" "setuid/setgid bit" Bash \
+  "$(bash_cmd 'chmod +s /usr/local/bin/x')"
+denies "chmod g+s sets the setgid bit" "setuid/setgid bit" Bash \
+  "$(bash_cmd 'chmod g+s /srv/shared')"
+denies "chmod octal 4755" "setuid/setgid bit" Bash \
+  "$(bash_cmd 'chmod 4755 /usr/local/bin/x')"
+denies "chmod octal 2755 is setgid" "setuid/setgid bit" Bash \
+  "$(bash_cmd 'chmod 2755 /srv/shared')"
+denies "chmod octal 04755 with a leading zero" "setuid/setgid bit" Bash \
+  "$(bash_cmd 'chmod 04755 /usr/local/bin/x')"
+# Quoting the mode does not change the call: the shell strips the quotes before
+# chmod sees argv, the same lesson the %INERT_IF_FLAGS audit had to learn.
+denies "quoted mode is the same call" "setuid/setgid bit" Bash \
+  "$(bash_cmd "chmod '4755' /usr/local/bin/x")"
+denies "install -m 4755" "setuid/setgid bit" Bash \
+  "$(bash_cmd 'install -m 4755 /bin/sh /usr/local/bin/x')"
+denies "install --mode=4755" "setuid/setgid bit" Bash \
+  "$(bash_cmd 'install --mode=4755 /bin/sh /usr/local/bin/x')"
+denies "env-wrapped setuid still denies" "setuid/setgid bit" Bash \
+  "$(bash_cmd 'env chmod u+s /usr/local/bin/x')"
+
+# Ordinary permission work must not be caught, and neither must text that only
+# names the command. Both halves are the point.
+allows "chmod 755 stays allowed" Bash \
+  "$(bash_cmd 'chmod 755 /tmp/x')"
+allows "chmod -R u+rwX stays allowed" Bash \
+  "$(bash_cmd 'chmod -R u+rwX /tmp/build')"
+allows "install without a setuid mode" Bash \
+  "$(bash_cmd 'install -m 0755 ./bin/tool /usr/local/bin/tool')"
+allows "grep whose pattern names chmod u+s" Bash \
+  "$(bash_cmd "grep -n 'chmod u+s' notes.txt")"
+allows "rg searching docs for the install form" Bash \
+  "$(bash_cmd "rg 'install -m 4755' docs/")"
 
 echo "--- must DENY: quoted payloads a non-inert program executes -----------"
 
@@ -349,6 +437,13 @@ check_rule "the remote half of L5 stays escalate too" '.class == "escalate"' git
 # the hook is broken and route around it.
 check_rule "rm reason matches the pattern's real scope" \
   '(.reason | test("absolute")) and (.pattern | test("\\(/\\|~"))' fs.rm-recursive
+
+# Every shipped rule is addressed by id or _category from an overlay's only /
+# disable / override keys, so a rule missing either is unreachable to the
+# operator who wants to turn it off. The setuid rule also has to match on the
+# projection, not raw text, or the ALLOW half of its section could not hold.
+check_rule "the setuid rule is addressable from an overlay" \
+  '._category == "privilege" and .match == "argv0" and .class == "deny"' privilege.setuid-bit
 
 # Still a hard deny for the case the rule exists for.
 denies "recursive rm on an absolute path still blocked" "recursive rm" Bash \
