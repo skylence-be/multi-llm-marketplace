@@ -43,10 +43,12 @@ set -uo pipefail
 # again, so an install could run a current hook against a stale ruleset and
 # silently keep the exact behaviour the update existed to fix.
 #
-# ~/.claude/judge-rules.json is now an OVERLAY, empty by default, with three
+# ~/.claude/judge-rules.json is now an OVERLAY, empty by default, with four
 # optional keys: `rules` (local additions, evaluated FIRST so a local allow can
-# sit above a shipped deny), `disable` (shipped rule ids or _category values to
-# drop) and `only` (keep just these, applied before `disable`).
+# sit above a shipped deny), `only` (keep just these shipped ids/_categories),
+# `disable` (drop these), and `override` (an id -> partial-rule map merged over
+# the shipped rule IN PLACE, so it keeps its position and therefore its
+# precedence against the other shipped rules).
 # $JUDGE_RULES_FILE still pins one exact ruleset and skips the overlay, which
 # is what the test suite uses.
 #
@@ -546,17 +548,25 @@ if [ -f "$CACHE_FILE" ] && [ "$(head -n 1 "$CACHE_FILE" 2>/dev/null)" = "$HDR" ]
 fi
 if [ -z "$RULES_TSV" ]; then
   # The overlay is applied HERE, once, into the same cached projection: `only`
-  # filters the shipped set, `disable` subtracts from what survives, and local
-  # rules are prepended so they win the first-match race.
+  # The overlay is applied HERE, once, into the same cached projection: `only`
+  # filters the shipped set, `disable` subtracts from what survives, `override`
+  # patches the survivors IN PLACE, and local `rules` are prepended so they win
+  # the first-match race.
+  # Why `override` exists when disable+add can imitate it: a shipped rule's
+  # POSITION decides precedence against the other shipped rules, and a local
+  # rule is prepended, so disable+add silently promotes the replacement above
+  # every shipped rule. Patching keeps the rule exactly where it was.
   RULES_TSV=$(jq -r --argjson ov "$OVERLAY_JSON" '
       ($ov.disable // []) as $dis
     | ($ov.only // []) as $only
+    | ($ov.override // {}) as $ovr
     | [ .rules[]? | . as $r
         | select(($only | length) == 0
                  or ($only | index($r.id)) != null
                  or ($only | index($r._category)) != null)
         | select((($dis | index($r.id)) != null
-                 or ($dis | index($r._category)) != null) | not) ] as $kept
+                 or ($dis | index($r._category)) != null) | not)
+        | if ($r.id != null and ($ovr | has($r.id))) then $r + $ovr[$r.id] else $r end ] as $kept
     | (($ov.rules // []) + $kept)[]
     | [(.tool // "*"), (.class // "allow"),
       ((.pattern // "") | @base64), ((.reason // "") | @base64),

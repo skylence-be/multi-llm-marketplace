@@ -381,6 +381,56 @@ ov_denies "non-object overlay keeps shipped rules" '["nope"]'    Bash "$SUDO_CMD
 
 # The compiled projection is cached, so the overlay has to be part of the cache
 # key. Same TMPDIR, two different overlays: the second must not be answered by
+# override: patch a shipped rule in place, keyed on its id. Everything not named
+# in the patch is inherited from the shipped rule.
+ov_allows "override can turn a shipped deny into an allow" \
+  '{"override":{"privilege.sudo":{"class":"allow"}}}' Bash "$SUDO_CMD"
+ov_denies "override leaves unnamed rules alone" \
+  '{"override":{"privilege.sudo":{"class":"allow"}}}' Bash "$POWER_CMD"
+
+# Patching the pattern is the real use: keep the rule and the id, narrow or
+# widen what it catches. Here shutdown/halt stay gated and reboot is dropped.
+ov_allows "override can narrow a shipped pattern" \
+  '{"override":{"system.power":{"pattern":"^argv0: (shutdown|halt)$"}}}' \
+  Bash "$(bash_cmd 'reboot')"
+ov_denies "the narrowed pattern still catches what it names" \
+  '{"override":{"system.power":{"pattern":"^argv0: (shutdown|halt)$"}}}' \
+  Bash "$(bash_cmd 'shutdown -h now')"
+
+# The reason travels with the patch, so a deny still explains itself.
+run_overlay '{"override":{"privilege.sudo":{"reason":"locally reworded"}}}' Bash "$SUDO_CMD"
+if [ "$RC" -eq 2 ] && printf '%s' "$STDERR" | grep -qF 'locally reworded'; then
+  ok "override can replace the deny reason"
+else
+  bad "override can replace the deny reason" "exit $RC: $STDERR"
+fi
+
+# An override naming an id that does not ship is inert, never an error: the
+# rest of the overlay must keep working around a typo.
+ov_denies "override of an unknown id is inert" \
+  '{"override":{"nope.not-a-rule":{"class":"allow"}}}' Bash "$SUDO_CMD"
+
+# disable wins over override: patching a rule that was dropped changes nothing,
+# rather than resurrecting it.
+ov_allows "disable beats override for the same id" \
+  '{"disable":["privilege.sudo"],"override":{"privilege.sudo":{"class":"deny"}}}' Bash "$SUDO_CMD"
+
+# The property that makes override worth having over disable+add. Local rules
+# are prepended, so a disable+add replacement outranks EVERY shipped rule,
+# including ones declared before it. `sudo rm -rf /x` is caught by
+# fs.rm-recursive first in the shipped order; imitating an override with
+# disable+add promotes the sudo rule above it and changes which reason fires,
+# while a real override leaves the order intact.
+run_overlay '{"override":{"privilege.sudo":{"reason":"patched in place"}}}' Bash "$(bash_cmd 'sudo rm -rf /x')"
+inplace="$STDERR"
+run_overlay '{"disable":["privilege.sudo"],"rules":[{"tool":"Bash","pattern":"^argv0: sudo$","match":"argv0","class":"deny","reason":"promoted to the front"}]}' Bash "$(bash_cmd 'sudo rm -rf /x')"
+promoted="$STDERR"
+if printf '%s' "$inplace" | grep -qF 'recursive rm' && printf '%s' "$promoted" | grep -qF 'promoted to the front'; then
+  ok "override preserves rule position, disable+add does not"
+else
+  bad "override preserves rule position, disable+add does not" "in-place='$inplace' promoted='$promoted'"
+fi
+
 # the first one's cache.
 cachedir="$TMP/shared-cache"; mkdir -p "$cachedir"
 printf '%s' '{}' >"$OVTMP/.claude/judge-rules.json"

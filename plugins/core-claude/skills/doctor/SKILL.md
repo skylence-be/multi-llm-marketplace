@@ -52,11 +52,15 @@ if [ ! -f "$R" ]; then
 elif ! jq -e 'type == "object"' "$R" >/dev/null 2>&1; then
   echo 'overlay: UNPARSEABLE. It is being IGNORED, so the shipped rules are active but your local customization is not'
 else
-  echo "overlay: $(jq '.rules | length' "$R" 2>/dev/null || echo 0) local rule(s), disable=$(jq -c '.disable // []' "$R"), only=$(jq -c '.only // []' "$R")"
+  echo "overlay: $(jq '.rules | length' "$R" 2>/dev/null || echo 0) local rule(s), only=$(jq -c '.only // []' "$R"), disable=$(jq -c '.disable // []' "$R"), override=$(jq -c '(.override // {}) | keys' "$R")"
   dupes=$(jq --slurpfile s "$P/hooks/judge-rules.json" '[.rules[]? | . as $r | select(($s[0].rules | map(.reason) | index($r.reason)) != null)] | length' "$R" 2>/dev/null || echo 0)
   [ "${dupes:-0}" -gt 0 ] && echo "overlay: contains $dupes COPY of a shipped rule. Overlay rules are evaluated first, so these silently pin the old version of any rule the plugin has since changed; re-run /core-claude:setup Step 2 to retire them"
   bad=$(jq -r --slurpfile s "$P/hooks/judge-rules.json" '($s[0].rules | map(.id) + map(._category) | unique) as $known | [((.disable // []) + (.only // []))[] | select(. as $k | ($known | index($k)) == null)] | join(", ")' "$R" 2>/dev/null)
-  [ -n "$bad" ] && echo "overlay: names unknown id/_category values that match nothing: $bad"
+  [ -n "$bad" ] && echo "overlay: only/disable name unknown id or _category values that match nothing: $bad"
+  badov=$(jq -r --slurpfile s "$P/hooks/judge-rules.json" '($s[0].rules | map(.id)) as $ids | [((.override // {}) | keys)[] | select(. as $k | ($ids | index($k)) == null)] | join(", ")' "$R" 2>/dev/null)
+  [ -n "$badov" ] && echo "overlay: override names ids that do not ship, so those patches do nothing: $badov (override keys on rule id only, never _category)"
+  both=$(jq -r '. as $o | [(($o.override // {}) | keys)[] | select(. as $k | (($o.disable // []) | index($k)) != null)] | join(", ")' "$R" 2>/dev/null)
+  [ -n "$both" ] && echo "overlay: disabled AND overridden, where disable wins so the patch is dead: $both"
 fi
 
 echo '== statusline (the one file still copied) =='

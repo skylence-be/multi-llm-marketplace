@@ -35,16 +35,17 @@ done
 
 ## Step 2: write the judge-rules OVERLAY (only if absent)
 
-The complete ruleset ships in `$CLAUDE_PLUGIN_ROOT/hooks/judge-rules.json` and arrives with every plugin update. `~/.claude/judge-rules.json` is now an OVERLAY and starts EMPTY: add rules with `rules`, drop shipped ones with `disable`, or narrow to a subset with `only`, all keyed on each shipped rule's stable `id` or its `_category`.
+The complete ruleset ships in `$CLAUDE_PLUGIN_ROOT/hooks/judge-rules.json` and arrives with every plugin update. `~/.claude/judge-rules.json` is now an OVERLAY and starts EMPTY. Add rules with `rules`, narrow to a subset with `only`, drop shipped ones with `disable`, or change one in place with `override` (a rule id mapped to a partial rule, shallow-merged over the shipped one). `only`, `disable` and the `override` keys are all named by a shipped rule's stable `id`, and `only`/`disable` also accept a `_category`.
 
 An existing file is left alone if it is already an overlay. A pre-overlay install instead has a full COPY of the shipped ruleset there, which still works and is also a trap: overlay rules are evaluated FIRST, so a stale copy silently reinstates the old version of any rule the plugin has since changed. Those copies are detected by matching each local rule's `reason` against the shipped set (a pre-overlay copy predates the `id` field, so ids cannot be the test), retired to a backup, and anything genuinely local is kept.
 
 ```bash
 RULES=~/.claude/judge-rules.json
 SHIPPED="$CLAUDE_PLUGIN_ROOT/hooks/judge-rules.json"
-OVERLAY_DOC="Local overlay for the core-claude judge. The complete ruleset ships with the plugin; this file only customizes it. Keys: rules (local additions, evaluated first), disable (shipped rule ids or _category values to drop), only (keep just these). Empty means the shipped ruleset is fully active."
+OVERLAY_DOC="Local overlay for the core-claude judge. The complete ruleset ships with the plugin; this file only customizes it. Keys: rules (local additions, evaluated first), only (keep just these shipped ids or _category values), disable (drop these, applied after only), override (rule id -> partial rule, shallow-merged over the shipped rule in place so it keeps its position). Empty means the shipped ruleset is fully active."
 if [ ! -f "$RULES" ]; then
-  jq -n --arg c "$OVERLAY_DOC" '{_comment: $c, rules: [], disable: [], only: []}' > "$RULES"
+  jq -n --arg c "$OVERLAY_DOC" '{_comment: $c, rules: [], only: [], disable: [], override: {}}' > "$RULES"
+  echo "wrote empty overlay $RULES"
   echo "wrote empty overlay $RULES"
 else
   # `. as $r` first: inside index(...) the input is the mapped array, so a bare
@@ -55,7 +56,7 @@ else
     jq --slurpfile s "$SHIPPED" --arg c "$OVERLAY_DOC" \
       '{_comment: $c,
         rules: [.rules[]? | . as $r | select(($s[0].rules | map(.reason) | index($r.reason)) == null)],
-        disable: (.disable // []), only: (.only // [])}' \
+        only: (.only // []), disable: (.disable // []), override: (.override // {})}' \
       "$RULES" > "$RULES.tmp" && mv "$RULES.tmp" "$RULES"
     echo "retired $dupes copied shipped rule(s) from $RULES (backup: .fullcopy.bak.*); the plugin supplies those now, $(jq '.rules | length' "$RULES") local rule(s) kept"
   else
