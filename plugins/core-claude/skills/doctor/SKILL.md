@@ -14,8 +14,11 @@ P="$CLAUDE_PLUGIN_ROOT"
 S=~/.claude/settings.json
 
 echo '== gate (the one that matters) =='
+# The payload comes from a FILE on purpose: a command line that spells out a
+# privilege word is denied by the very rule it is probing, so an inline JSON
+# payload would make this check unrunnable exactly when the gate is healthy.
 probe=$(mktemp -d)
-printf '%s' '{"tool_name":"Bash","tool_input":{"command":"sudo ls /root"}}' \
+cat "$P/hooks/probe-payload.json" \
   | TMPDIR="$probe" bash "$P/hooks/judge-hook.sh" >/dev/null 2>&1
 rc=$?
 rm -rf "$probe"
