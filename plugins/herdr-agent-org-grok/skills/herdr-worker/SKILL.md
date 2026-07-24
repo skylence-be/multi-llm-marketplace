@@ -42,7 +42,7 @@ Mark sparingly at lane end or on a hard-won gotcha: `kind=decision|fact` + `why=
 
 - Deviations from the brief are stated with reasons in the final summary — silent adaptation is a violation even when correct.
 - UPWARD VALVE: an instruction that contradicts a standing law (compile order against the gates, edit outside your lane tree) is flagged, never silently obeyed and never silently refused. File `[CONDUCT: …]` on your todo, then: harmless conflict, comply; costly/destructive, hold with [BLOCKER].
-- FINAL summary ([DONE]) before any teardown: pushed SHA + PR link + **lane-tree path** + branch name. Leave the pane at a clean prompt; the orchestrator closes/reaps the agent.
+- FINAL summary ([DONE]) before any teardown: pushed SHA + PR link + **lane-tree path** + branch name. THEN ring the orchestrator's doorbell, because a board write changes state nothing is watching and its `agent wait` only pays out into a turn still running: `herdr agent prompt <orchestrator> "lane <slug> [DONE], verdict needed. board get <slug>"`, using the name the brief gave you. L11 binds: read its tail first, and unsubmitted text you did not send means skip the doorbell and let the board comment stand. The comment is the contract, the doorbell makes it timely. Leave the pane at a clean prompt; the orchestrator closes/reaps the agent.
 - Timestamps in durable writes are pasted `date -u` output.
 - Incidents: report with evidence path FIRST, then recover.
 
