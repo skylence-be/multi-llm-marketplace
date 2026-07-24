@@ -1,0 +1,47 @@
+#!/bin/sh
+# Pre-commit: fast checks only. Anything slow belongs in CI, because a hook that
+# costs 30 seconds per commit gets disabled within a week and then guards nothing.
+#
+# Install once per clone:  git config core.hooksPath .githooks
+# Bypass deliberately:     git commit --no-verify
+#
+# .git/hooks is not version controlled, which is why this lives in a tracked
+# directory and is wired through core.hooksPath instead.
+
+fail=0
+
+# The role skills are generated into four plugin variants from one source. The
+# failure this catches is not "forgot to copy": it is a diverged line edited
+# once per copy where every individual diff looked correct. A human cannot see
+# that in review; a hash can.
+if [ -f tools/soloterm-skills/sync-skills.py ]; then
+  if ! python3 tools/soloterm-skills/sync-skills.py --check >/dev/null 2>&1; then
+    echo "pre-commit: soloterm role skills have drifted from their source."
+    python3 tools/soloterm-skills/sync-skills.py --check 2>&1 | sed 's/^/  /'
+    echo "  fix: python3 tools/soloterm-skills/sync-skills.py   (then re-stage)"
+    fail=1
+  fi
+fi
+
+# Cheap syntax gate on shipped shell and JSON. Catches the class of typo that
+# otherwise reaches a machine where the hook silently stops loading.
+# The checker follows the SHEBANG: core-hud.sh uses process substitution
+# `< <(...)`, which is valid bash and a syntax error under `sh -n`. Checking
+# every .sh with sh would reject correct files for using the language they
+# declare.
+check_syntax() {
+  case "$(head -1 "$1")" in
+    *bash*) bash -n "$1" 2>&1 ;;
+    *) sh -n "$1" 2>&1 ;;
+  esac
+}
+for f in $(git diff --cached --name-only --diff-filter=ACM); do
+  [ -f "$f" ] || continue
+  case "$f" in
+    *.sh) check_syntax "$f" >/dev/null || { echo "pre-commit: $f is not valid shell"; fail=1; } ;;
+    *.json) jq -e . "$f" >/dev/null 2>&1 || { echo "pre-commit: $f is not valid JSON"; fail=1; } ;;
+  esac
+done
+
+[ "$fail" = 0 ] || { echo "pre-commit: blocked. Use --no-verify to override deliberately."; exit 1; }
+exit 0
