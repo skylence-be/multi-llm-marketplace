@@ -1,6 +1,6 @@
 ---
 name: setup-skill
-description: One-shot, no-prompt installer for the core Claude Code baseline. Copies the judge-hook (PreToolUse), writing-guard (PostToolUse), and research-nudge (Stop) hooks plus the core-hud statusline into ~/.claude, seeds judge-rules.json, wires settings.json to a full-bypass permission posture gated by the judge-hook with dynamic workflows disabled, and writes the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) into the user-scope CLAUDE.md. Invoke as /core-claude:setup on a new machine.
+description: One-shot, no-prompt installer for the core Claude Code baseline. The judge-hook (PreToolUse), writing-guard (PostToolUse) and research-nudge (Stop) now run FROM the plugin via its own hooks.json, so this skill installs only the core-hud statusline, writes an empty ~/.claude/judge-rules.json overlay, removes any legacy copy-based hook wiring, and sets the full-bypass permission posture with dynamic workflows disabled plus the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing) in the user-scope CLAUDE.md. Invoke as /core-claude:setup on a new machine.
 ---
 
 # /core-claude:setup
@@ -11,37 +11,63 @@ All source files live under `$CLAUDE_PLUGIN_ROOT` (the root of this plugin). Run
 
 > Posture note: this skill sets `permissions.defaultMode` to `bypassPermissions`. Per-call permission prompts go away; the judge-hook (PreToolUse) plus its rules become the safety gate. PreToolUse hooks still run under bypass mode, so the gate stays live.
 
-## Step 1: install the hook and statusline scripts (backup first)
+## Step 1: statusline, and retire any legacy hook copies (backup first)
+
+The three hooks are registered by the plugin itself (`hooks/hooks.json`, paths under `${CLAUDE_PLUGIN_ROOT}`), so they update whenever the plugin does and are NOT copied here. Only the statusline is still a copy, because `settings.json.statusLine` takes a plain command path.
+
+Older installs have copies at `~/.claude/{judge-hook,writing-guard,research-nudge}.sh` wired by absolute path in settings.json. Leaving them in place would run every hook TWICE (two judges, and two `claude -p` spawns on an escalate rule), so they are backed up and removed here while Step 3 removes their wiring.
 
 ```bash
 mkdir -p ~/.claude
 ts=$(date +%Y%m%d%H%M%S)
-for f in judge-hook.sh writing-guard.sh research-nudge.sh core-hud.sh; do
-  [ -f ~/.claude/$f ] && cp ~/.claude/$f ~/.claude/$f.bak.$ts
+cp "$CLAUDE_PLUGIN_ROOT/statusline/core-hud.sh" ~/.claude/core-hud.sh.new
+[ -f ~/.claude/core-hud.sh ] && cp ~/.claude/core-hud.sh ~/.claude/core-hud.sh.bak.$ts
+mv ~/.claude/core-hud.sh.new ~/.claude/core-hud.sh
+chmod +x ~/.claude/core-hud.sh
+
+for f in judge-hook.sh writing-guard.sh research-nudge.sh; do
+  if [ -f ~/.claude/$f ]; then
+    mv ~/.claude/$f ~/.claude/$f.retired.$ts
+    echo "retired legacy copy ~/.claude/$f -> $f.retired.$ts (the plugin now owns this hook)"
+  fi
 done
-cp "$CLAUDE_PLUGIN_ROOT/hooks/judge-hook.sh" \
-   "$CLAUDE_PLUGIN_ROOT/hooks/writing-guard.sh" \
-   "$CLAUDE_PLUGIN_ROOT/hooks/research-nudge.sh" \
-   "$CLAUDE_PLUGIN_ROOT/statusline/core-hud.sh" ~/.claude/
-chmod +x ~/.claude/judge-hook.sh ~/.claude/writing-guard.sh ~/.claude/research-nudge.sh ~/.claude/core-hud.sh
 ```
 
-## Step 2: seed the judge rules (only if absent)
+## Step 2: write the judge-rules OVERLAY (only if absent)
 
-Leaves an existing rules file untouched so local edits survive a re-run.
+The complete ruleset ships in `$CLAUDE_PLUGIN_ROOT/hooks/judge-rules.json` and arrives with every plugin update. `~/.claude/judge-rules.json` is now an OVERLAY and starts EMPTY: add rules with `rules`, drop shipped ones with `disable`, or narrow to a subset with `only`, all keyed on each shipped rule's stable `id` or its `_category`.
+
+An existing file is left alone if it is already an overlay. A pre-overlay install instead has a full COPY of the shipped ruleset there, which still works and is also a trap: overlay rules are evaluated FIRST, so a stale copy silently reinstates the old version of any rule the plugin has since changed. Those copies are detected by matching each local rule's `reason` against the shipped set (a pre-overlay copy predates the `id` field, so ids cannot be the test), retired to a backup, and anything genuinely local is kept.
 
 ```bash
-if [ ! -f ~/.claude/judge-rules.json ]; then
-  cp "$CLAUDE_PLUGIN_ROOT/hooks/judge-rules.example.json" ~/.claude/judge-rules.json
-  echo "seeded ~/.claude/judge-rules.json"
+RULES=~/.claude/judge-rules.json
+SHIPPED="$CLAUDE_PLUGIN_ROOT/hooks/judge-rules.json"
+OVERLAY_DOC="Local overlay for the core-claude judge. The complete ruleset ships with the plugin; this file only customizes it. Keys: rules (local additions, evaluated first), disable (shipped rule ids or _category values to drop), only (keep just these). Empty means the shipped ruleset is fully active."
+if [ ! -f "$RULES" ]; then
+  jq -n --arg c "$OVERLAY_DOC" '{_comment: $c, rules: [], disable: [], only: []}' > "$RULES"
+  echo "wrote empty overlay $RULES"
 else
-  echo "~/.claude/judge-rules.json already exists, left as-is"
+  # `. as $r` first: inside index(...) the input is the mapped array, so a bare
+  # .reason there reads the array, not the rule, and jq errors out.
+  dupes=$(jq --slurpfile s "$SHIPPED" '[.rules[]? | . as $r | select(($s[0].rules | map(.reason) | index($r.reason)) != null)] | length' "$RULES" 2>/dev/null || echo 0)
+  if [ "${dupes:-0}" -gt 0 ]; then
+    cp "$RULES" "$RULES.fullcopy.bak.$(date +%Y%m%d%H%M%S)"
+    jq --slurpfile s "$SHIPPED" --arg c "$OVERLAY_DOC" \
+      '{_comment: $c,
+        rules: [.rules[]? | . as $r | select(($s[0].rules | map(.reason) | index($r.reason)) == null)],
+        disable: (.disable // []), only: (.only // [])}' \
+      "$RULES" > "$RULES.tmp" && mv "$RULES.tmp" "$RULES"
+    echo "retired $dupes copied shipped rule(s) from $RULES (backup: .fullcopy.bak.*); the plugin supplies those now, $(jq '.rules | length' "$RULES") local rule(s) kept"
+  else
+    echo "$RULES already an overlay, left as-is"
+  fi
 fi
+jq -e 'type == "object"' "$RULES" >/dev/null && echo "overlay parses: OK" || echo "overlay is NOT valid JSON. Fix it; until then the hook ignores the overlay and runs the shipped rules alone"
 ```
 
 ## Step 3: wire settings.json (backup first; idempotent)
 
-Adds the three hooks, the statusline, the full-bypass posture, `disableWorkflows: true`, and `awaySummaryEnabled: false` (disables the session recap). Adaptive thinking has no settings key, so it goes in `env` AND is pinned in the shell profile (next block). Re-running strips the prior core hook entries before re-adding, so it never stacks duplicates. Existing unrelated hooks and the deny list are preserved.
+Sets the statusline, the full-bypass posture, `disableWorkflows: true`, and `awaySummaryEnabled: false` (disables the session recap). Adaptive thinking has no settings key, so it goes in `env` AND is pinned in the shell profile (next block). It also STRIPS the legacy copy-based hook entries: the plugin registers those three hooks itself now, and leaving a settings.json entry beside it runs each hook twice. Existing unrelated hooks and the deny list are preserved.
 
 ```bash
 SETTINGS=~/.claude/settings.json
@@ -58,18 +84,10 @@ jq '
   | .permissions = (.permissions // {})
   | .permissions.defaultMode = "bypassPermissions"
   | .hooks = (.hooks // {})
-  | .hooks.PreToolUse = (
-      ((.hooks.PreToolUse // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("judge-hook.sh") | not)))
-      + [{hooks: [{type: "command", command: "bash ~/.claude/judge-hook.sh", statusMessage: "judge-hook"}]}]
-    )
-  | .hooks.PostToolUse = (
-      ((.hooks.PostToolUse // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("writing-guard.sh") | not)))
-      + [{matcher: "Write|Edit|mcp__.*skyline_(create|edit)", hooks: [{type: "command", command: "bash ~/.claude/writing-guard.sh", statusMessage: "writing-guard"}]}]
-    )
-  | .hooks.Stop = (
-      ((.hooks.Stop // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("research-nudge.sh") | not)))
-      + [{hooks: [{type: "command", command: "bash ~/.claude/research-nudge.sh", statusMessage: "research-nudge"}]}]
-    )
+  | .hooks.PreToolUse = ((.hooks.PreToolUse // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("judge-hook.sh") | not)))
+  | .hooks.PostToolUse = ((.hooks.PostToolUse // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("writing-guard.sh") | not)))
+  | .hooks.Stop = ((.hooks.Stop // []) | map(select(((.hooks // []) | map(.command) | join(" ")) | test("research-nudge.sh") | not)))
+  | .hooks |= with_entries(select(.value | length > 0))
 ' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 
 # Adaptive thinking has no settings.json *key* — only the env var
@@ -85,15 +103,23 @@ ptmp=$(mktemp)
 awk '/# >>> core:env >>>/{s=1} !s{print} /# <<< core:env <<</{s=0; next}' "$PROFILE" > "$ptmp"
 { cat "$ptmp"; printf '\n# >>> core:env >>>\nexport CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1\n# <<< core:env <<<\n'; } > "$PROFILE"
 rm -f "$ptmp"
-echo "settings.json wired: judge-hook, writing-guard, research-nudge, core-hud, bypassPermissions, disableWorkflows, recap off, adaptive-thinking off"
+echo "settings.json wired: core-hud, bypassPermissions, disableWorkflows, recap off, adaptive-thinking off; legacy copy-based hook entries stripped (the plugin registers them)"
 echo "shell profile pinned: CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 ($PROFILE)"
 
 echo '--- verify ---'
 jq -e '.permissions.defaultMode == "bypassPermissions"' "$SETTINGS" >/dev/null && echo 'defaultMode: OK' || echo 'defaultMode: FAILED'
-for h in judge-hook writing-guard research-nudge; do
-  jq -e --arg h "$h" '[.hooks[][]?.hooks[]?.command] | any(test($h))' "$SETTINGS" >/dev/null \
-    && echo "$h: wired" || echo "$h: FAILED TO WIRE — do not run under bypassPermissions until this is fixed"
-done
+# The gate is what makes bypassPermissions survivable, so verify it by RUNNING
+# it rather than by looking for a settings.json line that no longer exists.
+# This is the whole chain in one call: plugin hook script, plugin ruleset, and
+# the overlay on top of it.
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"sudo ls /root"}}' \
+  | bash "$CLAUDE_PLUGIN_ROOT/hooks/judge-hook.sh" >/dev/null 2>&1
+[ $? -eq 2 ] \
+  && echo 'judge-hook: LIVE (denied a gated command end to end)' \
+  || echo 'judge-hook: NOT DENYING. Do not run under bypassPermissions until this is fixed. Check that core-claude is enabled in settings.json enabledPlugins, that jq is installed, and that your overlay does not disable privilege.sudo.'
+jq -e '.enabledPlugins | to_entries | any(.key | startswith("core-claude@"))' ~/.claude/settings.json >/dev/null \
+  && echo 'core-claude plugin: enabled (its hooks.json registers judge/writing/research)' \
+  || echo 'core-claude plugin: NOT enabled. The three hooks will not run at all'
 ```
 
 ## Step 4: write the CLAUDE.md guidelines (backup first; idempotent; cross-checked)
@@ -143,15 +169,14 @@ Print this checklist, substituting the seeded/existing state for judge-rules and
 ```
 core-claude:setup
 ----------
-~/.claude/judge-hook.sh        installed (skyline-aware, rules cached by mtime)
-~/.claude/writing-guard.sh     installed (new-content scan; skyline matcher)
-~/.claude/research-nudge.sh    installed (org sessions + pressure-critical skipped)
-~/.claude/core-hud.sh          installed (statusline)
-~/.claude/judge-rules.json     seeded | existing
-~/.claude/settings.json        wired + VERIFIED (bypassPermissions, disableWorkflows, recap off, adaptive-thinking off, judge+writing+research hooks)
+plugin hooks                   judge-hook, writing-guard, research-nudge run from ${CLAUDE_PLUGIN_ROOT} (update with the plugin; nothing copied)
+~/.claude/core-hud.sh          installed (statusline; the one file still copied)
+~/.claude/judge-rules.json     empty overlay written | existing overlay kept | full copy retired to .fullcopy.bak
+~/.claude/*.sh.retired.*       legacy hook copies retired, if any were present
+~/.claude/settings.json        wired + VERIFIED (bypassPermissions, disableWorkflows, recap off, adaptive-thinking off, legacy hook entries stripped, judge-hook proven live by a real deny)
 ~/.zshrc | ~/.bashrc           pinned CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 (shell beats the settings env block)
 ~/.claude/CLAUDE.md            guidelines written + cross-checked against the shipped example
 ~/.claude/.core-claude-version stamped
 ```
 
-Then tell the user: restart Claude Code for the hooks and statusline to take effect, and that `/core-claude:doctor` re-checks all of this read-only at any time.
+Then tell the user: restart Claude Code for the plugin hooks and statusline to take effect, and that `/core-claude:doctor` re-checks all of this read-only at any time. If Step 1 retired any legacy copies, mention that the judge now updates with the plugin and no longer needs a re-run of this skill to pick up rule changes.

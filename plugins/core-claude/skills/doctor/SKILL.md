@@ -1,74 +1,91 @@
 ---
 name: doctor-skill
-description: Read-only health check of the core-claude install — hook/statusline file drift vs the plugin, settings.json wiring (judge/writing/research hooks, bypass posture, statusline), CLAUDE.md guidelines sync, judge-rules coverage vs the shipped example, and the version stamp. Run /core-claude:doctor when hooks look inert, after a plugin update, or on a machine you don't trust. Writes nothing.
+description: Read-only health check of the core-claude install. Proves the judge gate is live by running it, checks the plugin is enabled, flags legacy copy-based hook wiring that would double-fire, reports the judge-rules overlay, checks statusline drift and CLAUDE.md guidelines sync, and compares the version stamp. Run /core-claude:doctor when hooks look inert, after a plugin update, or on a machine you don't trust. Writes nothing.
 ---
 
 # /core-claude:doctor
 
-One read-only pass; report the output verbatim and make NO writes. The single most important line is the judge-hook wiring check: with `bypassPermissions` on and the judge unwired, nothing gates tool calls.
+One read-only pass; report the output verbatim and make NO writes. The single most important line is the GATE probe: with `bypassPermissions` on and the judge not denying, nothing stands between the model and the machine.
+
+Since 2026-07-24 the judge-hook, writing-guard and research-nudge run FROM the plugin (`hooks/hooks.json`, paths under `${CLAUDE_PLUGIN_ROOT}`), so they update with it and there is nothing to copy or keep in sync. A hook wired in `settings.json` by absolute path is now a LEGACY finding, not a healthy state: both copies fire, so every tool call is judged twice and an escalate rule spawns two `claude -p` processes.
 
 ```bash
 P="$CLAUDE_PLUGIN_ROOT"
 S=~/.claude/settings.json
-echo '== files (plugin vs installed) =='
-for pair in "hooks/judge-hook.sh judge-hook.sh" "hooks/writing-guard.sh writing-guard.sh" "hooks/research-nudge.sh research-nudge.sh" "statusline/core-hud.sh core-hud.sh"; do
-  set -- $pair
-  if [ ! -f ~/.claude/"$2" ]; then echo "$2: MISSING — run /core-claude:setup"
-  elif diff -q "$P/$1" ~/.claude/"$2" >/dev/null 2>&1; then echo "$2: in sync"
-  else echo "$2: DRIFT — local differs from the plugin copy; diff them before re-running setup (setup backs up first, but decide which side wins)"
+
+echo '== gate (the one that matters) =='
+probe=$(mktemp -d)
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"sudo ls /root"}}' \
+  | TMPDIR="$probe" bash "$P/hooks/judge-hook.sh" >/dev/null 2>&1
+rc=$?
+rm -rf "$probe"
+case "$rc" in
+  2) echo 'judge-hook: LIVE (denied a gated command end to end: script, shipped rules, overlay)' ;;
+  0) echo 'judge-hook: NOT DENYING. If bypassPermissions is on, NOTHING gates tool calls. Check jq is installed, that hooks/judge-rules.json exists in the plugin, and that your overlay does not disable privilege.sudo' ;;
+  *) echo "judge-hook: probe exited $rc (unexpected); treat the gate as unproven" ;;
+esac
+jq -e '.enabledPlugins | to_entries | any(.key | startswith("core-claude@"))' "$S" >/dev/null 2>&1 \
+  && echo 'core-claude plugin: enabled (its hooks.json registers judge/writing/research)' \
+  || echo 'core-claude plugin: NOT ENABLED. The probe above ran the script directly, but Claude Code is not running any of these hooks'
+
+echo '== legacy copies (should all be absent) =='
+legacy=0
+for f in judge-hook.sh writing-guard.sh research-nudge.sh; do
+  if [ -f ~/.claude/"$f" ]; then
+    legacy=1
+    echo "~/.claude/$f: PRESENT. Pre-2026-07-24 copy; retire it (setup Step 1 does this) or it may run beside the plugin's"
   fi
 done
-
-echo '== settings wiring =='
-if [ ! -f "$S" ]; then echo 'settings.json: MISSING'; else
-  jq -e '.permissions.defaultMode == "bypassPermissions"' "$S" >/dev/null 2>&1 \
-    && echo 'bypassPermissions: on' || echo 'bypassPermissions: off (posture not applied — judge wiring below matters less)'
-  jq -e '[.hooks.PreToolUse[]?.hooks[]?.command] | any(test("judge-hook"))' "$S" >/dev/null 2>&1 \
-    && echo 'judge-hook (PreToolUse): wired' \
-    || echo 'judge-hook (PreToolUse): NOT WIRED — if bypassPermissions is on, NOTHING gates tool calls; re-run /core-claude:setup now'
-  jq -e '[.hooks.PostToolUse[]?.hooks[]?.command] | any(test("writing-guard"))' "$S" >/dev/null 2>&1 \
-    && echo 'writing-guard (PostToolUse): wired' || echo 'writing-guard (PostToolUse): NOT WIRED'
-  jq -e '[.hooks.PostToolUse[]? | select((.hooks | map(.command) | join(" ")) | test("writing-guard")) | .matcher // ""] | any(test("skyline"))' "$S" >/dev/null 2>&1 \
-    && echo 'writing-guard matcher: covers skyline_create/skyline_edit' \
-    || echo 'writing-guard matcher: Write|Edit only — DEAD on skyline-mandated machines; re-run /core-claude:setup'
-  jq -e '[.hooks.Stop[]?.hooks[]?.command] | any(test("research-nudge"))' "$S" >/dev/null 2>&1 \
-    && echo 'research-nudge (Stop): wired' || echo 'research-nudge (Stop): NOT WIRED'
-  jq -e '.statusLine.command // "" | test("core-hud")' "$S" >/dev/null 2>&1 \
-    && echo 'core-hud (statusLine): wired' || echo 'core-hud (statusLine): NOT WIRED'
+if [ -f "$S" ]; then
+  for pat in judge-hook writing-guard research-nudge; do
+    jq -e --arg p "$pat" '[.hooks[]?[]?.hooks[]?.command] | any(test($p))' "$S" >/dev/null 2>&1 \
+      && { legacy=1; echo "settings.json: $pat still wired by path. It DOUBLE-FIRES beside the plugin hook; re-run /core-claude:setup to strip it"; }
+  done
 fi
+[ "$legacy" -eq 0 ] && echo 'none: hooks run only from the plugin'
+
+echo '== judge rules =='
+echo "shipped ruleset: $(jq '.rules | length' "$P/hooks/judge-rules.json" 2>/dev/null || echo 'UNREADABLE, the gate has no rules') rules (plugin-owned, updates with the plugin)"
+R=~/.claude/judge-rules.json
+if [ ! -f "$R" ]; then
+  echo 'overlay: absent (fine: the full shipped ruleset is active)'
+elif ! jq -e 'type == "object"' "$R" >/dev/null 2>&1; then
+  echo 'overlay: UNPARSEABLE. It is being IGNORED, so the shipped rules are active but your local customization is not'
+else
+  echo "overlay: $(jq '.rules | length' "$R" 2>/dev/null || echo 0) local rule(s), disable=$(jq -c '.disable // []' "$R"), only=$(jq -c '.only // []' "$R")"
+  dupes=$(jq --slurpfile s "$P/hooks/judge-rules.json" '[.rules[]? | . as $r | select(($s[0].rules | map(.reason) | index($r.reason)) != null)] | length' "$R" 2>/dev/null || echo 0)
+  [ "${dupes:-0}" -gt 0 ] && echo "overlay: contains $dupes COPY of a shipped rule. Overlay rules are evaluated first, so these silently pin the old version of any rule the plugin has since changed; re-run /core-claude:setup Step 2 to retire them"
+  bad=$(jq -r --slurpfile s "$P/hooks/judge-rules.json" '($s[0].rules | map(.id) + map(._category) | unique) as $known | [((.disable // []) + (.only // []))[] | select(. as $k | ($known | index($k)) == null)] | join(", ")' "$R" 2>/dev/null)
+  [ -n "$bad" ] && echo "overlay: names unknown id/_category values that match nothing: $bad"
+fi
+
+echo '== statusline (the one file still copied) =='
+if [ ! -f ~/.claude/core-hud.sh ]; then echo 'core-hud.sh: MISSING, run /core-claude:setup'
+elif diff -q "$P/statusline/core-hud.sh" ~/.claude/core-hud.sh >/dev/null 2>&1; then echo 'core-hud.sh: in sync'
+else echo 'core-hud.sh: DRIFT vs the plugin. Diff before re-running setup (statuslines are often customized deliberately)'
+fi
+jq -e '.statusLine.command // "" | test("core-hud")' "$S" >/dev/null 2>&1 \
+  && echo 'core-hud (statusLine): wired' || echo 'core-hud (statusLine): NOT WIRED'
+jq -e '.permissions.defaultMode == "bypassPermissions"' "$S" >/dev/null 2>&1 \
+  && echo 'bypassPermissions: on (the gate probe above is what makes this survivable)' \
+  || echo 'bypassPermissions: off (posture not applied)'
 
 echo '== CLAUDE.md guidelines =='
 awk '/<!-- BEGIN core:guidelines -->/{f=1} f{print} /<!-- END core:guidelines -->/{f=0}' ~/.claude/CLAUDE.md 2>/dev/null \
   | diff -q - "$P/templates/claude-md.md" >/dev/null 2>&1 \
   && echo 'fenced block: in sync with the plugin template' \
-  || echo 'fenced block: DRIFT or missing — re-run /core-claude:setup Step 4 to refresh (content outside the fences is preserved)'
-
-echo '== judge rules =='
-if [ -f ~/.claude/judge-rules.json ]; then
-  echo "active rules: $(jq '.rules | length' ~/.claude/judge-rules.json 2>/dev/null || echo 'UNPARSEABLE — judge is effectively a no-op')"
-  MISSING=$(jq -r --slurpfile ex "$P/hooks/judge-rules.example.json" '
-    [.rules[].pattern] as $mine
-    | [$ex[0].rules[] | select(.pattern as $p | ($mine | index($p)) | not)
-       | "  " + (._category // "?") + ": " + (.reason // .pattern)] | .[]' ~/.claude/judge-rules.json 2>/dev/null)
-  if [ -n "$MISSING" ]; then
-    echo 'shipped example rules NOT in your local set (your file is never auto-edited; merge by hand if wanted):'
-    echo "$MISSING"
-  else
-    echo 'local set covers every shipped example rule'
-  fi
-else
-  echo 'judge-rules.json: MISSING — the judge is a NO-OP; seed it via /core-claude:setup Step 2'
-fi
+  || echo 'fenced block: DRIFT or missing. Re-run /core-claude:setup Step 4 to refresh (content outside the fences is preserved)'
 
 echo '== version =='
 inst=$(cat ~/.claude/.core-claude-version 2>/dev/null || echo none)
 plug=$(jq -r .version "$P/.claude-plugin/plugin.json" 2>/dev/null || echo unknown)
 echo "installed: $inst | plugin: $plug"
-[ "$inst" = "$plug" ] || echo 'install is stale relative to the plugin — re-run /core-claude:setup'
+[ "$inst" = "$plug" ] || echo 'install stamp is stale relative to the plugin. Hooks and rules still update with the plugin; the stamp only tracks the settings/CLAUDE.md side, so re-run /core-claude:setup when convenient'
 ```
 
 Interpretation guide for the report you give the user:
 
-- The FILES section names which side moved; do not overwrite DRIFT blindly — the local copy may carry deliberate customization (statuslines often do).
-- NOT WIRED on judge-hook while bypassPermissions is on is the one red-alert combination; recommend re-running setup in the same breath.
-- The judge-rules section lists example rules missing locally so upgrades are visible; the local file is user-owned and never auto-merged.
+- The GATE probe is the headline. `NOT DENYING` together with `bypassPermissions: on` is the one red-alert combination, and it is now measured by running the hook rather than inferred from a settings.json line.
+- LEGACY findings are about cost and confusion, not safety: the gate still works, it just runs twice. Setup strips them.
+- An overlay carrying copies of shipped rules is the quiet one to catch. Nothing looks broken, and the machine keeps enforcing a rule version the plugin replaced.
+- A stale version stamp no longer implies stale hooks or rules, because those live in the plugin. Say so, rather than pushing a re-run as urgent.

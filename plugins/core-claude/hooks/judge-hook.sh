@@ -36,13 +36,44 @@
 
 set -uo pipefail
 
-RULES_FILE="${JUDGE_RULES_FILE:-$HOME/.claude/judge-rules.json}"
+# RULES RESOLUTION (2026-07-24). The COMPLETE ruleset ships WITH the plugin and
+# is found next to this script, so a rules change (a new rule, or a new schema
+# field such as "match": "argv0") reaches every install on plugin update.
+# Before this, setup seeded a copy into ~/.claude once and never touched it
+# again, so an install could run a current hook against a stale ruleset and
+# silently keep the exact behaviour the update existed to fix.
+#
+# ~/.claude/judge-rules.json is now an OVERLAY, empty by default, with three
+# optional keys: `rules` (local additions, evaluated FIRST so a local allow can
+# sit above a shipped deny), `disable` (shipped rule ids or _category values to
+# drop) and `only` (keep just these, applied before `disable`).
+# $JUDGE_RULES_FILE still pins one exact ruleset and skips the overlay, which
+# is what the test suite uses.
+#
+# A missing, empty, or malformed overlay leaves the shipped ruleset FULLY
+# active. The fail-open contract below covers infrastructure errors; it does
+# not extend to "your JSON did not parse", because that would let a typo in a
+# local file silently disarm the gate.
+HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || HOOK_DIR=""
+USER_RULES="$HOME/.claude/judge-rules.json"
 LLM_TIMEOUT_SECONDS="${JUDGE_LLM_TIMEOUT:-10}"
 LLM_MODEL="${JUDGE_LLM_MODEL:-claude-haiku-4-5-20251001}"
 CACHE_FILE="${TMPDIR:-/tmp}/judge-rules-cache-$(id -u)"
 
-[ -f "$RULES_FILE" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
+
+OVERLAY_JSON='{}'
+if [ -n "${JUDGE_RULES_FILE:-}" ]; then
+  BASE_RULES="$JUDGE_RULES_FILE"
+else
+  BASE_RULES=""
+  [ -n "$HOOK_DIR" ] && [ -f "$HOOK_DIR/judge-rules.json" ] && BASE_RULES="$HOOK_DIR/judge-rules.json"
+  if [ -f "$USER_RULES" ]; then
+    OVERLAY_JSON=$(cat "$USER_RULES" 2>/dev/null) || OVERLAY_JSON='{}'
+    printf '%s' "$OVERLAY_JSON" | jq -e 'type == "object"' >/dev/null 2>&1 || OVERLAY_JSON='{}'
+  fi
+fi
+[ -n "$BASE_RULES" ] && [ -f "$BASE_RULES" ] || exit 0
 
 b64d() { printf '%s' "$1" | base64 -d 2>/dev/null || printf '%s' "$1" | base64 -D 2>/dev/null; }
 
@@ -504,16 +535,33 @@ fi
 # class, or a match scope, and as non-whitespace IFS it preserves empty fields.
 # The header carries a schema version so a cache written by an older hook is
 # recompiled rather than read back a column short.
-RULES_MTIME=$(stat -f %m "$RULES_FILE" 2>/dev/null || stat -c %Y "$RULES_FILE" 2>/dev/null || echo 0)
-HDR="v2	$RULES_MTIME	$RULES_FILE"
+RULES_MTIME=$(stat -f %m "$BASE_RULES" 2>/dev/null || stat -c %Y "$BASE_RULES" 2>/dev/null || echo 0)
+# The overlay is hashed into the key, so editing ~/.claude/judge-rules.json
+# invalidates the cache exactly like touching the shipped file does.
+OVERLAY_SIG=$(printf '%s' "$OVERLAY_JSON" | cksum 2>/dev/null | awk '{print $1 "-" $2}')
+HDR="v3 $RULES_MTIME $OVERLAY_SIG $BASE_RULES"
 RULES_TSV=""
 if [ -f "$CACHE_FILE" ] && [ "$(head -n 1 "$CACHE_FILE" 2>/dev/null)" = "$HDR" ]; then
   RULES_TSV=$(tail -n +2 "$CACHE_FILE" 2>/dev/null)
 fi
 if [ -z "$RULES_TSV" ]; then
-  RULES_TSV=$(jq -r '.rules[]? | [(.tool // "*"), (.class // "allow"),
+  # The overlay is applied HERE, once, into the same cached projection: `only`
+  # filters the shipped set, `disable` subtracts from what survives, and local
+  # rules are prepended so they win the first-match race.
+  RULES_TSV=$(jq -r --argjson ov "$OVERLAY_JSON" '
+      ($ov.disable // []) as $dis
+    | ($ov.only // []) as $only
+    | [ .rules[]? | . as $r
+        | select(($only | length) == 0
+                 or ($only | index($r.id)) != null
+                 or ($only | index($r._category)) != null)
+        | select((($dis | index($r.id)) != null
+                 or ($dis | index($r._category)) != null) | not) ] as $kept
+    | (($ov.rules // []) + $kept)[]
+    | [(.tool // "*"), (.class // "allow"),
       ((.pattern // "") | @base64), ((.reason // "") | @base64),
-      ((.judge_prompt // "") | @base64), (.match // "raw")] | join("|")' "$RULES_FILE" 2>/dev/null) || exit 0
+      ((.judge_prompt // "") | @base64), (.match // "raw")] | join("|")' \
+    "$BASE_RULES" 2>/dev/null) || exit 0
   [ -n "$RULES_TSV" ] || exit 0
   { printf '%s\n' "$HDR"; printf '%s\n' "$RULES_TSV"; } > "$CACHE_FILE.tmp.$$" 2>/dev/null \
     && mv -f "$CACHE_FILE.tmp.$$" "$CACHE_FILE" 2>/dev/null || rm -f "$CACHE_FILE.tmp.$$" 2>/dev/null

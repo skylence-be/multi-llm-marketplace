@@ -1,0 +1,39 @@
+{
+  "description": "core-claude baseline guards, registered BY THE PLUGIN so they update with it. PreToolUse: judge-hook on every tool call (the hook classifies the tool itself, and its rules ship in judge-rules.json beside it; ~/.claude/judge-rules.json stays supported as an overlay). PostToolUse: writing-guard on write/edit tools plus their skyline equivalents. Stop: research-nudge on hedged factual claims. Until 2026-07-24 these three were COPIES that /core-claude:setup dropped into ~/.claude and wired by absolute path in settings.json, so a plugin update never reached the running hook; the setup skill now removes that wiring instead of writing it. Commands use ${CLAUDE_PLUGIN_ROOT} so the scripts and their rules resolve inside the installed plugin.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/judge-hook.sh\"",
+            "statusMessage": "judge-hook"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|mcp__.*skyline_(create|edit)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/writing-guard.sh\"",
+            "statusMessage": "writing-guard"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/research-nudge.sh\"",
+            "statusMessage": "research-nudge"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,10 +1,12 @@
 {
   "_comment": "Copy to ~/.claude/judge-rules.json and customize. Rules evaluate in declaration order; first match wins. Three classes: 'deny' blocks (exit 2); 'allow' short-circuits to allow (use for allowlist patterns above broader denies); 'escalate' spawns `claude -p` with judge_prompt (the hook appends the last few user messages from the transcript, so prompts that reference user intent are decidable) and parses the first word of the response (ALLOW or BLOCK). 'pattern' is a POSIX extended regex matched against the tool_input JSON plus the hook's normalization lines: rules with tool 'Bash' also bind *skyline_run (match text gains one 'cmd: <argv joined>' line per command), 'Write' also binds *skyline_create and 'Edit' also binds *skyline_edit (match text gains \"file_path\":\"<path>\" lines), so skyline routing cannot bypass a rule. Patterns are case-sensitive. Portable across GNU grep and BSD grep — avoid \\s inside [], use [[:space:]]; avoid [^\\n], use .* (which already excludes newlines). The '_category' field is an inline label, ignored by the hook.",
   "_categories": "fs | net | privilege | git-destructive | git-review | github | secrets | db | cloud | deps | system",
+  "_overlay": "This file is the COMPLETE ruleset and ships with the plugin, so new rules and new schema fields arrive on plugin update. Do NOT edit it to customize: local changes belong in ~/.claude/judge-rules.json, which is an OVERLAY and is empty by default. The overlay takes three optional keys. \"rules\" is a list of extra rules in this same shape, evaluated BEFORE the shipped ones (first match wins, so a local allow can sit above a shipped deny). \"disable\" is a list of shipped rule ids or _category values to drop. \"only\" is a list of ids or _category values to keep, dropping every shipped rule it does not name, and it is applied before \"disable\" so the two compose. Every shipped rule carries a stable \"id\" for exactly this purpose. An absent, empty, or malformed overlay leaves the shipped ruleset fully active, so a typo in a local file can never silently disarm the gate. Set $JUDGE_RULES_FILE to pin one exact ruleset and skip the overlay entirely.",
   "_match_scopes": "Optional per-rule 'match' field selects WHAT the pattern is tested against. 'raw' (default, and the behaviour of every rule without the field) matches the whole tool_input JSON. 'argv0' matches the hook's invoked-program projection: one 'argv0: <program basename>' line per pipeline stage, with wrappers (env, nice, timeout, xargs, ...) stripped and their flag values consumed, sudo/doas emitted and stepped past, and `sh -c` / eval / backtick payloads rescanned. When the tokenizer cannot fully understand a construct it marks the command uncertain and argv0 rules fall back to a raw word-boundary match (fail-closed — never weaker than pre-argv0 on exotic shapes). Use 'argv0' for rules about a program BEING RUN, so that merely naming it in an argument, a path, a JSON payload, or a heredoc does not trigger them. Use 'raw' when the rule needs arguments or flags (git push --force, dd of=/dev/disk, SQL text).",
   "_caveats": "Regex bypasses exist (rm -fr vs rm -rf, alternative interpreters, base64-decoded commands). This is a safety net, not a security boundary.",
   "rules": [
     {
+      "id": "fs.rm-recursive",
       "_category": "fs",
       "tool": "Bash",
       "pattern": "rm\\s+-[a-zA-Z]*[rR][a-zA-Z]*\\s+(/|~|\\$HOME)",
@@ -12,6 +14,7 @@
       "reason": "recursive rm targeting /, ~, or $HOME"
     },
     {
+      "id": "fs.dd-block-device",
       "_category": "fs",
       "tool": "Bash",
       "pattern": "\\bdd\\b.*of=/dev/(sd|nvme|disk|hda|hdb)",
@@ -19,6 +22,7 @@
       "reason": "dd writing to a block device (data destroyer)"
     },
     {
+      "id": "fs.mkfs",
       "_category": "fs",
       "tool": "Bash",
       "pattern": "\\bmkfs(\\.|\\s)",
@@ -26,14 +30,15 @@
       "reason": "filesystem format (mkfs.*)"
     },
     {
+      "id": "fs.chmod-777",
       "_category": "fs",
       "tool": "Bash",
       "pattern": "chmod\\s+(-R\\s+)?[0-7]*777\\b",
       "class": "deny",
       "reason": "chmod 777 (world-writable, often a sign of last-resort debugging)"
     },
-
     {
+      "id": "net.curl-pipe-shell",
       "_category": "net",
       "tool": "Bash",
       "pattern": "curl[^|]*\\|\\s*(bash|sh|zsh|ksh|fish)\\b",
@@ -41,14 +46,15 @@
       "reason": "pipe-to-shell from curl"
     },
     {
+      "id": "net.wget-pipe-shell",
       "_category": "net",
       "tool": "Bash",
       "pattern": "wget[^|]*-[Oo][^|]*\\|\\s*(bash|sh|zsh|ksh|fish)\\b",
       "class": "deny",
       "reason": "pipe-to-shell from wget"
     },
-
     {
+      "id": "privilege.sudo",
       "_category": "privilege",
       "tool": "Bash",
       "pattern": "^argv0: (sudo|doas|pkexec|run0)$",
@@ -56,8 +62,8 @@
       "class": "deny",
       "reason": "sudo invocation"
     },
-
     {
+      "id": "git.force-push",
       "_category": "git-destructive",
       "tool": "Bash",
       "pattern": "git\\s+push.*(--force(\\s|\")|\\s-f(\\s|\"))",
@@ -65,6 +71,7 @@
       "reason": "force push (does not match --force-with-lease)"
     },
     {
+      "id": "git.reset-hard",
       "_category": "git-destructive",
       "tool": "Bash",
       "pattern": "git\\s+reset\\s+(--hard|--keep)\\b",
@@ -72,6 +79,7 @@
       "reason": "git reset --hard / --keep (discards working tree changes)"
     },
     {
+      "id": "git.clean-force",
       "_category": "git-destructive",
       "tool": "Bash",
       "pattern": "git\\s+clean\\s+-[a-zA-Z]*f",
@@ -79,6 +87,7 @@
       "reason": "git clean -f (deletes untracked files irrecoverably)"
     },
     {
+      "id": "git.history-rewrite",
       "_category": "git-destructive",
       "tool": "Bash",
       "pattern": "git\\s+(filter-branch|filter-repo)\\b",
@@ -86,14 +95,15 @@
       "reason": "history rewrite (filter-branch / filter-repo)"
     },
     {
+      "id": "git.branch-force-delete",
       "_category": "git-destructive",
       "tool": "Bash",
       "pattern": "git\\s+branch\\s+-D\\b",
       "class": "deny",
       "reason": "force-delete local branch (-D)"
     },
-
     {
+      "id": "git.push-protected-branch",
       "_category": "git-review",
       "tool": "Bash",
       "pattern": "git\\s+push\\s+(--[^[:space:]]+\\s+)*(origin\\s+)?(main|master|production|prod|release)\\b",
@@ -102,6 +112,7 @@
       "judge_prompt": "A Claude Code session is about to run `git push` to a protected-looking branch (main, master, production, prod, release). Block unless the recent user message clearly requested this push (phrases like 'push to main', 'ship it', 'merge to main'). 'Commit' or 'finish up' alone is not sufficient authorization for a push to a protected branch."
     },
     {
+      "id": "git.remote-branch-delete",
       "_category": "git-review",
       "tool": "Bash",
       "pattern": "git\\s+push.*--delete\\b|git\\s+push\\s+origin\\s+:[^[:space:]]",
@@ -109,8 +120,8 @@
       "reason": "remote branch deletion",
       "judge_prompt": "A Claude Code session is about to delete a remote branch. Block unless the user explicitly named the branch and asked to delete it. Allow only when the branch name in the command appears verbatim in a recent user instruction."
     },
-
     {
+      "id": "secrets.write-env-file",
       "_category": "secrets",
       "tool": "Write",
       "pattern": "\"file_path\"\\s*:\\s*\"[^\"]*/\\.env(\\.|\")",
@@ -118,6 +129,7 @@
       "reason": "writing to a .env-style secret file"
     },
     {
+      "id": "secrets.edit-env-file",
       "_category": "secrets",
       "tool": "Edit",
       "pattern": "\"file_path\"\\s*:\\s*\"[^\"]*/\\.env(\\.|\")",
@@ -125,14 +137,15 @@
       "reason": "editing a .env-style secret file"
     },
     {
+      "id": "secrets.write-ssh-key",
       "_category": "secrets",
       "tool": "Write",
       "pattern": "\"file_path\"\\s*:\\s*\"[^\"]*\\.ssh/id_[a-zA-Z0-9_-]+\"",
       "class": "deny",
       "reason": "writing to an SSH private key"
     },
-
     {
+      "id": "db.destructive-sql",
       "_category": "db",
       "tool": "Bash",
       "pattern": "(DROP\\s+(TABLE|DATABASE|SCHEMA|INDEX)|TRUNCATE\\s+TABLE|DELETE\\s+FROM)\\b",
@@ -141,6 +154,7 @@
       "judge_prompt": "A Bash command contains destructive SQL (DROP/TRUNCATE/DELETE FROM). Block unless one of: the target database or table name clearly indicates non-production (contains 'test', 'dev', 'scratch', 'tmp', 'local'); the DELETE has a narrow WHERE clause and the user requested the cleanup; the command is a documented schema migration the user just asked to run. Block by default."
     },
     {
+      "id": "db.mongo-destructive",
       "_category": "db",
       "tool": "Bash",
       "pattern": "(mongosh?|mongo).*\\b(dropDatabase|dropCollection|deleteMany)\\(",
@@ -149,6 +163,7 @@
       "judge_prompt": "A Bash command is performing a destructive MongoDB operation (dropDatabase, dropCollection, deleteMany). Block unless the connection string or database name clearly indicates non-production (contains 'test', 'dev', 'local', 'scratch') and the user explicitly requested the deletion."
     },
     {
+      "id": "db.redis-flush",
       "_category": "db",
       "tool": "Bash",
       "pattern": "redis-cli\\b.*\\b(FLUSHALL|FLUSHDB)\\b",
@@ -156,8 +171,8 @@
       "reason": "Redis FLUSHALL / FLUSHDB",
       "judge_prompt": "A Bash command is wiping Redis (FLUSHALL or FLUSHDB). Block unless the connection target is clearly a non-production instance and the user explicitly asked for the flush."
     },
-
     {
+      "id": "cloud.terraform-destroy",
       "_category": "cloud",
       "tool": "Bash",
       "pattern": "\\bterraform\\s+destroy\\b",
@@ -166,6 +181,7 @@
       "judge_prompt": "A Bash command is running `terraform destroy`. Block unless the working directory name or `-var-file` argument clearly indicates a non-production environment (contains 'staging', 'dev', 'sandbox', 'scratch') AND the user explicitly requested the destruction. Block by default if the environment is unclear."
     },
     {
+      "id": "cloud.kubectl-delete",
       "_category": "cloud",
       "tool": "Bash",
       "pattern": "kubectl\\s+(delete|--context.*delete)\\s+(ns|namespace|deployment|deploy|sts|statefulset|pvc)\\b",
@@ -174,6 +190,7 @@
       "judge_prompt": "A Bash command is deleting a Kubernetes resource (namespace, deployment, statefulset, pvc). Block unless the cluster context clearly indicates non-production (name contains 'dev', 'staging', 'scratch', 'minikube', 'kind') AND the user explicitly named the resource. Block by default."
     },
     {
+      "id": "cloud.s3-destructive",
       "_category": "cloud",
       "tool": "Bash",
       "pattern": "aws\\s+s3\\b.*(rm.*--recursive|sync.*--delete)",
@@ -181,8 +198,8 @@
       "reason": "destructive S3 operation (recursive rm or --delete sync)",
       "judge_prompt": "A Bash command is performing a destructive S3 operation (`aws s3 rm --recursive` or `aws s3 sync --delete`). Block unless the bucket name clearly indicates a non-production target (contains 'test', 'staging', 'dev', 'scratch', 'tmp') AND the user explicitly authorized the operation. Block by default."
     },
-
     {
+      "id": "deps.pinned-install",
       "_category": "deps",
       "tool": "Bash",
       "pattern": "((npm|pnpm)\\s+(i|install|add)\\s+[^[:space:]]+@[0-9]|yarn\\s+add\\s+[^[:space:]]+@[0-9]|composer\\s+require\\s+[^[:space:]]+:)",
@@ -191,6 +208,7 @@
       "judge_prompt": "A Bash command installs a package pinned to a specific version (npm/pnpm/yarn @version, or composer require vendor/pkg:version). ALLOW if recent context shows the current version was looked up from the registry (npm view or npm show <pkg> version, composer show <pkg>, or checking npmjs.com / packagist.org), or if the pinned version already matches the project lockfile or manifest. BLOCK if the version looks pinned from memory without a lookup. In the block reason instruct: verify the current stable version first with `npm view <pkg> version` or `composer show <pkg> --all`, then pin that; do not use a version recalled from training."
     },
     {
+      "id": "deps.manifest-edit",
       "_category": "deps",
       "tool": "Edit",
       "pattern": "\"file_path\"\\s*:\\s*\"[^\"]*(package|composer)\\.json\"",
@@ -198,8 +216,8 @@
       "reason": "editing package.json/composer.json (possible version pin)",
       "judge_prompt": "An Edit is modifying package.json or composer.json. ALLOW if the change does not add or raise a dependency version, or if recent context shows the version was looked up from the registry (npm view / composer show / npmjs.com / packagist.org) or already matches the lockfile. BLOCK if a dependency version appears pinned from memory. In the block reason instruct: verify the current stable version first (`npm view <pkg> version` or `composer show <pkg> --all`), then use that; do not use a version recalled from training."
     },
-
     {
+      "id": "system.power",
       "_category": "system",
       "tool": "Bash",
       "pattern": "^argv0: (shutdown|reboot|halt|poweroff)$",
@@ -208,6 +226,7 @@
       "reason": "system power command"
     },
     {
+      "id": "system.mass-kill",
       "_category": "system",
       "tool": "Bash",
       "pattern": "(\\bkillall\\s|\\bpkill\\s+-9\\b|\\bkill\\s+-9\\s+1\\b)",
@@ -215,6 +234,7 @@
       "reason": "mass process kill or kill init"
     },
     {
+      "id": "git.push-mirror",
       "_category": "git-destructive",
       "tool": "Bash",
       "pattern": "git\\s+push\\s+.*--mirror\\b",
@@ -222,6 +242,7 @@
       "reason": "git push --mirror (overwrites ALL remote refs)"
     },
     {
+      "id": "github.repo-delete",
       "_category": "github",
       "tool": "Bash",
       "pattern": "gh\\s+repo\\s+delete\\b",
@@ -229,6 +250,7 @@
       "reason": "gh repo delete (irreversible repository deletion)"
     },
     {
+      "id": "github.release-delete",
       "_category": "github",
       "tool": "Bash",
       "pattern": "gh\\s+release\\s+delete\\b",
@@ -237,6 +259,7 @@
       "judge_prompt": "A command is deleting a GitHub release. Block unless the user explicitly named this release (tag or version) and asked for its deletion in a recent message; released artifacts may be referenced by installers and download channels. Block by default."
     },
     {
+      "id": "system.launchd-teardown",
       "_category": "system",
       "tool": "Bash",
       "pattern": "launchctl\\s+(bootout|unload|remove|kill)\\b",
@@ -245,6 +268,7 @@
       "judge_prompt": "A command is unloading, removing, or killing a launchd service. Block unless the service label clearly belongs to a scratch or test service the user asked to manage in a recent message. Production daemons an agent did not start must never be stopped by an agent. Block by default."
     },
     {
+      "id": "fs.diskutil-erase",
       "_category": "fs",
       "tool": "Bash",
       "pattern": "diskutil\\s+(erase(Disk|Volume)|partitionDisk|zeroDisk|secureErase|apfs\\s+delete)",

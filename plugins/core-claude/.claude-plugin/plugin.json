@@ -1,6 +1,6 @@
 {
   "name": "core-claude",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "description": "Opinionated Claude Code baseline. /core-claude:setup installs (no prompts) the judge-hook PreToolUse rules engine (skyline-aware: Bash/Write/Edit rules also bind skyline_run/create/edit; escalations see recent user messages; mtime-cached rules), the writing-guard PostToolUse AI-tells guard (new-content-only scan, skyline matcher, 1-per-500-words em-dash policy), the research-nudge Stop hook (verify hedged factual claims; skipped in Solo org sessions and under memory pressure), the core-hud statusline, and the core guidelines (Advisor, Decisive Thinking, Coding, Review Mindset, Writing + compaction-survival rule) in your user-scope CLAUDE.md, defaulting to a full-bypass permission posture gated by the judge-hook with dynamic workflows disabled \u2014 now with a wiring VERIFY step and a version stamp. /core-claude:doctor audits the install read-only. Also ships uninstall-claude and purge-claude-user-scope skills.",
   "author": {
     "name": "Skylence",
