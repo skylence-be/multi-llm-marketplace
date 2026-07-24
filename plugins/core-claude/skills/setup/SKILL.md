@@ -67,7 +67,7 @@ jq -e 'type == "object"' "$RULES" >/dev/null && echo "overlay parses: OK" || ech
 
 ## Step 3: wire settings.json (backup first; idempotent)
 
-Sets the statusline, the full-bypass posture, `disableWorkflows: true`, and `awaySummaryEnabled: false` (disables the session recap). Adaptive thinking has no settings key, so it goes in `env` AND is pinned in the shell profile (next block). It also STRIPS the legacy copy-based hook entries: the plugin registers those three hooks itself now, and leaving a settings.json entry beside it runs each hook twice. Existing unrelated hooks and the deny list are preserved.
+Sets the statusline, the full-bypass posture, `disableWorkflows: true`, and `awaySummaryEnabled: false` (disables the session recap). Adaptive thinking and Claude's auto-memory have no settings key, so they go in `env` AND are pinned in the shell profile (next block). It also STRIPS the legacy copy-based hook entries: the plugin registers those three hooks itself now, and leaving a settings.json entry beside it runs each hook twice. Existing unrelated hooks and the deny list are preserved.
 
 ```bash
 SETTINGS=~/.claude/settings.json
@@ -81,6 +81,8 @@ jq '
   | .awaySummaryEnabled = false
   | .env = (.env // {})
   | .env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING = "1"
+  | .env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1"
+  | .env.CLAUDE_CODE_DISABLE_ORG_MEMORY = "1"
   | .permissions = (.permissions // {})
   | .permissions.defaultMode = "bypassPermissions"
   | .hooks = (.hooks // {})
@@ -90,8 +92,14 @@ jq '
   | .hooks |= with_entries(select(.value | length > 0))
 ' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 
-# Adaptive thinking has no settings.json *key* — only the env var
-# CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING. The settings `env` block is read at
+# Adaptive thinking and auto-memory have no settings.json *key*, only env vars.
+# Memory takes TWO: CLAUDE_CODE_DISABLE_AUTO_MEMORY covers the per-project
+# auto-memory that writes under ~/.claude/projects/<project>/memory/, and
+# CLAUDE_CODE_DISABLE_ORG_MEMORY covers the org-level bank. Both are needed for
+# "off", and neither is discoverable from `claude --help`: they were found in
+# the shipped binary's strings, alongside the --bare description which lists
+# auto-memory among the things that mode skips.
+# The settings `env` block is read at
 # startup but has had reliability bugs (anthropics/claude-code #5202, #8500,
 # #20112), and a shell export wins over it regardless, so also pin it in the
 # shell profile. Idempotent: a fenced block, replaced on re-run.
@@ -101,10 +109,10 @@ touch "$PROFILE"
 cp "$PROFILE" "$PROFILE.bak.$(date +%Y%m%d%H%M%S)"
 ptmp=$(mktemp)
 awk '/# >>> core:env >>>/{s=1} !s{print} /# <<< core:env <<</{s=0; next}' "$PROFILE" > "$ptmp"
-{ cat "$ptmp"; printf '\n# >>> core:env >>>\nexport CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1\n# <<< core:env <<<\n'; } > "$PROFILE"
+{ cat "$ptmp"; printf '\n# >>> core:env >>>\nexport CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1\nexport CLAUDE_CODE_DISABLE_AUTO_MEMORY=1\nexport CLAUDE_CODE_DISABLE_ORG_MEMORY=1\n# <<< core:env <<<\n'; } > "$PROFILE"
 rm -f "$ptmp"
-echo "settings.json wired: core-hud, bypassPermissions, disableWorkflows, recap off, adaptive-thinking off; legacy copy-based hook entries stripped (the plugin registers them)"
-echo "shell profile pinned: CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 ($PROFILE)"
+echo "settings.json wired: core-hud, bypassPermissions, disableWorkflows, recap off, adaptive-thinking off, memory off; legacy copy-based hook entries stripped (the plugin registers them)"
+echo "shell profile pinned: adaptive-thinking + auto-memory + org-memory disabled ($PROFILE)"
 
 echo '--- verify ---'
 jq -e '.permissions.defaultMode == "bypassPermissions"' "$SETTINGS" >/dev/null && echo 'defaultMode: OK' || echo 'defaultMode: FAILED'
@@ -176,8 +184,8 @@ plugin hooks                   judge-hook, writing-guard, research-nudge run fro
 ~/.claude/core-hud.sh          installed (statusline; the one file still copied)
 ~/.claude/judge-rules.json     empty overlay written | existing overlay kept | full copy retired to .fullcopy.bak
 ~/.claude/*.sh.retired.*       legacy hook copies retired, if any were present
-~/.claude/settings.json        wired + VERIFIED (bypassPermissions, disableWorkflows, recap off, adaptive-thinking off, legacy hook entries stripped, judge-hook proven live by a real deny)
-~/.zshrc | ~/.bashrc           pinned CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 (shell beats the settings env block)
+~/.claude/settings.json        wired + VERIFIED (bypassPermissions, disableWorkflows, recap off, adaptive-thinking off, auto-memory + org-memory off, legacy hook entries stripped, judge-hook proven live by a real deny)
+~/.zshrc | ~/.bashrc           pinned CLAUDE_CODE_DISABLE_{ADAPTIVE_THINKING,AUTO_MEMORY,ORG_MEMORY}=1 (shell beats the settings env block)
 ~/.claude/CLAUDE.md            guidelines written + cross-checked against the shipped example
 ~/.claude/.core-claude-version stamped
 ```
