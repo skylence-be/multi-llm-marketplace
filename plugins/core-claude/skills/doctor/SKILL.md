@@ -77,6 +77,22 @@ jq -e '.permissions.defaultMode == "bypassPermissions"' "$S" >/dev/null 2>&1 \
   && echo 'bypassPermissions: on (the gate probe above is what makes this survivable)' \
   || echo 'bypassPermissions: off (posture not applied)'
 
+# Memory is off via env vars only, in two places, and a shell export beats the
+# settings block. Report both, and report whether anything was already written,
+# because disabling the feature does not remove what it wrote.
+for v in CLAUDE_CODE_DISABLE_AUTO_MEMORY CLAUDE_CODE_DISABLE_ORG_MEMORY; do
+  ins=$(jq -r --arg v "$v" '.env[$v] // "unset"' "$S" 2>/dev/null)
+  prof=$(grep -h "export $v=1" ~/.zshrc ~/.bashrc 2>/dev/null | head -1)
+  printf '%s: settings.env=%s shell=%s\n' "$v" "$ins" "$([ -n "$prof" ] && echo pinned || echo unpinned)"
+done
+mem=$(find ~/.claude/projects -type d -name memory 2>/dev/null | head -5)
+if [ -n "$mem" ]; then
+  n=$(printf '%s\n' "$mem" | while read -r d; do find "$d" -type f 2>/dev/null; done | wc -l | tr -d ' ')
+  echo "memory on disk: $n file(s) under $(printf '%s\n' "$mem" | wc -l | tr -d ' ') project memory dir(s); disabling does not delete these"
+else
+  echo 'memory on disk: none'
+fi
+
 echo '== CLAUDE.md guidelines =='
 awk '/<!-- BEGIN core:guidelines -->/{f=1} f{print} /<!-- END core:guidelines -->/{f=0}' ~/.claude/CLAUDE.md 2>/dev/null \
   | diff -q - "$P/templates/claude-md.md" >/dev/null 2>&1 \
