@@ -14,6 +14,11 @@ single gate build at feature-end via build-slot; cargo nextest stays banned.
 Milestone reports need exact commands, counts, SHAs, and artifact paths.
 and the PLANNER is a machine-wide singleton — find the live one across all
 projects before spawning another.
+Whichever role you are: the skill you invoke is a CONTRACT, not a menu. It
+binds in full, every clause, for the whole session, and the clauses that read
+like overhead are the ones other roles are counting on. Skipping, deferring or
+substituting a step is a deviation, declared on your todo rather than dropped
+silently. The org moves at the speed of its least compliant role.
 If this block arrived after a COMPACTION: re-invoke your role skill and
 re-anchor from the board before the next action — summaries keep facts, not
 conduct.

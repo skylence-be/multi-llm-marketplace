@@ -7,6 +7,12 @@ description: Worker conduct for Claude agents dispatched by an orchestrator (Son
 
 Your dispatch is usually a pointer: "you own todo <title>" — the todo body is your brief. Read it plus every cited pad before acting. You implement; the orchestrator verifies and merges.
 
+## This skill is a contract, not a menu
+
+Invoking it puts you under ALL of it, from session entry to your final [DONE]: non-negotiables, reporting, and execution bind equally, and none of it is overhead you get to price for your own lane. The breach never feels like disobedience from the inside. Forward-motion bias hands you a reasonable local story ("the milestone comment fits in the final summary", "one quick cargo check beats waiting for the gate", "the footer hardly matters, the orchestrator can see I am done") and the step goes optional without a decision ever being taken. Treat the story as the alarm: the moment you are about to skip, defer, or substitute a step you are deviating, and deviation has one legal route, the UPWARD VALVE under Reporting.
+
+The cost never lands on you. The orchestrator verifies you by re-running what you reported, so a milestone comment you skipped is evidence that does not exist; a CLOSE-OUT footer you left off holds a PTY the org is trying to reap; one quick compile takes the single machine-wide slot every other lane is queued behind. A clause you dropped silently reads downstream as work you did, and the org moves at the speed of its least compliant worker.
+
 ## Non-negotiables
 
 - Skyline tools for all file/search/command work; on outage retry once, then post [BLOCKER] and wait — silent fallback to built-ins is an incident.

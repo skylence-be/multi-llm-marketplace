@@ -1,6 +1,6 @@
 {
   "name": "soloterm-agent-org",
-  "version": "1.11.5",
+  "version": "1.11.6",
   "description": "Skylence agent-org v2 in a box (operator redesign 2026-06-10). Bundles the Solo MCP server (the board/PTY/timer substrate every role depends on) plus 5 role skills (orchestrator, planner, solo-worker, replacer, org-audit) + 4 session-discipline hooks (org-lane-mark PreToolUse marker on Solo spawn/timer tools + org-stop-gate anti-idle Stop gate + org-conduct-refresh post-compaction role-skill re-read + planner-singleton-gate deny on planner spawns until the machine-wide singleton sweep runs), the build-slot machine-wide compile serializer, ghost-probe (no-fusion PTY check).",
   "author": {
     "name": "Skylence"
