@@ -1,0 +1,53 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Fast and portable: pure python, no plugin runtime needed.
+  skill-drift:
+    name: soloterm role skills match their source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: sync-skills --check
+        run: |
+          python3 tools/soloterm-skills/sync-skills.py --check
+      - name: regenerating is idempotent
+        run: |
+          python3 tools/soloterm-skills/sync-skills.py
+          git diff --exit-code
+
+  # macOS on purpose. The judge-hook suite is only ever verified on the platform
+  # it ships to, and it leans on BSD/GNU fallbacks (stat -f vs -c, base64 -D vs
+  # -d) that have never been exercised on Linux. Running it on ubuntu would be
+  # testing a configuration nobody uses.
+  judge-hook:
+    name: judge-hook suite
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shell and JSON syntax
+        run: |
+          for f in plugins/*/hooks/*.sh plugins/*/statusline/*.sh; do
+            [ -f "$f" ] || continue
+            sh -n "$f" || { echo "invalid shell: $f"; exit 1; }
+          done
+          for f in plugins/*/hooks/*.json plugins/*/.claude-plugin/plugin.json plugins/*/plugin.json; do
+            [ -f "$f" ] || continue
+            jq -e . "$f" >/dev/null || { echo "invalid JSON: $f"; exit 1; }
+          done
+      - name: run the suite
+        run: bash plugins/core-claude/hooks/judge-hook.test.sh
+      # The suite stubs the claude CLI for the escalate paths, so it needs no
+      # API key and makes no network call. If that ever stops being true this
+      # job starts costing money, which is worth noticing.
+      - name: assert the suite made no real LLM call
+        run: |
+          grep -q 'stub_claude' plugins/core-claude/hooks/judge-hook.test.sh \
+            || { echo "escalate tests no longer stub the CLI"; exit 1; }
