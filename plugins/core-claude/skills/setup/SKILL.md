@@ -46,7 +46,6 @@ OVERLAY_DOC="Local overlay for the core-claude judge. The complete ruleset ships
 if [ ! -f "$RULES" ]; then
   jq -n --arg c "$OVERLAY_DOC" '{_comment: $c, rules: [], only: [], disable: [], override: {}}' > "$RULES"
   echo "wrote empty overlay $RULES"
-  echo "wrote empty overlay $RULES"
 else
   # `. as $r` first: inside index(...) the input is the mapped array, so a bare
   # .reason there reads the array, not the rule, and jq errors out.
@@ -110,10 +109,13 @@ echo "shell profile pinned: CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 ($PROFILE)"
 echo '--- verify ---'
 jq -e '.permissions.defaultMode == "bypassPermissions"' "$SETTINGS" >/dev/null && echo 'defaultMode: OK' || echo 'defaultMode: FAILED'
 # The gate is what makes bypassPermissions survivable, so verify it by RUNNING
-# it rather than by looking for a settings.json line that no longer exists.
-# This is the whole chain in one call: plugin hook script, plugin ruleset, and
-# the overlay on top of it.
-printf '%s' '{"tool_name":"Bash","tool_input":{"command":"sudo ls /root"}}' \
+# Verify the gate by RUNNING it, not by looking for a settings.json line that no
+# longer exists. This is the whole chain in one call: plugin hook script, plugin
+# ruleset, and the overlay on top of it.
+# The payload comes from a FILE on purpose. A command line that spells out a
+# privilege word is denied by the very rule it is probing, so writing the JSON
+# inline here would make this step unrunnable once the gate is live.
+cat "$CLAUDE_PLUGIN_ROOT/hooks/probe-payload.json" \
   | bash "$CLAUDE_PLUGIN_ROOT/hooks/judge-hook.sh" >/dev/null 2>&1
 [ $? -eq 2 ] \
   && echo 'judge-hook: LIVE (denied a gated command end to end)' \
