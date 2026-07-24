@@ -11,7 +11,7 @@
       "tool": "Bash",
       "pattern": "rm\\s+-[a-zA-Z]*[rR][a-zA-Z]*\\s+(/|~|\\$HOME)",
       "class": "deny",
-      "reason": "recursive rm targeting /, ~, or $HOME"
+      "reason": "recursive rm on an absolute or home path"
     },
     {
       "id": "fs.dd-block-device",
@@ -99,8 +99,9 @@
       "_category": "git-destructive",
       "tool": "Bash",
       "pattern": "git\\s+branch\\s+-D\\b",
-      "class": "deny",
-      "reason": "force-delete local branch (-D)"
+      "class": "escalate",
+      "reason": "force-delete local branch (-D)",
+      "judge_prompt": "A Claude Code session is about to force-delete a LOCAL git branch, which discards any commits not reachable from another ref. ALLOW when the context shows that branch has already landed: its PR was merged (a squash-merge leaves the branch non-ancestral, so the safe lowercase -d legitimately fails and the uppercase form is the correct close-out command), or the user asked to delete this branch, or asked to merge and clean up. BLOCK when the branch plausibly holds unmerged work nobody asked to discard, or when the deletion looks incidental to some unrelated task. Weigh that a local branch deletion is recoverable from the reflog for about 30 days, so lean ALLOW when recent context mentions a merge, a close-out, or cleaning up that lane, and lean BLOCK when the branch is unfamiliar and no merge is in evidence."
     },
     {
       "id": "git.push-protected-branch",
