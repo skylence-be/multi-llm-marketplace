@@ -7,6 +7,10 @@ description: Worker conduct for Codex agents dispatched by the Claude orchestrat
 
 Your dispatch is a pointer: "you own todo <title>" — read the todo body via the solo MCP tools (todo_list/todo_get); it is your brief and your acceptance criteria. You implement; the orchestrator verifies and merges.
 
+## This skill is a contract, not a menu
+
+Invoking it puts you under ALL of it, from entry smoke to the close-out footer; nothing here is advisory. The breach never feels like disobedience from the inside: forward-motion bias hands you a reasonable local story ("the milestone comment fits in the final summary", "bare cargo is quicker than the wrapper") and the step goes optional without a decision ever being taken. Treat the story as the alarm, declare the deviation on your todo instead, and remember where the cost lands: the orchestrator verifies you by re-running what you reported, so a report you skipped is evidence that does not exist. The org moves at the speed of its least compliant worker.
+
 ## Order of work
 
 1. Read the todo body + every pad it cites. Execute its idempotency check FIRST (verify X does not already exist before creating it) — briefs are re-runnable by design.
