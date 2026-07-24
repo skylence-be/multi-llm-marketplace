@@ -124,9 +124,13 @@ esac
 # the raw JSON, so command text such as `echo 'argv0: sudo'` cannot spoof it.
 # Wrappers (env, nice, timeout, xargs, ...) are transparent; their flag VALUES
 # are consumed so `env -u FOO sudo` still yields `sudo`. sudo/doas are emitted
-# AND stepped past; `sh -c`, `eval`, and backtick bodies are rescanned. Heredoc
-# bodies are dropped: they are data, not commands.
-#
+# are consumed so `env -u FOO sudo` still yields `sudo`. sudo/doas are emitted
+# AND stepped past; `su -c BODY` is emitted and its BODY rescanned, because su
+# takes a USER where sudo takes a program; `sh -c`, `eval`, and backtick bodies
+# are rescanned. Heredoc bodies are dropped: they are data, not commands.
+# One projection line is SYNTHETIC rather than a program basename: `argv0:
+# setuid-mode`, emitted by the chmod/install block below, because the fact that
+# rule needs sits in an argument the projection otherwise never publishes.
 # FAIL-CLOSED for argv0 rules: when the tokenizer cannot fully understand a
 # construct (dynamic command, interpreter -e code, source, unclosed quotes,
 # missing perl), it emits `uncertain: 1`. The rule matcher then falls back to
@@ -157,7 +161,11 @@ if [ "$CLASS_TOOL" = "Bash" ]; then
   else
   read -r -d '' ARGV_SCAN_PL <<'PERL_EOF'
 my $WRAP  = qr/^(env|command|builtin|exec|nice|ionice|nohup|setsid|time|stdbuf|xargs|timeout|gtimeout|watch|script|unbuffer|rlwrap|strace|ltrace|catchsegv|taskset|chrt|prlimit|flock|chronic|softlimit)$/;
-my $PRIV  = qr/^(sudo|doas|pkexec|run0)$/;
+# su and sudoedit joined this list in #25. Both escalate, neither was matched by
+# any pattern in this file, and `su -c reboot`, `su root` and `sudoedit
+# /etc/hosts` were all ALLOW. sudoedit is NOT caught by the `sudo` alternative:
+# every alternative here is anchored at both ends.
+my $PRIV  = qr/^(sudo|sudoedit|doas|pkexec|run0|su)$/;
 my $POWER = qr/^(shutdown|reboot|halt|poweroff)$/;
 my $SHELL = qr/^(sh|bash|zsh|dash|ksh|fish)$/;
 my $INTERP = qr/^(perl|perl[0-9.]+|python|python[0-9.]+|ruby|node|nodejs|php|lua|osascript)$/;
@@ -208,7 +216,12 @@ my %INERT_IF_FLAGS = (
 # `/` is deliberately NOT a leading exclusion: `/usr/bin/sudo` and
 # `s/.*/sudo reboot/e` are real invocations. `.` and `-` stay excluded so that
 # `foo.sudo` and `x-sudo` do not fire.
-my $PRIV_IN_TEXT = qr/(?:^|[^A-Za-z0-9_.-])(sudo|doas|pkexec|run0|shutdown|reboot|halt|poweroff)(?:[^A-Za-z0-9_-]|$)/;
+# `sudoedit` is listed here (#25); bare `su` deliberately is NOT. This regex
+# fires on any quoted token of any non-inert stage, and a two-letter word turns
+# up in ordinary text far too often to spend a fail-closed raw fallback on. `su`
+# is still caught as a bare token by the cross-check invariant below, and as a
+# program by $PRIV, which is where the escalation actually happens.
+my $PRIV_IN_TEXT = qr/(?:^|[^A-Za-z0-9_.-])(sudoedit|sudo|doas|pkexec|run0|shutdown|reboot|halt|poweroff)(?:[^A-Za-z0-9_-]|$)/;
 # sudo flags that consume the next word; without this, `sudo -u root sh` would
 # read `root` as the escalated program.
 my $PRIV_VALUE_FLAG = qr/^-[ugpCThDrt]$/;
@@ -398,6 +411,19 @@ sub scan {
       if ($p =~ $PRIV) {
         emit($p);
         $i++;
+        # su is not shaped like sudo. Its bare operand is a USER and the command
+        # is ONE string behind -c (`su -c CMD`, `su - u -c CMD`, `su -- u -c
+        # CMD`, `su --command=CMD`). Walking the sudo path below would name the
+        # user as the program and drop the payload entirely, so rescan the -c
+        # body exactly as `sh -c` is rescanned, then end the stage: nothing
+        # after su is a program in this stage's own right.
+        if ($p eq 'su') {
+          for my $j ($i .. $#t) {
+            if ($t[$j] =~ /^(?:-c|--command)=(.*)$/s) { scan($1, $depth + 1); last; }
+            if ($t[$j] =~ /^(?:-c|--command)$/ && $j < $#t) { scan($t[$j + 1], $depth + 1); last; }
+          }
+          last;
+        }
         while ($i < @t && $t[$i] =~ /^-/) {
           my $f = $t[$i]; $i++;
           $i++ if $f =~ $PRIV_VALUE_FLAG && $i < @t;
@@ -407,6 +433,26 @@ sub scan {
       }
       emit($p);
       $stage_prog = $p;
+      # SETUID/SETGID MODE (#25). `chmod u+s f` and `install -m 4755 f` mint a
+      # PERMANENT escalation and were both ALLOW. No argv0 rule naming a
+      # privileged program can see them, because the program really is chmod;
+      # the fact that matters is an argument. A raw rule over tool_input would
+      # deny `grep 'chmod u+s' notes.txt`, the exact false positive this
+      # projection exists to kill. So the decision is taken here, where program
+      # AND arguments are both in hand, and published as a synthetic argv0 line.
+      # Synthetic rather than a new line prefix because the raw fallback only
+      # understands `^argv0: ...$`, and a pattern of any other shape denies
+      # every uncertain command outright.
+      # Quoted tokens are audited too: the shell strips quotes before chmod sees
+      # argv, so `chmod '4755' f` is the same call (the %INERT_IF_FLAGS lesson).
+      if ($p eq 'chmod' || $p eq 'install') {
+        for my $j ($i + 1 .. $#t) {
+          (my $m = $t[$j]) =~ s/^--?[A-Za-z-]*=?//;   # -m 4755, --mode=4755
+          my $octal = $m =~ /^[0-7]{3,5}$/ && (oct($m) & 06000);
+          my $sym   = $m =~ /^[ugoa]*[+=][rwxXt]*s/;
+          if ($octal || $sym) { emit('setuid-mode'); last; }
+        }
+      }
       if ($p =~ $SHELL || $p =~ $INTERP) {
         # A shell or interpreter with NO script operand executes whatever
         # reaches its stdin, so an earlier inert stage's text is code, not data.
