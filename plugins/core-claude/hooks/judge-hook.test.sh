@@ -634,6 +634,48 @@ else
   bad "editing the overlay invalidates the rules cache" "wanted deny then allow, got $first then $second"
 fi
 
+echo "--- memory is disabled: the gate enforces it, not just the env vars ---"
+
+# CLAUDE_CODE_DISABLE_AUTO_MEMORY / _ORG_MEMORY tell the harness not to use
+# memory. They are settings, so they are advisory: nothing stops a session from
+# writing those files directly. These rules are the enforcement half, and they
+# ride the same tool normalization as everything else, so one rule per tool
+# covers the skyline route too (Write binds skyline_create, Edit binds
+# skyline_edit).
+
+denies "Write into per-project memory" "memory is disabled" Write \
+  '{"file_path":"/Users/x/.claude/projects/-Users-x-proj/memory/note.md","content":"remember this"}'
+denies "Write into the org-level bank" "memory is disabled" Write \
+  '{"file_path":"/Users/x/.claude/memory/note.md","content":"remember this"}'
+denies "Write a MEMORY.md index" "memory is disabled" Write \
+  '{"file_path":"/Users/x/.claude/projects/-Users-x-proj/memory/MEMORY.md","content":"- [a](a.md)"}'
+denies "skyline_create into memory" "memory is disabled" mcp__skyline__skyline_create \
+  '{"path":"/Users/x/.claude/projects/-Users-x-proj/memory/note.md","content":"remember"}'
+denies "Edit an existing memory file" "memory is disabled" Edit \
+  '{"file_path":"/Users/x/.claude/projects/-Users-x-proj/memory/note.md","old_string":"a","new_string":"b"}'
+denies "skyline_edit into memory" "memory is disabled" mcp__skyline__skyline_edit \
+  '{"patch":"¶/Users/x/.claude/projects/-Users-x-proj/memory/note.md#AB12\nreplace 1..1:\n+remembered"}'
+denies "shell redirect into memory" "memory is disabled" Bash \
+  "$(bash_cmd 'echo remember > /Users/x/.claude/projects/-Users-x-proj/memory/note.md')"
+denies "tee into memory" "memory is disabled" Bash \
+  "$(bash_cmd 'printf note | tee /Users/x/.claude/memory/note.md')"
+denies "mkdir the memory dir back" "memory is disabled" Bash \
+  "$(bash_cmd 'mkdir -p /Users/x/.claude/projects/-Users-x-proj/memory')"
+
+# The false-positive half, which is the whole reason the shell rule is scoped to
+# write verbs instead of matching the bare path: naming the path must stay fine,
+# or every commit message and grep about this feature gets denied.
+allows "naming the path in a message" Bash \
+  "$(bash_cmd 'git commit -m "disable ~/.claude/projects/x/memory/ writes"')"
+allows "listing what is there" Bash \
+  "$(bash_cmd 'ls -la /Users/x/.claude/projects/-Users-x-proj/memory/')"
+allows "finding memory dirs to clean up" Bash \
+  "$(bash_cmd 'find /Users/x/.claude -type d -name memory')"
+allows "an ordinary Write elsewhere" Write \
+  '{"file_path":"/Users/x/proj/src/main.rs","content":"fn main() {}"}'
+allows "a file merely called memory.rs" Write \
+  '{"file_path":"/Users/x/proj/src/memory.rs","content":"pub struct Arena;"}'
+
 echo "----------------------------------------------------------------------"
 printf '%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
