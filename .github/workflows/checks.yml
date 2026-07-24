@@ -31,14 +31,22 @@ jobs:
     name: judge-hook suite
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
       - name: shell and JSON syntax
         run: |
-          for f in plugins/*/hooks/*.sh plugins/*/statusline/*.sh; do
+          # Follow the shebang. core-hud.sh uses process substitution, which is
+          # valid bash and a syntax error under `sh -n`; checking every .sh with
+          # sh rejects correct files for using the language they declare.
+          for f in plugins/*/hooks/*.sh plugins/*/statusline/*.sh plugins/*/scripts/*.sh .githooks/*; do
             [ -f "$f" ] || continue
-            sh -n "$f" || { echo "invalid shell: $f"; exit 1; }
+            case "$(head -1 "$f")" in
+              *bash*) bash -n "$f" || { echo "invalid bash: $f"; exit 1; } ;;
+              *sh*)   sh -n "$f"   || { echo "invalid sh: $f"; exit 1; } ;;
+            esac
           done
           for f in plugins/*/hooks/*.json plugins/*/.claude-plugin/plugin.json plugins/*/plugin.json; do
+            [ -f "$f" ] || continue
+            jq -e . "$f" >/dev/null || { echo "invalid JSON: $f"; exit 1; }
+          done
             [ -f "$f" ] || continue
             jq -e . "$f" >/dev/null || { echo "invalid JSON: $f"; exit 1; }
           done

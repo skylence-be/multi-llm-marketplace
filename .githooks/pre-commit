@@ -25,10 +25,20 @@ fi
 
 # Cheap syntax gate on shipped shell and JSON. Catches the class of typo that
 # otherwise reaches a machine where the hook silently stops loading.
+# The checker follows the SHEBANG: core-hud.sh uses process substitution
+# `< <(...)`, which is valid bash and a syntax error under `sh -n`. Checking
+# every .sh with sh would reject correct files for using the language they
+# declare.
+check_syntax() {
+  case "$(head -1 "$1")" in
+    *bash*) bash -n "$1" 2>&1 ;;
+    *) sh -n "$1" 2>&1 ;;
+  esac
+}
 for f in $(git diff --cached --name-only --diff-filter=ACM); do
   [ -f "$f" ] || continue
   case "$f" in
-    *.sh) sh -n "$f" 2>/dev/null || { echo "pre-commit: $f is not valid shell"; fail=1; } ;;
+    *.sh) check_syntax "$f" >/dev/null || { echo "pre-commit: $f is not valid shell"; fail=1; } ;;
     *.json) jq -e . "$f" >/dev/null 2>&1 || { echo "pre-commit: $f is not valid JSON"; fail=1; } ;;
   esac
 done
