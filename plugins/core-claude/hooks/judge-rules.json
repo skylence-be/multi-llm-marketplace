@@ -116,9 +116,8 @@
       "_category": "git-review",
       "tool": "Bash",
       "pattern": "git\\s+push\\s+(--[^[:space:]]+\\s+)*(origin\\s+)?(main|master|production|prod|release)\\b",
-      "class": "escalate",
-      "reason": "push to a protected-looking branch",
-      "judge_prompt": "A Claude Code session is about to run `git push` to a protected-looking branch (main, master, production, prod, release). Block unless the recent user message clearly requested this push (phrases like 'push to main', 'ship it', 'merge to main'). 'Commit' or 'finish up' alone is not sufficient authorization for a push to a protected branch."
+      "class": "deny",
+      "reason": "push to a protected-looking branch"
     },
     {
       "id": "git.remote-branch-delete",
@@ -158,54 +157,48 @@
       "_category": "db",
       "tool": "Bash",
       "pattern": "(DROP\\s+(TABLE|DATABASE|SCHEMA|INDEX)|TRUNCATE\\s+TABLE|DELETE\\s+FROM)\\b",
-      "class": "escalate",
-      "reason": "destructive SQL (DROP/TRUNCATE/DELETE FROM)",
-      "judge_prompt": "A Bash command contains destructive SQL (DROP/TRUNCATE/DELETE FROM). Block unless one of: the target database or table name clearly indicates non-production (contains 'test', 'dev', 'scratch', 'tmp', 'local'); the DELETE has a narrow WHERE clause and the user requested the cleanup; the command is a documented schema migration the user just asked to run. Block by default."
+      "class": "deny",
+      "reason": "destructive SQL (DROP/TRUNCATE/DELETE FROM)"
     },
     {
       "id": "db.mongo-destructive",
       "_category": "db",
       "tool": "Bash",
       "pattern": "(mongosh?|mongo).*\\b(dropDatabase|dropCollection|deleteMany)\\(",
-      "class": "escalate",
-      "reason": "destructive MongoDB operation",
-      "judge_prompt": "A Bash command is performing a destructive MongoDB operation (dropDatabase, dropCollection, deleteMany). Block unless the connection string or database name clearly indicates non-production (contains 'test', 'dev', 'local', 'scratch') and the user explicitly requested the deletion."
+      "class": "deny",
+      "reason": "destructive MongoDB operation"
     },
     {
       "id": "db.redis-flush",
       "_category": "db",
       "tool": "Bash",
       "pattern": "redis-cli\\b.*\\b(FLUSHALL|FLUSHDB)\\b",
-      "class": "escalate",
-      "reason": "Redis FLUSHALL / FLUSHDB",
-      "judge_prompt": "A Bash command is wiping Redis (FLUSHALL or FLUSHDB). Block unless the connection target is clearly a non-production instance and the user explicitly asked for the flush."
+      "class": "deny",
+      "reason": "Redis FLUSHALL / FLUSHDB"
     },
     {
       "id": "cloud.terraform-destroy",
       "_category": "cloud",
       "tool": "Bash",
       "pattern": "\\bterraform\\s+destroy\\b",
-      "class": "escalate",
-      "reason": "terraform destroy",
-      "judge_prompt": "A Bash command is running `terraform destroy`. Block unless the working directory name or `-var-file` argument clearly indicates a non-production environment (contains 'staging', 'dev', 'sandbox', 'scratch') AND the user explicitly requested the destruction. Block by default if the environment is unclear."
+      "class": "deny",
+      "reason": "terraform destroy"
     },
     {
       "id": "cloud.kubectl-delete",
       "_category": "cloud",
       "tool": "Bash",
       "pattern": "kubectl\\s+(delete|--context.*delete)\\s+(ns|namespace|deployment|deploy|sts|statefulset|pvc)\\b",
-      "class": "escalate",
-      "reason": "kubectl delete on high-impact resource type",
-      "judge_prompt": "A Bash command is deleting a Kubernetes resource (namespace, deployment, statefulset, pvc). Block unless the cluster context clearly indicates non-production (name contains 'dev', 'staging', 'scratch', 'minikube', 'kind') AND the user explicitly named the resource. Block by default."
+      "class": "deny",
+      "reason": "kubectl delete on high-impact resource type"
     },
     {
       "id": "cloud.s3-destructive",
       "_category": "cloud",
       "tool": "Bash",
       "pattern": "aws\\s+s3\\b.*(rm.*--recursive|sync.*--delete)",
-      "class": "escalate",
-      "reason": "destructive S3 operation (recursive rm or --delete sync)",
-      "judge_prompt": "A Bash command is performing a destructive S3 operation (`aws s3 rm --recursive` or `aws s3 sync --delete`). Block unless the bucket name clearly indicates a non-production target (contains 'test', 'staging', 'dev', 'scratch', 'tmp') AND the user explicitly authorized the operation. Block by default."
+      "class": "deny",
+      "reason": "destructive S3 operation (recursive rm or --delete sync)"
     },
     {
       "id": "deps.pinned-install",
@@ -263,18 +256,16 @@
       "_category": "github",
       "tool": "Bash",
       "pattern": "gh\\s+release\\s+delete\\b",
-      "class": "escalate",
-      "reason": "gh release delete (published artifacts disappear)",
-      "judge_prompt": "A command is deleting a GitHub release. Block unless the user explicitly named this release (tag or version) and asked for its deletion in a recent message; released artifacts may be referenced by installers and download channels. Block by default."
+      "class": "deny",
+      "reason": "gh release delete (published artifacts disappear)"
     },
     {
       "id": "system.launchd-teardown",
       "_category": "system",
       "tool": "Bash",
       "pattern": "launchctl\\s+(bootout|unload|remove|kill)\\b",
-      "class": "escalate",
-      "reason": "launchd service teardown (may target a production daemon)",
-      "judge_prompt": "A command is unloading, removing, or killing a launchd service. Block unless the service label clearly belongs to a scratch or test service the user asked to manage in a recent message. Production daemons an agent did not start must never be stopped by an agent. Block by default."
+      "class": "deny",
+      "reason": "launchd service teardown (may target a production daemon)"
     },
     {
       "id": "fs.diskutil-erase",
@@ -284,5 +275,6 @@
       "class": "deny",
       "reason": "diskutil erase/partition/delete (disk destroyer)"
     }
-  ]
+  ],
+  "_escalate": "escalate rules spawn `claude -p` to judge intent. That subprocess inherits the operator ~/.claude (hooks, CLAUDE.md, skills), so their hook output replaces the verdict, and isolation via --bare or CLAUDE_CODE_SIMPLE=1 reads auth ONLY from ANTHROPIC_API_KEY or apiKeyHelper, never OAuth or keychain. Without one of those set, an escalate rule CANNOT block and is inert. Rules guarding destructive irreversible actions were therefore moved to deny; the three that remain escalate (git.remote-branch-delete, deps.manifest-edit, deps.pinned-install) are inert by choice, because denying them would break the agent-org close-out and ordinary dependency work. Use the ~/.claude/judge-rules.json overlay to disable or override any of this locally."
 }

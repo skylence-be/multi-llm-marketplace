@@ -448,11 +448,16 @@ stub_claude() { # <what the fake CLI prints>
   { printf '#!/bin/sh\ncat <<'\''STUBEOF'\''\n%s\nSTUBEOF\n' "$1" > "$STUB/claude"; }
   chmod +x "$STUB/claude"
 }
-# An escalate rule to drive: db.redis-flush is escalate and pattern-matches easily.
+# An escalate rule to drive the stub. db.redis-flush used to serve here and was
+# flipped to deny with the other inert ones, which broke these tests loudly:
+# exactly the coupling worth keeping, since a driver that silently stopped
+# exercising escalate would leave the parser untested while still reporting ok.
+# git.remote-branch-delete stays escalate deliberately (L5 close-out), so it is
+# the stable driver: if it ever flips, these fail and say so.
 escalate_verdict() { # <label> <stub output> <expect: DENY|ALLOW>
   stub_claude "$2"
   local t rc; t=$(mktemp -d)
-  printf '%s' "$(jq -nc '{tool_name:"Bash",tool_input:{command:"redis-cli FLUSHALL"}}')" >"$TMP/in.json"
+  printf '%s' "$(jq -nc '{tool_name:"Bash",tool_input:{command:"git push origin --delete feature/x"}}')" >"$TMP/in.json"
   STDERR=$(PATH="$STUB:$PATH" JUDGE_RULES_FILE="$RULES" TMPDIR="$t" bash "$HOOK" <"$TMP/in.json" 2>&1 >/dev/null); rc=$?
   rm -rf "$t"
   local got; [ "$rc" -eq 2 ] && got=DENY || got=ALLOW
