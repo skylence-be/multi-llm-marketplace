@@ -1,5 +1,5 @@
 {
-  "description": "Agent-org session discipline for Grok: org-lane-mark marks sessions that dispatch Solo workers or arm timers (PreToolUse on solo MCP spawn/timer tools); org-conduct-refresh re-injects role-skill re-read order after compaction (SessionStart compact matcher) — summaries keep facts not conduct; org-stop-gate blocks a marked session's first Stop with anti-idle checklist. All inert if never spawned workers. Commands use exact ${GROK_PLUGIN_ROOT} load-time substitution (nested ${VAR:-default} expands empty against process env).",
+  "description": "Agent-org session discipline for Grok: org-lane-mark marks sessions that dispatch Solo workers or arm timers (PreToolUse on solo MCP spawn/timer tools); org-conduct-refresh runs at BOTH ends of a session's life, priming the role-skill contract on SessionStart startup|resume (a Solo-managed process is an org lane, and a role that never invoked its skill is not running under it) and re-injecting the re-read order on the compact matcher, since summaries keep facts not conduct; org-stop-gate blocks a marked session's first Stop with anti-idle checklist. All inert if never spawned workers. Commands use exact ${GROK_PLUGIN_ROOT} load-time substitution (nested ${VAR:-default} expands empty against process env).",
   "hooks": {
     "PreToolUse": [
       {
@@ -14,6 +14,16 @@
       }
     ],
     "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/org-conduct-refresh.sh\"",
+            "statusMessage": "org-conduct-prime"
+          }
+        ]
+      },
       {
         "matcher": "compact",
         "hooks": [

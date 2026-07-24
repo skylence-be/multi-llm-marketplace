@@ -1,5 +1,5 @@
 {
-  "description": "Agent-org session discipline: org-lane-mark marks any session that dispatches Solo workers or arms Solo timers (PreToolUse on the spawn/timer tools); org-conduct-refresh re-injects the re-read-your-role-skill order after every compaction (SessionStart:compact) in org sessions, because summaries keep facts, not conduct; org-stop-gate blocks a marked session's FIRST stop with the anti-idle checklist (read finished workers, arm wakes, surface blocking questions), and stop_hook_active passes the second stop, so it costs one turn, never a loop; planner-singleton-gate denies a planner-named spawn until the machine-wide sweep for an existing planner has run (the planner is a machine-wide singleton; the deny text carries the sweep order and the post-sweep retry passes). All inert in sessions that never spawn workers and are not Solo-managed.",
+  "description": "Agent-org session discipline: org-lane-mark marks any session that dispatches Solo workers or arms Solo timers (PreToolUse on the spawn/timer tools); org-conduct-refresh runs at BOTH ends of a session's life, priming the role-skill contract on SessionStart:startup|resume (a Solo-managed process is an org lane, and a role that never invoked its skill is not running under it) and re-injecting the re-read order on SessionStart:compact, because summaries keep facts, not conduct; org-stop-gate blocks a marked session's FIRST stop with the anti-idle checklist (read finished workers, arm wakes, surface blocking questions), and stop_hook_active passes the second stop, so it costs one turn, never a loop; planner-singleton-gate denies a planner-named spawn until the machine-wide sweep for an existing planner has run (the planner is a machine-wide singleton; the deny text carries the sweep order and the post-sweep retry passes). All inert in sessions that never spawn workers and are not Solo-managed.",
   "hooks": {
     "PreToolUse": [
       {
@@ -22,6 +22,15 @@
       }
     ],
     "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/org-conduct-refresh.sh\""
+          }
+        ]
+      },
       {
         "matcher": "compact",
         "hooks": [

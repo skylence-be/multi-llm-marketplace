@@ -21,6 +21,7 @@ All seven steps below run, in order, before you continue the lane. You are here 
 
 Note: skyline_run's UNCHANGED dedup is daemon-global — your verification re-runs may return "unchanged since last call" because the PREDECESSOR ran the identical command; the raw tee path in that message is fresh, read it.
 - Same closure sequence applies to you: verification, supervisor retrospective (mention you were a replacer — handover quality is retro material), dispositions, then close.
+- After any compaction in YOUR session: re-invoke this skill and re-read the todo trail before continuing. You inherited this lane because a predecessor's state stopped being legible; a compacted replacer running on a summary is that same failure starting over, and your pickup comment is now part of the trail your own successor will trust.
 
 ## Skylore
 

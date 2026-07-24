@@ -14,7 +14,7 @@ Grok port of the Skylence soloterm-agent-org (agent orchestration substrate).
 - Scripts: `build-slot`, `ghost-probe.sh`
 - Session discipline hooks (adapted for Grok hook JSON + env):
   - org-lane-mark (PreToolUse on spawn/timer MCP tools)
-  - org-conduct-refresh (SessionStart compact)
+  - org-conduct-refresh (SessionStart `startup|resume` primes the role-skill contract, `compact` re-injects it)
   - org-stop-gate (Stop)
 - AGENTS.md worker guidance.
 - `plugin.json` + `mcp_config.json`
@@ -45,6 +45,6 @@ See the skills for detailed playbooks. The conduct is the same as the Claude/Cod
 - Hook commands use exact `${GROK_PLUGIN_ROOT}/hooks/...` load-time substitution (same Grok gotcha as core-grok / skylence-plugins: nested `${VAR:-default}` expands empty and leaves hooks inert).
 - Hook markers use `/tmp/grok-org-lanes-<sessionId>` (falls back to claude names for mixed environments).
 - Skills are host-agnostic; only spawn flags and a few env references are host specific in comments.
-- Grok SessionStart is often observe-only; org-conduct-refresh still runs on compact, but injected stdout may not reach the model depending on Grok version.
+- Grok SessionStart is often observe-only; org-conduct-refresh runs on both startup/resume and compact, but injected stdout may not reach the model depending on Grok version. AGENTS.md carries the same `Binding:` contract line for exactly that reason, since the flat file is read even when hook stdout is dropped.
 
 This plugin + core-grok together give you the full "super" Grok baseline + org.

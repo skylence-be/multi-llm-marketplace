@@ -38,11 +38,15 @@ field validation, promote ritual, risks):
     arm one-shot wakes for still-running workers, put blocking questions on the
     QUESTIONS pad). `stop_hook_active` passes the second stop, so it costs one
     extra turn, never a loop. Inert in sessions that never spawn workers.
-  - `org-conduct-refresh.sh` — SessionStart hook (matcher `compact`); in org
-    sessions (Solo-managed process or a lane-marked session), re-injects the
-    order to re-invoke the role skill and re-anchor from the board after every
-    compaction. Summaries keep facts, not conduct — long-session decay is
-    self-invisible, so the refresh is hook-driven, never self-assessed.
+  - `org-conduct-refresh.sh` — SessionStart hook, wired on both `startup|resume`
+    and `compact`; in org sessions (Solo-managed process or a lane-marked
+    session) it primes the role-skill contract at session start and re-injects
+    the order to re-invoke the skill and re-anchor from the board after every
+    compaction. A fresh lane needs it because a dispatch pointer is prose a
+    model can read past, and a role that never invoked its skill is not running
+    under it; a compacted lane needs it because summaries keep facts, not
+    conduct. Long-session decay is self-invisible, so both ends are
+    hook-driven, never self-assessed.
   - `planner-singleton-gate.sh` (PreToolUse on `spawn_agent|spawn_process`):
     denies a planner-named spawn unless the machine-wide sweep just ran. The
     planner is a machine-wide singleton, so a planner in ANY Solo project
