@@ -17,8 +17,8 @@ field validation, promote ritual, risks):
   - `orchestrator` — event-driven conductor for Solo-based worker agents:
     dispatch via todo-body briefs, wake-on-idle follow-up, verification and
     merge discipline, board state.
-  - `planner` — MACHINE-WIDE SINGLETON program planner on the strongest
-    reasoning model at max effort (Fable 5 while available, else Opus),
+  - `planner` — MACHINE-WIDE SINGLETON program planner on Opus 5 at max
+    effort (operator order 2026-07-25; was Fable 5),
     grounded in the skybox code graph (impact/blast-radius drives lane
     decomposition): GitHub epic + child issues, dispatch-ready todo briefs,
     design pads, and the blocker graph encoding order and parallelism. The
