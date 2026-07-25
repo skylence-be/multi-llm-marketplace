@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # core-hud.sh: Claude Code statusline.
-# L1: session: model ·effort │ config: model ·effort adv:model │ project ⎇ branch ~Nf +A -D
+# L1: session: ⏺ model · effort │ config: model · effort · adv model │ project ⎇ branch ~Nf +A -D
 # L2: gradient context bar (24 cells, 1/8-cell resolution) PCT% of CTX · safe · handoff banner
 # L3: 5h ▸ used% [spark] rate%/h → limit-vs-reset verdict · resets HH:MM
 # L4: 7d ▸ used% rate%/h · resets Day HH:MM · session cost
@@ -172,13 +172,18 @@ esac
 # mid-session /effort changes. This used to render settings.json's effortLevel
 # glued to the live model name, so a session running at max still displayed the
 # configured low. Absent when the model has no effort parameter.
+# L1 group separators, shared so the spacing cannot drift between groups.
+# Named L1_* deliberately: SEP is already the \037 cache-record delimiter above,
+# and shadowing it corrupts every cached git record.
+L1_BAR=" $(x 240)│${N} "
+L1_DOT=" $(x 240)·${N} "
 EFF_CHIP=""
 case "$EFF" in
-  max) EFF_CHIP=" ${M}${B}·max${N}" ;;
-  xhigh) EFF_CHIP=" ${M}·xhigh${N}" ;;
-  high) EFF_CHIP=" ${Y}·high${N}" ;;
-  medium) EFF_CHIP=" ${D}·med${N}" ;;
-  low) EFF_CHIP=" ${D}·low${N}" ;;
+  max) EFF_CHIP="${L1_DOT}${M}${B}max${N}" ;;
+  xhigh) EFF_CHIP="${L1_DOT}${M}xhigh${N}" ;;
+  high) EFF_CHIP="${L1_DOT}${Y}high${N}" ;;
+  medium) EFF_CHIP="${L1_DOT}${D}med${N}" ;;
+  low) EFF_CHIP="${L1_DOT}${D}low${N}" ;;
 esac
 
 # ── Gradient context bar: 24 cells, 1/8-cell resolution ──
@@ -411,11 +416,11 @@ fi
 # layout printed the configured effort next to the live model name, which read
 # as one value and hid every mid-session /effort change.
 _cfg_bits="$_cfg_model"
-[[ -n "$_cfg_eff" ]] && _cfg_bits="${_cfg_bits:+${_cfg_bits} }·${_cfg_eff}"
-[[ -n "$_cfg_adv" ]] && _cfg_bits="${_cfg_bits:+${_cfg_bits} }adv:${_cfg_adv}"
+[[ -n "$_cfg_eff" ]] && _cfg_bits="${_cfg_bits:+${_cfg_bits}${L1_DOT}}${_cfg_eff}"
+[[ -n "$_cfg_adv" ]] && _cfg_bits="${_cfg_bits:+${_cfg_bits}${L1_DOT}}adv ${_cfg_adv}"
 _CFG_GRP=""
-[[ -n "$_cfg_bits" ]] && _CFG_GRP="${T}config:${N} ${T}${_cfg_bits}${N}  $(x 240)│${N}  "
-L1="${T}session:${N} ${MC}${B}⏺ ${MODEL}${N}${EFF_CHIP}  $(x 240)│${N}  ${_CFG_GRP}${L1R}"
+[[ -n "$_cfg_bits" ]] && _CFG_GRP="${T}config:${N} ${T}${_cfg_bits}${N}${L1_BAR}"
+L1="${T}session:${N} ${MC}${B}⏺ ${MODEL}${N}${EFF_CHIP}${L1_BAR}${_CFG_GRP}${L1R}"
 
 if ((PCT == 0 && CTX > 0)); then
   _CTX_LABEL="$(x 250)${CL} avail${N}"
