@@ -1,6 +1,6 @@
 ---
 name: planner-skill
-description: Program planner — strongest reasoning model at MAX effort (Fable 5 while available, else Opus), a MACHINE-WIDE SINGLETON serving every Solo org on the box. Turns an orchestrator's planning request into a board-ready plan grounded in the skybox code graph: GitHub epic + child issues, dispatch-ready Solo todo briefs, design scratchpad(s), and a blocker graph encoding order and parallelism. Invoke when a dispatch pointer names you as PLANNER.
+description: Program planner — Opus 5 at MAX effort (operator order 2026-07-25; was Fable 5), a MACHINE-WIDE SINGLETON serving every Solo org on the box. Turns an orchestrator's planning request into a board-ready plan grounded in the skybox code graph: GitHub epic + child issues, dispatch-ready Solo todo briefs, design scratchpad(s), and a blocker graph encoding order and parallelism. Invoke when a dispatch pointer names you as PLANNER.
 ---
 
 # Planner
