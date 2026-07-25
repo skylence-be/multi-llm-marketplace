@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # core-hud.sh: Claude Code statusline.
-# L1: model ·effort │ cfg model ·cfg effort adv:model │ project ⎇ branch ~Nf +A -D
+# L1: session: model ·effort │ config: model ·effort adv:model │ project ⎇ branch ~Nf +A -D
 # L2: gradient context bar (24 cells, 1/8-cell resolution) PCT% of CTX · safe · handoff banner
 # L3: 5h ▸ used% [spark] rate%/h → limit-vs-reset verdict · resets HH:MM
 # L4: 7d ▸ used% rate%/h · resets Day HH:MM · session cost
@@ -414,8 +414,8 @@ _cfg_bits="$_cfg_model"
 [[ -n "$_cfg_eff" ]] && _cfg_bits="${_cfg_bits:+${_cfg_bits} }·${_cfg_eff}"
 [[ -n "$_cfg_adv" ]] && _cfg_bits="${_cfg_bits:+${_cfg_bits} }adv:${_cfg_adv}"
 _CFG_GRP=""
-[[ -n "$_cfg_bits" ]] && _CFG_GRP="${T}${_cfg_bits}${N}  $(x 240)│${N}  "
-L1="${MC}${B}⏺ ${MODEL}${N}${EFF_CHIP}  $(x 240)│${N}  ${_CFG_GRP}${L1R}"
+[[ -n "$_cfg_bits" ]] && _CFG_GRP="${T}config:${N} ${T}${_cfg_bits}${N}  $(x 240)│${N}  "
+L1="${T}session:${N} ${MC}${B}⏺ ${MODEL}${N}${EFF_CHIP}  $(x 240)│${N}  ${_CFG_GRP}${L1R}"
 
 if ((PCT == 0 && CTX > 0)); then
   _CTX_LABEL="$(x 250)${CL} avail${N}"
