@@ -2,19 +2,29 @@
 
 Laravel / Livewire / Filament development plugin for Claude Code.
 
-**Status: foundations only.** The plugin manifest and marketplace registration
-exist; no skills, commands, agents, or hooks ship yet.
+**Status: conduct layer shipped.** Three blueprint skills are in; reference
+skills, scaffold commands, agents, and hooks land in later versions.
+
+## Skills
+
+- `laravel-blueprint-skill` - force-invoked by feature-loop-skill at plan
+  time when `composer.json` names laravel. Data model, routing, auth, and
+  query-ownership conduct.
+- `livewire-blueprint-skill` - force-invoked at plan time when
+  `composer.json` names livewire. Component test coverage, assertion
+  strength, and event discipline conduct.
+- `filament-blueprint-skill` - force-invoked at plan time when
+  `composer.json` names filament. Skeleton addendum; inherits the laravel
+  and livewire canon until filament-specific failure modes are field-proven.
+
+None of these duplicate Laravel Boost's generated reference skills or
+`search-docs`; they are conduct only and route lookups back to those.
 
 ## Planned layout
 
-- `skills/` — stack skills: Eloquent and Laravel app patterns, Livewire 3
-  components, Filament resources, schemas, and actions
-- `commands/` — scaffold and review slash commands
-- `agents/` — stack reviewer / architect subagents
-- `hooks/` — session discipline for stack work
-
-Directories are created when their first content lands, so an installed
-foundations build contains only this README and the manifest.
+- `commands/` - scaffold and review slash commands
+- `agents/` - stack reviewer / architect subagents
+- `hooks/` - session discipline for stack work
 
 ## Install
 
@@ -23,5 +33,6 @@ foundations build contains only this README and the manifest.
 /plugin install laravel-livewire-filament-claude@multi-llm-marketplace
 ```
 
-Installing at this stage gives you the empty shell; it is only useful for
-pinning the plugin name ahead of the first content release.
+Installing now gives you the three blueprint skills; feature-loop-skill
+force-invokes the matching one at plan time once your project's
+`composer.json` names laravel, livewire, or filament.
