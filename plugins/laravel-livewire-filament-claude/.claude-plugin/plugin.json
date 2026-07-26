@@ -1,0 +1,19 @@
+{
+  "name": "laravel-livewire-filament-claude",
+  "version": "0.2.0",
+  "description": "Laravel / Livewire / Filament development plugin for Claude Code. Ships the conduct layer: laravel-blueprint-skill, livewire-blueprint-skill, filament-blueprint-skill, force-invoked by feature-loop-skill at plan time. Reference-layer skills, scaffold commands, and review agents land in later versions.",
+  "author": {
+    "name": "Skylence",
+    "url": "https://github.com/skylence-be"
+  },
+  "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
+  "repository": "https://github.com/skylence-be/multi-llm-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "laravel",
+    "livewire",
+    "filament",
+    "tall-stack",
+    "php"
+  ]
+}

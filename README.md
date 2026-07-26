@@ -57,6 +57,9 @@ plugin's manifest, not in this README.
   skill, plus the filesystem board CLI, dispatch-worker, build-slot,
   ghost-probe, and four session-discipline hooks. No Solo MCP; requires
   `HERDR_ENV=1`.
+- `laravel-livewire-filament-claude`: Laravel / Livewire / Filament development
+  plugin. Conduct-layer blueprint skills (laravel, livewire, filament) ship
+  now; reference skills, commands, and agents land in later versions.
 
 **Codex and Antigravity** (`.agents/plugins/marketplace.json`):
 
