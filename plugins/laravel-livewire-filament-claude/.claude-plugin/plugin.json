@@ -1,0 +1,19 @@
+{
+  "name": "laravel-livewire-filament-claude",
+  "version": "0.1.0",
+  "description": "Laravel / Livewire / Filament development plugin for Claude Code. Foundations release: plugin skeleton and marketplace registration only. Stack skills (Eloquent, Livewire 3 components, Filament resources/schemas/actions), scaffold commands, and review agents land in later versions.",
+  "author": {
+    "name": "Skylence",
+    "url": "https://github.com/skylence-be"
+  },
+  "homepage": "https://github.com/skylence-be/multi-llm-marketplace",
+  "repository": "https://github.com/skylence-be/multi-llm-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "laravel",
+    "livewire",
+    "filament",
+    "tall-stack",
+    "php"
+  ]
+}
