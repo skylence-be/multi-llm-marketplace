@@ -138,7 +138,8 @@ fi
 # later workers split the most recent live worker pane RIGHT; when the live
 # worker count is a multiple of 3 the row is full and a fresh row is seeded
 # by splitting the orchestrator DOWN again. Worker panes are recognized by
-# the '<name>: <todo>' label this script sets (orch* labels excluded); a
+# the '<name>: <todo>' label this script sets (bare '<name>' when the
+# dispatch had no --todo; orch* labels excluded); a
 # reaped pane drops out of the list, so the layout self-heals, no state file.
 if [ -n "$DIR" ]; then
   set -- pane split --current --direction "$DIR" --no-focus
@@ -149,7 +150,7 @@ else
     sel=$(printf '%s\n' "$panes_json" | jq -r --arg self "${HERDR_PANE_ID:-}" '
       [.result.panes[]
        | select(.pane_id != $self)
-       | select((.label // "") | test("^[a-z][a-z0-9_-]*: "))
+       | select((.label // "") | test("^[a-z][a-z0-9_-]*(: |$)"))
        | select((.label // "") | test("^orch") | not)]
       | "\(length) \(last | .pane_id // "")"' 2>/dev/null) || sel=""
   fi
