@@ -57,6 +57,7 @@ Procedures, defaults, and templates, binding exactly as the LAWS are (L0): where
    board list
    herdr agent list
    herdr pane list --workspace "$HERDR_WORKSPACE_ID"
+   herdr session list   # peer orgs live next door; see Peer orchestrators
    board pad get inbox
    waker-ctl list       # lanes the org-waker watches for you
    waker-ctl drain      # deliver wakes held while no turn was running
@@ -137,6 +138,15 @@ Commands in briefs are copy-paste-exact. Give acceptance criteria, never code. S
 - Speak only when a decision is needed, an incident is escalation-grade, or the operator asked.
 - Questions only under **Questions** or the inbox pad.
 - Routine beats: zero chat, board + Herdr sidebar only.
+
+### Peer orchestrators
+
+Other Herdr sessions on the box run their own conductors; discover them at ANCHOR (`herdr session list`, then `HERDR_SESSION=<name> herdr agent list` per session). Peers coordinate DIRECTLY, never through the operator as a relay.
+
+- CHANNEL: write into the peer's inbox pad (their board root), signed with your org name and a pasted `date -u`, carrying full IDs and links. Optionally one short doorbell `agent prompt` after; L11 binds for peer agents exactly as for workers, and the PAD is the message.
+- MUST-WRITE: shared resources (build-slot load, production daemons, release channels); cross-repo impact skybox names; machine-wide incidents (freeze, OOM, daemon outage) to ALL peers with the evidence path; overlap (read a peer's board before dispatching into a surface they plausibly own); L-fingerprint hits on a peer's board (CONDUCT-INCIDENT into their inbox, evidence pasted).
+- ANSWERING: peer items rank WITH worker wakes; reply into the SENDER's inbox; accepted cross-org work becomes a lane on YOUR board.
+- LIMITS: peers send requests, never orders. Deadlocks and shared-resource conflicts with no default go to the operator under Questions.
 
 ### Compaction
 

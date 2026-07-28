@@ -79,6 +79,7 @@ Read sources: `visible`, `recent`, `recent-unwrapped` (prefer for logs), `detect
 
 ## Safety
 
+- Classify the target's input line before ANY send (no-fusion): `scripts/ghost-probe.sh`, `live` then `probe`; unsubmitted text you did not send means a board comment instead.
 - Use `--no-focus` for background work unless the user asked to switch context.
 - Use `--current`, an explicit pane ID, or a unique agent name — never another client's focused pane.
 - Do not close workspaces/tabs/panes you did not create unless asked.

@@ -21,6 +21,8 @@ jobs:
         run: |
           python3 tools/soloterm-skills/sync-skills.py
           git diff --exit-code
+      - name: herdr skill pairs parity
+        run: sh tools/herdr-skills/check-parity.sh
 
   # macOS on purpose. The judge-hook suite is only ever verified on the platform
   # it ships to, and it leans on BSD/GNU fallbacks (stat -f vs -c, base64 -D vs
