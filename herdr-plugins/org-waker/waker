@@ -36,7 +36,7 @@
 #   log/rings.jsonl        delivery audit
 #
 # Usage:
-#   waker on-event | startup | drain | doctor | list
+#   waker on-event | startup | drain | doctor | list | stats
 #   waker register --pane ID --lane NAME --target ORCH [--todo SLUG] [--org-root PATH]
 #   waker unregister --lane NAME
 set -u
@@ -448,12 +448,49 @@ cmd_doctor() {
   exit 0
 }
 
+cmd_stats() {
+  echo "org-waker stats"
+  echo "  config dir: $CFG"
+  rings="$CFG/log/rings.jsonl"
+  if [ -s "$rings" ]; then
+    echo "  ring outcomes:"
+    jq -s -r 'group_by(.outcome) | map("    \(.[0].outcome): \(length)") | .[]' "$rings" 2>/dev/null
+    echo "  ring lanes:"
+    jq -s -r 'group_by(.lane) | map("    \(.[0].lane): \(length)") | .[]' "$rings" 2>/dev/null
+  else
+    echo "  ring outcomes: 0"
+    echo "  ring lanes: 0"
+  fi
+  set -- "$CFG"/pending/*.msg
+  if [ -e "$1" ]; then
+    count=$#
+    now=$(date +%s)
+    oldest=""
+    for f in "$@"; do
+      m=$(mtime_of "$f")
+      if [ -z "$oldest" ] || [ "$m" -lt "$oldest" ]; then oldest=$m; fi
+    done
+    age_min=$(( (now - oldest) / 60 ))
+    echo "  pending wakes: $count (oldest age: ${age_min}m)"
+  else
+    echo "  pending wakes: 0"
+  fi
+  set -- "$CFG"/pending/*.claim
+  if [ -e "$1" ]; then
+    echo "  in-flight claims: $#"
+  else
+    echo "  in-flight claims: 0"
+  fi
+  exit 0
+}
+
 case "$cmd" in
   on-event)   shift; cmd_on_event ;;
   startup)    shift; cmd_startup ;;
   drain)      shift; do_drain; exit 0 ;;
   doctor)     shift; cmd_doctor ;;
   list)       shift; cmd_list ;;
+  stats)      shift; cmd_stats ;;
   register)   shift; cmd_register "$@" ;;
   unregister) shift; cmd_unregister "$@" ;;
   help|-h|--help)
