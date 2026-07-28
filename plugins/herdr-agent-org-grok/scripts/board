@@ -186,6 +186,7 @@ cmd_init() {
   "name": "$(basename "$target")",
   "created": "$(now_utc)",
   "substrate": "herdr",
+  "runtime": "grok",
   "version": 1
 }
 EOF
