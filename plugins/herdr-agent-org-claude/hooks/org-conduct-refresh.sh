@@ -19,13 +19,14 @@ ORG CONDUCT REFRESH (compaction just ran; Herdr substrate). If you hold no
 agent-org role in this session, ignore this. Otherwise: the summary you now run
 on keeps facts, not conduct. Your role skill's text is gone and decay from here
 is self-invisible. Before the next org action: (1) re-invoke your role skill
-(orchestrator; herdr-worker or replacer if you were dispatched; planner if you
-are the singleton; the herdr skill for the control surface); (2) re-ANCHOR from
-durable state, meaning board list + herdr agent list + herdr pane list. The
-board is truth and the summary is hearsay, so re-verify any claim it carries
-before acting on it; (3) re-arm a one-shot `herdr agent wait` for every
-still-working worker you own, because a missed re-arm right after compaction is
-the signature of conduct that did not survive; (4) confirm HERDR_ENV=1 still
-holds.
+(orchestrator; herdr-worker or replacer if you were dispatched; the herdr
+skill for the control surface); (2) re-ANCHOR from durable state, meaning
+board list plus herdr agent list plus herdr pane list plus waker-ctl list.
+The board is truth and the summary is hearsay, so re-verify any claim it
+carries before acting on it; (3) satisfy L6 for every still-working worker
+you own: a waker-registered lane rings you, anything else needs its fallback
+`herdr agent wait` re-armed, because a missed re-arm right after compaction
+is the signature of conduct that did not survive; (4) confirm HERDR_ENV=1
+still holds.
 EOF
 exit 0

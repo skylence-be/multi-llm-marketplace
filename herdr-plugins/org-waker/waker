@@ -1,0 +1,463 @@
+#!/bin/sh
+# org-waker: event-driven wake-up for the herdr agent-org (marketplace#37).
+#
+# herdr invokes this script via the manifest [[events]] blocks. A registered
+# lane's settle, block, or death becomes ONE `herdr agent prompt` into the
+# registered orchestrator agent: the ring STARTS an orchestrator turn, which
+# is the thing an armed `herdr agent wait` structurally cannot do after the
+# orchestrator's own turn has ended.
+#
+# Discipline (prior art credited in README.md):
+# - Unregistered pane: exit with ZERO herdr calls (herdmates' silence rule).
+# - Ring predicate (herdmates, MIT): blocked on a blocked-edge; idle/done only
+#   on a working->terminal edge. Repeated re-emissions stay silent, so no
+#   stale-fire class exists for the orchestrator to dismiss (issue #20).
+# - Death coverage (herdr-pings, MIT): pane.exited/pane.closed on a registered
+#   lane ring as a crash; so does a status event whose `agent` label is empty
+#   while the lane is registered (agent process died before settling). An
+#   orchestrator that unregisters a lane BEFORE reaping it keeps expected
+#   deaths silent.
+# - Send safety (org law L11): two visible-frame tails of the target are
+#   compared ghost-probe-style before any prompt; a changing or non-empty
+#   input line HOLDS the wake as a pending file and raises a toast instead of
+#   stomping operator text. Held wakes are re-delivered by `drain` (manifest
+#   action, also attempted opportunistically after handled events) through a
+#   claim-by-rename queue, so concurrent handlers never double-deliver.
+#
+# Everything lives under the plugin CONFIG dir: it is the one root both the
+# handler environment (HERDR_PLUGIN_CONFIG_DIR) and a plain shell
+# (`herdr plugin config-dir skylence.org-waker`) resolve identically; herdr
+# treats the contents as plugin-owned. Layout:
+#   registry.tsv        pane_id  lane  todo  target  gen  org_root  registered_at
+#   state/status--<pane>   last seen agent_status + agent label
+#   state/dead--<pane>     dead-ring-fired marker
+#   pending/<ms>-<lane>-g<gen>.msg   held wake line (claimed as .claim)
+#   spool/<lane>.jsonl     append-only event records (catch-up surface)
+#   log/rings.jsonl        delivery audit
+#
+# Usage:
+#   waker on-event | startup | drain | doctor | list
+#   waker register --pane ID --lane NAME --target ORCH [--todo SLUG] [--org-root PATH]
+#   waker unregister --lane NAME
+set -u
+
+PLUGIN_ID="skylence.org-waker"
+HERDR="${HERDR_BIN_PATH:-herdr}"
+PROMPT_CHAR="${ORG_WAKER_PROMPT_CHAR:-❯}"
+NP="$(printf '\001')NOPROMPT"
+DRAIN_CAP=5
+STALE_CLAIM_SECS=300
+DRAIN_DEBOUNCE_SECS=2
+
+now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+epoch_ms() { printf '%s000' "$(date +%s)"; }
+sane() { printf '%s' "$1" | tr ':/' '--'; }
+mtime_of() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+
+CFG="${HERDR_PLUGIN_CONFIG_DIR:-}"
+if [ -z "$CFG" ]; then
+  CFG=$($HERDR plugin config-dir "$PLUGIN_ID" 2>/dev/null || true)
+fi
+
+cmd=${1:-help}
+
+# Event context must never fail or spam; CLI context may speak.
+quiet=0
+case "$cmd" in on-event|startup) quiet=1 ;; esac
+
+fail() {
+  [ "$quiet" -eq 1 ] && exit 0
+  echo "waker: $*" >&2
+  exit 1
+}
+
+[ -n "$CFG" ] || fail "cannot resolve the plugin config dir (is the plugin installed/linked?)"
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+mkdir -p "$CFG/state" "$CFG/pending" "$CFG/spool" "$CFG/log" 2>/dev/null || fail "cannot create $CFG"
+
+REG="$CFG/registry.tsv"
+
+# --- registry -------------------------------------------------------------
+
+reg_row_by_pane() { [ -f "$REG" ] && awk -F'\t' -v p="$1" '$1==p {print; exit}' "$REG"; }
+reg_row_by_lane() { [ -f "$REG" ] && awk -F'\t' -v l="$1" '$2==l {print; exit}' "$REG"; }
+reg_gen_of_lane() { [ -f "$REG" ] && awk -F'\t' -v l="$1" '$2==l {print $5; exit}' "$REG"; }
+
+reg_remove_lane() {
+  [ -f "$REG" ] || return 0
+  tmp=$(mktemp "${TMPDIR:-/tmp}/org-waker.XXXXXX") || return 1
+  awk -F'\t' -v l="$1" '$2!=l' "$REG" > "$tmp" && mv "$tmp" "$REG"
+}
+
+# --- durable records ------------------------------------------------------
+
+spool_append() {
+  # spool_append LANE JSON
+  printf '%s\n' "$2" >> "$CFG/spool/$1.jsonl" 2>/dev/null || true
+}
+
+log_ring() {
+  # log_ring LANE GEN OUTCOME TEXT
+  jq -cn --arg t "$(now_utc)" --arg l "$1" --arg g "$2" --arg o "$3" --arg x "$4" \
+    '{timestamp:$t, lane:$l, gen:($g|tonumber? // 0), outcome:$o, text:$x}' \
+    >> "$CFG/log/rings.jsonl" 2>/dev/null || true
+}
+
+toast() {
+  # toast TITLE BODY  (best-effort; only from inside a herdr context)
+  [ -n "${HERDR_SOCKET_PATH:-}${HERDR_ENV:-}" ] || return 0
+  $HERDR notification show "$1" --body "$2" --sound request >/dev/null 2>&1 || true
+}
+
+# --- send safety (org L11) ------------------------------------------------
+
+# Last input-line content of a rendered tail, after ghost-probe's prompt_text
+# (plugins/herdr-agent-org-*/scripts/ghost-probe.sh). Sentinel when no prompt
+# line exists in the frame.
+prompt_text() {
+  printf '%s\n' "$1" | awk -v p="$PROMPT_CHAR" -v np="$NP" '
+    { i = index($0, p); if (i) { found = 1; line = substr($0, i + length(p)) } }
+    END {
+      if (!found) { print np; exit }
+      gsub(/^[ \t]+/, "", line); gsub(/[ \t\r]+$/, "", line)
+      print line
+    }
+  '
+}
+
+# 0 = composer clear and stable; 1 = hold (typing, occupied, ghost-ambiguous,
+# or unreadable). On pure Herdr a ghost is indistinguishable from typed text
+# (no styling-stripped source), so any non-empty line errs toward holding.
+composer_clear() {
+  t0=$($HERDR agent read "$1" --source visible --lines 25 --format text 2>/dev/null) || return 1
+  sleep 0.4
+  t1=$($HERDR agent read "$1" --source visible --lines 25 --format text 2>/dev/null) || return 1
+  p0=$(prompt_text "$t0")
+  p1=$(prompt_text "$t1")
+  [ "$p1" = "$NP" ] && return 1
+  [ "$p0" != "$p1" ] && return 1
+  [ -n "$p1" ] && return 1
+  return 0
+}
+
+hold_wake() {
+  # hold_wake LANE GEN TARGET LINE WHY
+  # File line 1 is the target, line 2 the wake text, so drain never has to
+  # re-derive the target from the registry (a dead lane has no row, and
+  # guessing from another row could ring a different org's orchestrator).
+  f="$CFG/pending/$(epoch_ms)-$(sane "$1")-g$2.msg"
+  printf '%s\n%s\n' "$3" "$4" > "$f" 2>/dev/null || true
+  log_ring "$1" "$2" "held:$5" "$4"
+  toast "org-waker held a wake ($5)" "$4"
+}
+
+deliver() {
+  # deliver TARGET LINE -> 0 delivered, 1 not
+  tstatus=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.agent_status // "unknown"' 2>/dev/null || echo unknown)
+  case "$tstatus" in
+    working)
+      # Claude Code queues a mid-turn prompt cleanly (herdmates, live-verified);
+      # --wait would time out on the still-running turn and read as failure.
+      $HERDR agent prompt "$1" "$2" >/dev/null 2>&1 || return 1
+      return 0
+      ;;
+    idle|done)
+      # Verify-after-send: a settled agent must advance within ~5s or the
+      # prompt did not land (agent_prompt_stalled).
+      $HERDR agent prompt "$1" "$2" --wait --timeout 8000 >/dev/null 2>&1 || return 1
+      return 0
+      ;;
+    *)
+      # blocked: typing into an approval dialog is wrong input. unknown: no basis.
+      return 1
+      ;;
+  esac
+}
+
+ring_or_hold() {
+  # ring_or_hold LANE GEN TARGET LINE
+  if ! composer_clear "$3"; then
+    hold_wake "$1" "$2" "$3" "$4" "composer"
+    return 0
+  fi
+  if deliver "$3" "$4"; then
+    log_ring "$1" "$2" "delivered" "$4"
+  else
+    hold_wake "$1" "$2" "$3" "$4" "undelivered"
+  fi
+}
+
+# --- pending queue --------------------------------------------------------
+
+sweep_stale_claims() {
+  now=$(date +%s)
+  for c in "$CFG"/pending/*.claim; do
+    [ -e "$c" ] || break
+    age=$(( now - $(mtime_of "$c") ))
+    [ "$age" -ge "$STALE_CLAIM_SECS" ] && mv "$c" "${c%.claim}" 2>/dev/null || true
+  done
+}
+
+do_drain() {
+  sweep_stale_claims
+  # Claim up to DRAIN_CAP files in order; group the survivors per target.
+  n=0
+  claimed=""
+  for f in "$CFG"/pending/*.msg; do
+    [ -e "$f" ] || break
+    [ "$n" -ge "$DRAIN_CAP" ] && break
+    mv "$f" "$f.claim" 2>/dev/null || continue   # rename winner owns delivery
+    claimed="$claimed$f.claim
+"
+    n=$((n + 1))
+  done
+  [ "$n" -gt 0 ] || return 0
+
+  # A pending wake is dropped only when its lane was RE-registered at a higher
+  # generation (superseded by a re-dispatch). A lane absent from the registry
+  # still delivers: dead rings outlive their row by design.
+  printf '%s' "$claimed" | while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    base=${c##*/}; base=${base%.msg.claim}
+    gen=${base##*-g}
+    lane=${base#*-}; lane=${lane%-g"$gen"}
+    cur=$(reg_gen_of_lane "$lane")
+    if [ -n "$cur" ] && [ "$cur" -gt "$gen" ] 2>/dev/null; then
+      log_ring "$lane" "$gen" "dropped:superseded-g$cur" "$(cat "$c" 2>/dev/null)"
+      rm -f "$c"
+      continue
+    fi
+    target=$(head -n 1 "$c" 2>/dev/null)
+    line=$(sed -n '2p' "$c" 2>/dev/null)
+    if [ -z "$target" ] || [ -z "$line" ]; then
+      log_ring "$lane" "$gen" "dropped:malformed" "$(cat "$c" 2>/dev/null | tr '\n' ' ')"
+      rm -f "$c"
+      continue
+    fi
+    if composer_clear "$target" && deliver "$target" "$line"; then
+      log_ring "$lane" "$gen" "drain-delivered" "$line"
+      rm -f "$c"
+    else
+      mv "$c" "${c%.claim}" 2>/dev/null || true
+      # Target still unreachable: later entries would fail the same way, and
+      # delivering out of order is worse than waiting (herdmates' break rule).
+      break
+    fi
+  done
+  return 0
+}
+
+maybe_drain() {
+  # Opportunistic post-event drain, debounced by a marker file (a fresh
+  # process handles every event, so in-memory state cannot debounce).
+  set -- "$CFG"/pending/*.msg
+  [ -e "$1" ] || return 0
+  marker="$CFG/state/drain-last"
+  now=$(date +%s)
+  last=$(mtime_of "$marker")
+  [ $(( now - last )) -lt "$DRAIN_DEBOUNCE_SECS" ] && return 0
+  touch "$marker" 2>/dev/null || true
+  do_drain
+}
+
+# --- subcommands ----------------------------------------------------------
+
+cmd_on_event() {
+  # One trace line per event; herdr keeps handler stderr in
+  # `herdr plugin log list`, so this is the observability surface.
+  printf 'on-event ev=%s json=%.160s\n' "${HERDR_PLUGIN_EVENT:-none}" "${HERDR_PLUGIN_EVENT_JSON:-none}" >&2
+  # Normalize the event name to underscore form. Measured on herdr 0.7.5
+  # (2026-07-28): HERDR_PLUGIN_EVENT arrives dot-form (pane.exited) while the
+  # payload envelope's .event is underscore (pane_exited); tolerate both.
+  ev=$(printf '%s' "${HERDR_PLUGIN_EVENT:-}" | tr '.' '_')
+  [ -n "$ev" ] || ev=$(printf '%s' "${HERDR_PLUGIN_EVENT_JSON:-}" | jq -r '.event // empty' 2>/dev/null)
+  # NOTE: never write ${VAR:-{}} in sh: the first } ends the expansion,
+  # appending a literal brace that makes jq exit nonzero on trailing garbage.
+  payload=${HERDR_PLUGIN_EVENT_JSON:-}
+  [ -n "$payload" ] || payload='{}'
+  data=$(printf '%s' "$payload" | jq -c '.data // .' 2>/dev/null) || exit 0
+  pane=$(printf '%s' "$data" | jq -r '.pane_id // empty')
+  [ -n "$pane" ] || exit 0
+
+  row=$(reg_row_by_pane "$pane")
+  [ -n "$row" ] || exit 0          # unregistered pane: total silence
+
+  lane=$(printf '%s' "$row" | cut -f2)
+  todo=$(printf '%s' "$row" | cut -f3)
+  target=$(printf '%s' "$row" | cut -f4)
+  gen=$(printf '%s' "$row" | cut -f5)
+  ptr="board get ${todo:-$lane}"
+  sp="$CFG/state/status--$(sane "$pane")"
+  dm="$CFG/state/dead--$(sane "$pane")"
+
+  case "$ev" in
+    pane_agent_status_changed)
+      status=$(printf '%s' "$data" | jq -r '.agent_status // empty')
+      agent=$(printf '%s' "$data" | jq -r '.agent // empty')
+      prev=$(cut -f1 "$sp" 2>/dev/null || true)
+      printf '%s\t%s\n' "$status" "$agent" > "$sp" 2>/dev/null || true
+      spool_append "$lane" "$(jq -cn --arg e agent_status_changed --arg p "$pane" --arg l "$lane" \
+        --arg s "$status" --arg a "$agent" --arg g "$gen" --arg t "$(now_utc)" \
+        '{event:$e, pane_id:$p, lane:$l, agent_status:$s, agent:$a, gen:($g|tonumber? // 0), timestamp:$t}')"
+
+      if [ -z "$agent" ]; then
+        # Agent label gone while registered: the process died (herdr-pings'
+        # early-crash watchdog insight). Ring once per generation.
+        if [ ! -f "$dm" ]; then
+          touch "$dm" 2>/dev/null || true
+          ring_or_hold "$lane" "$gen" "$target" \
+            "[WAKE g${gen}] lane ${lane}: agent process GONE (last status ${status:-unknown}). Crash-class: ${ptr}, consider a replacer."
+        fi
+      else
+        ring=0
+        case "$status" in
+          blocked)   [ "$prev" != "blocked" ] && ring=1 ;;
+          idle|done) [ "$prev" = "working" ] && ring=1 ;;
+        esac
+        [ "$ring" -eq 1 ] && ring_or_hold "$lane" "$gen" "$target" \
+          "[WAKE g${gen}] lane ${lane} -> ${status}. ${ptr}"
+      fi
+      ;;
+    pane_exited|pane_closed)
+      code=$(printf '%s' "$data" | jq -r '.exit_code // empty')
+      spool_append "$lane" "$(jq -cn --arg e "$ev" --arg p "$pane" --arg l "$lane" \
+        --arg c "$code" --arg g "$gen" --arg t "$(now_utc)" \
+        '{event:$e, pane_id:$p, lane:$l, exit_code:($c|tonumber? // null), gen:($g|tonumber? // 0), timestamp:$t}')"
+      # Still registered at death = unexpected. (Expected close-out
+      # unregisters BEFORE reaping, so this path stays silent for it.)
+      reg_remove_lane "$lane"
+      rm -f "$sp" "$dm" 2>/dev/null || true
+      ring_or_hold "$lane" "$gen" "$target" \
+        "[WAKE g${gen}] lane ${lane} PANE ${ev#pane_}${code:+ (exit ${code})} while registered. Crash-class: ${ptr}, consider a replacer."
+      ;;
+    *)
+      log_ring "$lane" "$gen" "ignored-event:${ev:-none}" ""
+      ;;
+  esac
+
+  maybe_drain
+  exit 0
+}
+
+cmd_register() {
+  pane=""; lane=""; target=""; todo=""; org_root="${HERDR_ORG_ROOT:-}"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --pane) pane=$2; shift 2 ;;
+      --lane) lane=$2; shift 2 ;;
+      --target) target=$2; shift 2 ;;
+      --todo) todo=$2; shift 2 ;;
+      --org-root) org_root=$2; shift 2 ;;
+      *) fail "register: unknown arg $1" ;;
+    esac
+  done
+  [ -n "$pane" ] && [ -n "$lane" ] && [ -n "$target" ] || fail "register needs --pane, --lane, --target"
+  [ "$pane" = "$target" ] && fail "register: a lane cannot target its own pane"
+  gen=1
+  old=$(reg_gen_of_lane "$lane")
+  [ -n "$old" ] && gen=$((old + 1))
+  tmp=$(mktemp "${TMPDIR:-/tmp}/org-waker.XXXXXX") || fail "mktemp failed"
+  { [ -f "$REG" ] && awk -F'\t' -v l="$lane" '$2!=l' "$REG"; \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pane" "$lane" "$todo" "$target" "$gen" "$org_root" "$(now_utc)"; } > "$tmp" \
+    && mv "$tmp" "$REG" || fail "cannot write $REG"
+  rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null || true
+  printf '{"registered":"%s","pane":"%s","target":"%s","gen":%s}\n' "$lane" "$pane" "$target" "$gen"
+}
+
+cmd_unregister() {
+  lane=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --lane) lane=$2; shift 2 ;;
+      *) fail "unregister: unknown arg $1" ;;
+    esac
+  done
+  [ -n "$lane" ] || fail "unregister needs --lane"
+  row=$(reg_row_by_lane "$lane")
+  pane=$(printf '%s' "$row" | cut -f1)
+  reg_remove_lane "$lane" || fail "cannot rewrite $REG"
+  [ -n "$pane" ] && rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null
+  # An expected close-out has nothing pending to say about the lane. Parse
+  # filenames exactly: a bare glob would also purge lanes this one suffixes
+  # (rev-<lane> is real reviewer naming).
+  for f in "$CFG"/pending/*.msg; do
+    [ -e "$f" ] || break
+    b=${f##*/}; b=${b%.msg}
+    g=${b##*-g}
+    l=${b#*-}; l=${l%-g"$g"}
+    [ "$l" = "$(sane "$lane")" ] && rm -f "$f"
+  done
+  printf '{"unregistered":"%s"}\n' "$lane"
+}
+
+cmd_list() {
+  echo "registry ($REG):"
+  if [ -s "$REG" ]; then
+    printf 'PANE\tLANE\tTODO\tTARGET\tGEN\tORG_ROOT\tREGISTERED\n'
+    cat "$REG"
+  else
+    echo "  (empty)"
+  fi
+  set -- "$CFG"/pending/*.msg
+  if [ -e "$1" ]; then echo "pending: $#"; else echo "pending: 0"; fi
+}
+
+cmd_startup() {
+  sweep_stale_claims
+  # Reconcile: an event that fired while the server was down is lost forever,
+  # so a registered lane whose PANE no longer exists at startup gets its
+  # crash ring synthesized here. Panes that still exist are left to the live
+  # event stream, because agent detection may still be settling right after
+  # restore and ringing on it now would false-positive. Iterate a snapshot:
+  # the ring path rewrites the registry.
+  if [ -s "$REG" ]; then
+    cat "$REG" 2>/dev/null | while IFS="$(printf '\t')" read -r pane lane todo target gen rest; do
+      [ -n "$pane" ] || continue
+      $HERDR pane get "$pane" >/dev/null 2>&1 && continue
+      spool_append "$lane" "$(jq -cn --arg p "$pane" --arg l "$lane" --arg g "$gen" --arg t "$(now_utc)" \
+        '{event:"pane_missing_at_startup", pane_id:$p, lane:$l, gen:($g|tonumber? // 0), timestamp:$t}')"
+      reg_remove_lane "$lane"
+      rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null || true
+      ring_or_hold "$lane" "$gen" "$target" \
+        "[WAKE g${gen}] lane ${lane} PANE MISSING at startup (its death event was lost while the server was down). Crash-class: board get ${todo:-$lane}, consider a replacer."
+    done
+  fi
+  set -- "$CFG"/pending/*.msg
+  [ -e "$1" ] || exit 0
+  toast "org-waker: $# held wake(s) pending" "Run the drain action (herdr plugin action invoke drain --plugin $PLUGIN_ID) or wait for the next lane event."
+  exit 0
+}
+
+cmd_doctor() {
+  echo "org-waker doctor"
+  echo "  plugin id : $PLUGIN_ID"
+  echo "  config dir: $CFG"
+  echo "  herdr     : $($HERDR --version 2>/dev/null || echo MISSING)"
+  echo "  jq        : $(command -v jq || echo MISSING)"
+  rows=0; [ -f "$REG" ] && rows=$(wc -l < "$REG" | tr -d ' ')
+  echo "  registered lanes: $rows"
+  [ "$rows" -gt 0 ] && sed 's/^/    /' "$REG"
+  set -- "$CFG"/pending/*.msg
+  if [ -e "$1" ]; then echo "  pending wakes: $#"; else echo "  pending wakes: 0"; fi
+  set -- "$CFG"/pending/*.claim
+  [ -e "$1" ] && echo "  in-flight claims: $#"
+  if [ -f "$CFG/log/rings.jsonl" ]; then
+    echo "  last rings:"
+    tail -n 5 "$CFG/log/rings.jsonl" | sed 's/^/    /'
+  fi
+  exit 0
+}
+
+case "$cmd" in
+  on-event)   shift; cmd_on_event ;;
+  startup)    shift; cmd_startup ;;
+  drain)      shift; do_drain; exit 0 ;;
+  doctor)     shift; cmd_doctor ;;
+  list)       shift; cmd_list ;;
+  register)   shift; cmd_register "$@" ;;
+  unregister) shift; cmd_unregister "$@" ;;
+  help|-h|--help)
+    awk 'NR > 1 { if (!/^#/) exit; s = $0; sub(/^# ?/, "", s); print s }' "$0"
+    ;;
+  *) fail "unknown subcommand $cmd (try: waker help)" ;;
+esac

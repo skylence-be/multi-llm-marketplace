@@ -1,5 +1,5 @@
 {
-  "description": "Agent-org session discipline for Claude Code on the Herdr substrate. Herdr exposes no MCP tool surface (dispatch, steer, and wait are all shell commands), so the PreToolUse hooks match the shell-class tools (Bash, skyline_run) and classify the command themselves. org-lane-mark records one line per org event (dispatch vs wait) so the stop gate can state a premise it can prove; org-stop-gate blocks a marked session's FIRST stop with the anti-idle sweep and settles once answered until org state moves; org-conduct-refresh re-injects the re-read-your-role-skill order after compaction; planner-singleton-gate denies a planner-named agent start until the machine-wide sweep across Herdr sessions has run. All inert in sessions that never touch the org.",
+  "description": "Agent-org session discipline for Claude Code on the Herdr substrate. Herdr exposes no MCP tool surface (dispatch, steer, and wait are all shell commands), so the PreToolUse hook matches the shell-class tools (Bash, skyline_run) and classifies the command itself. org-lane-mark records one line per org event (dispatch vs wait) so the stop gate can state a premise it can prove; org-stop-gate blocks a marked session's FIRST stop with the anti-idle sweep and settles once answered until org state moves; org-conduct-refresh re-injects the re-read-your-role-skill order after compaction. All inert in sessions that never touch the org.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,10 +8,6 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/org-lane-mark.sh\""
-          },
-          {
-            "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/planner-singleton-gate.sh\""
           }
         ]
       }

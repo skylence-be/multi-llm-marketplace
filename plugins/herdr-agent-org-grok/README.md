@@ -14,12 +14,12 @@ onto those primitives and a **filesystem board** (no Solo MCP).
 2. Orchestrator and workers must run **inside Herdr panes** (`HERDR_ENV=1`).
 3. Optional integrations for richer state: `herdr integration install claude`
    (and codex/opencode/etc. as needed). Grok is a supported `agent start --kind`.
+4. Recommended: the **org-waker** herdr plugin (`herdr plugin install skylence-be/multi-llm-marketplace/herdr-plugins/org-waker`): the event-driven wake mechanism L6 builds on; without it the org runs on fallback waits alone.
 
 ## What it provides
 
 - **Skills** (roles):
   - `orchestrator` — conductor; dispatches via Herdr panes + board
-  - `planner` — machine-wide program planner singleton
   - `herdr-worker` — worker conduct for dispatched agents
   - `replacer` — successor pickup after stall/compaction kill
   - `org-audit` — on-demand cold review (never on a cadence)
@@ -29,6 +29,7 @@ onto those primitives and a **filesystem board** (no Solo MCP).
   - `dispatch-worker` — split pane + `agent start` + pointer prompt
   - `build-slot` — machine-wide compile serializer
   - `ghost-probe.sh` — no-fusion input-line classifier (same recipe as Solo variant)
+  - `waker-ctl` — org-side client of the org-waker herdr plugin (register/unregister/list/drain/doctor)
 - **Hooks** (Grok lifecycle):
   - org-lane-mark (PreToolUse when shell runs `herdr agent start` / `dispatch-worker`)
   - org-conduct-refresh (SessionStart compact)
@@ -65,7 +66,7 @@ export HERDR_ORG_ROOT="$HOME/.herdr-org/my-feature"
 | Board / todos | Solo MCP todos/pads | Filesystem board (`scripts/board`) |
 | Worker PTYs | Solo spawn_process | `herdr pane split` + `agent start` |
 | Read / steer | get_process_output / send_input | `herdr agent read` / `agent prompt` |
-| Idle wake | Solo timer_fire_when_idle | `herdr agent wait --until idle\|done\|blocked` |
+| Idle wake | Solo timer_fire_when_idle | org-waker ring (event-driven prompt); fallback `herdr agent wait` |
 | Agent state | Process status | Herdr semantic states + sidebar |
 | MCP required | Solo stdio MCP | None (CLI only) |
 | Run location | Any terminal Solo manages | **Must** be `HERDR_ENV=1` |
@@ -76,10 +77,10 @@ lane trees) is shared with the Solo siblings; only the control plane changes.
 ## Typical flow
 
 1. Operator: "you're the conductor" → invoke `orchestrator` skill.
-2. Orchestrator inits/reads board, optionally routes planning to `planner`.
+2. Orchestrator inits/reads board and plans the program itself (L3: no planner agent exists in this org).
 3. Dispatch: `dispatch-worker` (or manual split + `agent start --kind grok\|claude\|codex`) with a pointer to a board todo.
 4. Worker runs `herdr-worker` skill; reports milestones via `board comment`.
-5. Orchestrator `agent wait`s, verifies claims, merges; workers never compile.
+5. The org-waker rings the orchestrator on lane settle/block/death (fallback `agent wait`); it verifies claims, merges; workers never compile.
 
 See each skill for playbooks.
 

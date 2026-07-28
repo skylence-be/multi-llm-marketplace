@@ -10,12 +10,12 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
 2. Orchestrator and workers must run **inside Herdr panes** (`HERDR_ENV=1`).
 3. `jq` on PATH (the hooks and `dispatch-worker` parse Herdr's JSON).
 4. Optional: `herdr integration install claude`. See the caveat below before assuming it does more than it does.
+5. Recommended: the **org-waker** herdr plugin (`herdr plugin install skylence-be/multi-llm-marketplace/herdr-plugins/org-waker`). It is the event-driven wake mechanism L6 builds on; without it the org runs on fallback waits alone.
 
 ## What it provides
 
 - **Skills** (roles):
   - `orchestrator` conducts: dispatches via Herdr panes plus the board, verifies, merges, owns the single gate build
-  - `planner` is the machine-wide program planner singleton
   - `herdr-worker` is worker conduct for dispatched agents
   - `replacer` is successor pickup after a stall, kill, or compaction
   - `org-audit` is an on-demand cold review, never scheduled
@@ -25,11 +25,11 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
   - `dispatch-worker` splits a pane, starts a named agent, sends the pointer prompt, and reports the post-send state
   - `build-slot` is the machine-wide compile serializer
   - `ghost-probe.sh` is the no-fusion input-line classifier
+  - `waker-ctl` is the org-side client of the org-waker herdr plugin (register, unregister, list, drain, doctor)
 - **Hooks** (`hooks/hooks.json`, wired on install):
   - `org-lane-mark.sh` (PreToolUse on Bash and skyline_run) records one line per org event, `dispatch` or `wait`
   - `org-stop-gate.sh` (Stop) blocks a marked session's FIRST stop with the anti-idle sweep
   - `org-conduct-refresh.sh` (SessionStart, matcher `compact`) re-injects the re-read-your-role-skill order
-  - `planner-singleton-gate.sh` (PreToolUse) denies a planner-named `agent start` until the machine-wide sweep has run
 - **templates/claude-md.md**: worker guidance to paste into `~/.claude/CLAUDE.md` on a machine that runs lane workers.
 
 ## Install
@@ -55,7 +55,7 @@ export HERDR_ORG_ROOT="$HOME/.herdr-org/my-feature"
 export PATH="${CLAUDE_PLUGIN_ROOT}/scripts:$PATH"
 ```
 
-Worker panes inherit `HERDR_ORG_ROOT` and `PATH` from the split, so a lane dispatched with `dispatch-worker` resolves the same board.
+Split panes do NOT inherit the requester's environment: they get the herdr server's env (measured on herdr 0.7.5, 2026-07-28). `dispatch-worker` therefore passes `--env HERDR_ORG_ROOT=...` and `--env PATH=...` on the split itself; a hand-rolled `pane split` must do the same or the worker resolves neither the board nor the org scripts.
 
 ## Two Claude-specific facts that shape the doctrine
 
@@ -79,7 +79,7 @@ dispatch-worker --name impl-a --todo impl-a --cwd /abs/lane-tree \
 | Board and todos | Solo MCP todos and pads | Filesystem board (`scripts/board`) |
 | Worker PTYs | `spawn_agent` | `herdr pane split` plus `agent start` |
 | Read and steer | `get_process_output` / `send_input` | `herdr agent read` / `agent prompt` |
-| Idle wake | `timer_fire_when_idle` | `herdr agent wait --until idle|done|blocked` |
+| Idle wake | `timer_fire_when_idle` | org-waker ring (event-driven prompt); fallback `herdr agent wait` |
 | Agent state | Process status | Herdr semantic states plus sidebar |
 | MCP required | Solo stdio MCP | None, CLI only |
 | Run location | Any terminal Solo manages | **Must** be `HERDR_ENV=1` |
@@ -90,7 +90,7 @@ Doctrine (LAWS, compile monopoly, no-fusion, verify-before-accept, MCP-first lan
 ## Typical flow
 
 1. Operator: "you're the conductor", which invokes the `orchestrator` skill.
-2. Orchestrator initializes or reads the board, and routes planning to the `planner` singleton unless it is running on a model that self-plans.
+2. Orchestrator initializes or reads the board and plans the program itself (L3: no planner agent exists in this org).
 3. Dispatch: `dispatch-worker --name <lane> --kind claude --todo <slug> --cwd <lane-tree> -- --permission-mode bypassPermissions`.
 4. The worker invokes `herdr-worker` and reports milestones via `board comment`.
 5. The orchestrator arms `herdr agent wait`, verifies claims by re-running them, gates the build once, and merges. Workers never compile.
