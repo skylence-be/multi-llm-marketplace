@@ -9,8 +9,8 @@
 #
 # With no --direction, placement is automatic: the first worker splits the
 # orchestrator pane DOWN, later workers split the last live worker pane
-# RIGHT, and after every 3 live workers a fresh row is seeded below the
-# orchestrator (rows of at most 3). An explicit --direction forces a legacy
+# RIGHT, and after every 2 live workers a fresh row is seeded below the
+# orchestrator (rows of at most 2). An explicit --direction forces a legacy
 # split of the current pane and skips the layout logic.
 #
 # Defaults to --kind claude. The doctrinal default model/effort is filled in
@@ -46,7 +46,7 @@ HERDR="${HERDR_BIN_PATH:-herdr}"
 NAME=""
 KIND="claude"
 CWD=""
-DIR=""   # empty = auto layout (down below orchestrator, then right, rows of 3)
+DIR=""   # empty = auto layout (down below orchestrator, then right, rows of 2)
 TODO=""
 PROMPT=""
 TIMEOUT="60000"
@@ -142,7 +142,7 @@ fi
 # PLACEMENT (operator orders 2026-07-28): with no explicit --direction the
 # layout is automatic: the first worker splits the orchestrator pane DOWN;
 # later workers split the most recent live worker pane RIGHT; when the live
-# worker count is a multiple of 3 the row is full and a fresh row is seeded
+# worker count is a multiple of 2 the row is full and a fresh row is seeded
 # by splitting the orchestrator DOWN again. Worker panes are recognized by
 # the '<name>: <todo>' label this script sets (bare '<name>' when the
 # dispatch had no --todo; orch* labels excluded); a
@@ -166,7 +166,7 @@ else
   # command substitution strips the trailing space of "0 ", leaving sel="0":
   # the suffix parse then yields last_worker="0", so clear it explicitly.
   [ "$n_workers" -gt 0 ] 2>/dev/null || last_worker=""
-  if [ -n "$last_worker" ] && [ $((n_workers % 3)) -ne 0 ]; then
+  if [ -n "$last_worker" ] && [ $((n_workers % 2)) -ne 0 ]; then
     set -- pane split --pane "$last_worker" --direction right --no-focus
   elif [ -n "${HERDR_PANE_ID:-}" ]; then
     set -- pane split --pane "$HERDR_PANE_ID" --direction down --no-focus
