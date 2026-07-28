@@ -193,9 +193,38 @@ classify_composer() {
 # the composer line: clear is trusted only after a second read also says
 # clear; the exact QUEUED_HINT counts as delivered on ONE read (a rendered
 # hint is already proof the prompt queued); our own text still parked gets
-# ONE empty submit and a re-check; anything else on the line is left alone
-# and reported undelivered -- never empty-submit text we did not send
+# empty-submit recovery (settle before each re-check; one retry of the Enter
+# itself — the submit is timing-flaky); anything else on the line is left
+# alone and reported undelivered -- never empty-submit text we did not send
 # (fusion hazard).
+
+# recover_parked_submit PANE LINE -> 0 composer no longer parked, 1 still parked
+# after two empty submits. Each attempt: pane run "", settle (~1s), re-read.
+# Settle-before-recheck avoids the false-held race where the Enter landed but
+# the immediate re-read still saw the old parked text.
+recover_parked_submit() {
+  tries=0
+  while [ "$tries" -lt 2 ]; do
+    $HERDR pane run "$1" "" >/dev/null 2>&1 || true
+    sleep 1
+    tail=$($HERDR pane read "$1" --source visible --lines 25 --format text 2>/dev/null) || return 1
+    [ "$(classify_composer "$tail" "$2")" = "parked" ] || return 0
+    tries=$((tries + 1))
+  done
+  return 1
+}
+
+# recover_own_text TARGET LINE -> 0 if the composer already holds EXACTLY LINE
+# and empty-submit recovery submitted it (counts as delivery; do not re-prompt).
+# Foreign/changing/empty-unstable still return 1 so the caller holds.
+recover_own_text() {
+  pane=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.pane_id // empty' 2>/dev/null)
+  [ -n "$pane" ] || return 1
+  tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null) || return 1
+  [ "$(classify_composer "$tail" "$2")" = "parked" ] || return 1
+  recover_parked_submit "$pane" "$2"
+}
+
 verify_submitted() {
   pane=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.pane_id // empty' 2>/dev/null)
   [ -n "$pane" ] || return 1
@@ -219,10 +248,8 @@ verify_submitted() {
       ;;
     foreign) return 1 ;;
     parked)
-      $HERDR pane run "$pane" "" >/dev/null 2>&1 || true
-      tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null) || return 1
-      [ "$(classify_composer "$tail" "$2")" = "parked" ] && return 1
-      return 0
+      recover_parked_submit "$pane" "$2"
+      return $?
       ;;
   esac
 }
@@ -265,6 +292,13 @@ deliver() {
 ring_or_hold() {
   # ring_or_hold LANE GEN TARGET LINE
   if ! composer_clear "$3"; then
+    # Own-text recovery: a previously parked copy of THIS wake already sits on
+    # the composer. Empty-submit that parked copy (do not re-prompt — that would
+    # duplicate); success counts as delivery. Foreign text keeps holding.
+    if recover_own_text "$3" "$4"; then
+      log_ring "$1" "$2" "delivered" "$4"
+      return 0
+    fi
     hold_wake "$1" "$2" "$3" "$4" "composer"
     return 0
   fi
@@ -322,7 +356,19 @@ do_drain() {
       rm -f "$c"
       continue
     fi
-    if composer_clear "$target" && deliver "$target" "$line"; then
+    if composer_clear "$target"; then
+      if deliver "$target" "$line"; then
+        log_ring "$lane" "$gen" "drain-delivered" "$line"
+        rm -f "$c"
+      else
+        mv "$c" "${c%.claim}" 2>/dev/null || true
+        # Target still unreachable: later entries would fail the same way, and
+        # delivering out of order is worse than waiting (herdmates' break rule).
+        break
+      fi
+    elif recover_own_text "$target" "$line"; then
+      # Pending wake's own text already parked on the target composer — recover
+      # with empty submit instead of holding forever behind L11.
       log_ring "$lane" "$gen" "drain-delivered" "$line"
       rm -f "$c"
     else

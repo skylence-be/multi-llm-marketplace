@@ -1,0 +1,210 @@
+#!/bin/sh
+# parked_retry.sh: stub proof for org-waker parked-recovery hardening.
+# C1 settle-before-recheck, C2 one empty-submit retry, C3 own-text recovery
+# at delivery. Uses HERDR_BIN_PATH → fake herdr with canned tails; no live pane.
+set -eu
+
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+WAKER="$DIR/waker"
+
+command -v jq >/dev/null 2>&1 || { echo "parked_retry.sh: jq required, skipping"; exit 0; }
+
+STUB_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/waker-parked-retry_stub.XXXXXX")
+export HERDR_PLUGIN_CONFIG_DIR="$STUB_ROOT/cfg"
+export ORG_WAKER_STUB_STATE="$STUB_ROOT/state"
+FAKE="$STUB_ROOT/fake_herdr"
+mkdir -p "$HERDR_PLUGIN_CONFIG_DIR" "$ORG_WAKER_STUB_STATE"
+
+# Fake herdr: sequences agent/pane reads from numbered files in state dir.
+# agent get returns a fixed pane + status. pane run appends to pane_runs.
+# agent prompt appends to prompts (must stay empty on C3 own-text recovery).
+cat > "$FAKE" <<'FAKE'
+#!/bin/sh
+STATE="${ORG_WAKER_STUB_STATE:?}"
+next() {
+  # next KIND — print next canned response for KIND (agent_read|pane_read)
+  kind=$1
+  i_file="$STATE/${kind}_i"
+  [ -f "$i_file" ] || echo 0 > "$i_file"
+  i=$(cat "$i_file")
+  f="$STATE/${kind}_$i"
+  if [ ! -f "$f" ]; then
+    echo "fake_herdr: no more $kind responses (i=$i)" >&2
+    exit 1
+  fi
+  cat "$f"
+  echo $((i + 1)) > "$i_file"
+}
+
+case "${1:-}" in
+  agent)
+    case "${2:-}" in
+      get)
+        # JSON shape matches real `herdr agent get` (pane_id + agent_status).
+        status=$(cat "$STATE/agent_status" 2>/dev/null || echo idle)
+        pane=$(cat "$STATE/pane_id" 2>/dev/null || echo stub-pane)
+        jq -cn --arg p "$pane" --arg s "$status" \
+          '{result:{agent:{pane_id:$p, agent_status:$s}}}'
+        ;;
+      read)
+        next agent_read
+        ;;
+      prompt)
+        printf '%s\n' "$*" >> "$STATE/prompts"
+        exit 0
+        ;;
+      *)
+        echo "fake_herdr: unhandled agent subcommand: $*" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  pane)
+    case "${2:-}" in
+      read)
+        next pane_read
+        ;;
+      run)
+        printf '%s\n' "$*" >> "$STATE/pane_runs"
+        exit 0
+        ;;
+      *)
+        echo "fake_herdr: unhandled pane subcommand: $*" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  notification)
+    exit 0
+    ;;
+  plugin)
+    # config-dir fallback if HERDR_PLUGIN_CONFIG_DIR unset
+    echo "${HERDR_PLUGIN_CONFIG_DIR:-/tmp/missing}"
+    ;;
+  *)
+    echo "fake_herdr: unhandled: $*" >&2
+    exit 1
+    ;;
+esac
+FAKE
+chmod +x "$FAKE"
+export HERDR_BIN_PATH="$FAKE"
+
+# Source real waker (list is side-effect-free once CFG is set).
+. "$WAKER" list >/dev/null 2>&1
+
+SENT="[WAKE g1] lane stub-lane -> idle. board get stub-lane"
+PC="$PROMPT_CHAR"
+PARKED_TAIL=$(printf 'scroll\n%s %s\n' "$PC" "$SENT")
+CLEAR_TAIL=$(printf 'scroll\n%s \n' "$PC")
+
+reset_state() {
+  rm -rf "$ORG_WAKER_STUB_STATE"
+  mkdir -p "$ORG_WAKER_STUB_STATE" "$HERDR_PLUGIN_CONFIG_DIR/log" \
+    "$HERDR_PLUGIN_CONFIG_DIR/pending" "$HERDR_PLUGIN_CONFIG_DIR/registry" \
+    "$HERDR_PLUGIN_CONFIG_DIR/state" "$HERDR_PLUGIN_CONFIG_DIR/spool"
+  # Keep rings.jsonl across scenarios so the final file is the full audit trail.
+  # Pending files from prior holds would confuse later cases — clear them.
+  rm -f "$HERDR_PLUGIN_CONFIG_DIR/pending"/*
+  [ -f "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl" ] || : > "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl"
+  echo stub-pane > "$ORG_WAKER_STUB_STATE/pane_id"
+  echo idle > "$ORG_WAKER_STUB_STATE/agent_status"
+  : > "$ORG_WAKER_STUB_STATE/pane_runs"
+  : > "$ORG_WAKER_STUB_STATE/prompts"
+  echo 0 > "$ORG_WAKER_STUB_STATE/agent_read_i"
+  echo 0 > "$ORG_WAKER_STUB_STATE/pane_read_i"
+}
+
+# Write sequential canned tails: write_seq KIND file0 file1 ...
+write_seq() {
+  kind=$1
+  shift
+  n=0
+  for content in "$@"; do
+    printf '%s\n' "$content" > "$ORG_WAKER_STUB_STATE/${kind}_$n"
+    n=$((n + 1))
+  done
+}
+
+failed=0
+outcome_lines=""
+
+record() {
+  # record LABEL WANT_OUTCOME
+  last=$(tail -n 1 "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl" 2>/dev/null || true)
+  got=$(printf '%s' "$last" | jq -r '.outcome // empty' 2>/dev/null || true)
+  line="$1 outcome=$got"
+  outcome_lines="$outcome_lines$line
+"
+  if [ "$got" != "$2" ]; then
+    echo "FAIL $1: rings outcome='$got' want '$2' last=$last"
+    failed=1
+  else
+    echo "ok $1: $line"
+  fi
+}
+
+# --- (1) parked then cleared after first empty submit → delivered ----------
+reset_state
+# composer_clear: two empty agent reads
+write_seq agent_read "$CLEAR_TAIL" "$CLEAR_TAIL"
+# deliver: agent get (status), agent prompt, verify: settle + pane parked,
+# empty submit + settle + pane clear
+write_seq pane_read "$PARKED_TAIL" "$CLEAR_TAIL"
+ring_or_hold "stub-lane" "1" "orch" "$SENT"
+record "parked-then-clear" "delivered"
+runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
+if [ "$runs" -lt 1 ]; then
+  echo "FAIL parked-then-clear: expected >=1 pane run, got $runs"
+  failed=1
+fi
+
+# --- (2) parked through both empty submits → held:undelivered -------------
+reset_state
+write_seq agent_read "$CLEAR_TAIL" "$CLEAR_TAIL"
+# verify: first parked, then after submit1 parked, after submit2 parked
+write_seq pane_read "$PARKED_TAIL" "$PARKED_TAIL" "$PARKED_TAIL"
+ring_or_hold "stub-lane" "1" "orch" "$SENT"
+record "parked-both-submits" "held:undelivered"
+runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
+if [ "$runs" -ne 2 ]; then
+  echo "FAIL parked-both-submits: expected 2 pane runs, got $runs"
+  failed=1
+fi
+
+# --- (3) own-text already on composer at delivery → delivered, no prompt --
+reset_state
+# composer_clear sees stable parked own-text (not clear)
+write_seq agent_read "$PARKED_TAIL" "$PARKED_TAIL"
+# recover_own_text: pane read parked, empty submit, settle, pane clear
+write_seq pane_read "$PARKED_TAIL" "$CLEAR_TAIL"
+ring_or_hold "stub-lane" "1" "orch" "$SENT"
+record "own-text-recovery" "delivered"
+if [ -s "$ORG_WAKER_STUB_STATE/prompts" ]; then
+  echo "FAIL own-text-recovery: agent prompt was called (would duplicate):"
+  cat "$ORG_WAKER_STUB_STATE/prompts"
+  failed=1
+else
+  echo "ok own-text-recovery: no agent prompt (no duplicate)"
+fi
+runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
+if [ "$runs" -lt 1 ]; then
+  echo "FAIL own-text-recovery: expected empty submit pane run"
+  failed=1
+fi
+
+echo "--- stub path: $FAKE"
+echo "--- three outcome lines:"
+printf '%s' "$outcome_lines"
+echo "--- rings.jsonl:"
+cat "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl" 2>/dev/null || true
+
+if [ "$failed" -eq 0 ]; then
+  echo "parked_retry.sh: OK"
+  # keep stub dir for evidence paste; also copy path marker
+  echo "$FAKE" > /tmp/waker-parked-retry_stub_path
+  exit 0
+else
+  echo "parked_retry.sh: FAILED (state under $STUB_ROOT)"
+  exit 1
+fi
