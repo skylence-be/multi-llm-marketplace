@@ -26,7 +26,7 @@ herdr plugin action invoke doctor --plugin skylence.org-waker
 - Death coverage: `pane.exited`/`pane.closed` on a *registered* lane ring as crash-class, and so does a status event whose `agent` label went empty while registered (the agent process died before settling). Unregister a lane BEFORE reaping it at close-out and the expected death stays silent; a still-registered death is by definition a crash.
 - Send safety (org law L11): before any prompt, two visible-frame tails of the target are compared ghost-probe-style. A changing or non-empty input line HOLDS the wake as a pending file and raises a toast instead of stomping operator text. On pure Herdr a suggestion ghost is indistinguishable from typed text, so a ghost false-positives into a hold; the drain path recovers it.
 - Delivery: target `working` → plain `agent prompt` (Claude Code queues a mid-turn prompt cleanly; `--wait` would misread the still-running turn as failure). Target `idle`/`done` → `agent prompt --wait --timeout 8000` as verify-after-send. Target `blocked`/`unknown` → hold.
-- Held wakes drain through a claim-by-rename queue (stale claims sweep back after 300s; delivery stops at the first failure so nothing lands out of order). Each pending file carries its own target, so a dead lane's wake never needs a registry row to route. Drain runs as a manifest action, opportunistically after handled events (2s debounce marker), and at `[[startup]]`, which also RECONCILES the registry: a registered lane whose pane no longer exists gets its crash ring synthesized, covering death events lost while the server was down. Panes that still exist are left to the live event stream (agent detection may still be settling right after restore).
+- Held wakes drain through a claim-by-rename queue (stale claims sweep back after 300s; delivery stops at the first failure so nothing lands out of order). Each pending file carries its own target, so a dead lane's wake never needs a registry row to route. Drain runs as a manifest action, opportunistically after handled events (2s debounce marker), on every `pane.focused` event as a heartbeat (so a held wake retries as soon as the operator moves focus), and at `[[startup]]`, which also RECONCILES the registry: a registered lane whose pane no longer exists gets its crash ring synthesized, covering death events lost while the server was down. Panes that still exist are left to the live event stream (agent detection may still be settling right after restore).
 - `waker stats` prints a delivery-audit summary: ring counts by outcome and by lane from `log/rings.jsonl`, the pending wake count with the oldest wake's age in minutes, and the in-flight `.claim` count.
 
 ## Wake line format
@@ -44,14 +44,14 @@ The payload is a pointer, not content: the board comment trail remains the contr
 Everything lives under the plugin config dir, the one root both the handler environment (`HERDR_PLUGIN_CONFIG_DIR`) and a plain shell (`herdr plugin config-dir skylence.org-waker`) resolve identically:
 
 ```
-registry.tsv          pane_id  lane  todo  target  gen  org_root  registered_at
+registry/<lane>.row   one TSV row per lane: pane_id  lane  todo  target  gen  org_root  registered_at
 state/                per-pane last status, dead markers, drain debounce
 pending/              held wakes (line 1 target, line 2 wake text), <epoch-ms>-<lane>-g<gen>.msg
 spool/<lane>.jsonl    append-only event records (orchestrator catch-up surface)
 log/rings.jsonl       delivery audit
 ```
 
-`registry.tsv` is the interface: the org plugins' `dispatch-worker`/`waker-ctl` write rows through the same upsert semantics as `waker register` (re-registering a lane bumps `gen` and clears its per-pane state). Registration and steering:
+The `registry/` row files are the interface: the org plugins' `dispatch-worker`/`waker-ctl` write them through the same upsert semantics as `waker register` (re-registering a lane bumps `gen` and clears its per-pane state; one file per lane, so concurrent registrars cannot clobber each other, and a pre-0.2.0 `registry.tsv` migrates on first touch). Registration and steering:
 
 ```bash
 waker register --pane <pane_id> --lane <name> --target <orchestrator-agent> [--todo <slug>] [--org-root <path>]

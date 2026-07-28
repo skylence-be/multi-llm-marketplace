@@ -73,21 +73,27 @@ fail() {
 
 [ -n "$CFG" ] || fail "cannot resolve the plugin config dir (is the plugin installed/linked?)"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
-mkdir -p "$CFG/state" "$CFG/pending" "$CFG/spool" "$CFG/log" 2>/dev/null || fail "cannot create $CFG"
+mkdir -p "$CFG/state" "$CFG/pending" "$CFG/spool" "$CFG/log" "$CFG/registry" 2>/dev/null || fail "cannot create $CFG"
 
-REG="$CFG/registry.tsv"
+REGD="$CFG/registry"
 
 # --- registry -------------------------------------------------------------
+# One row file per lane (registry/<lane>.row holding a single TSV line), so
+# two concurrent registrars never read-modify-write each other's rows away.
+# The pre-0.2.0 single registry.tsv migrates in place on first touch.
 
-reg_row_by_pane() { [ -f "$REG" ] && awk -F'\t' -v p="$1" '$1==p {print; exit}' "$REG"; }
-reg_row_by_lane() { [ -f "$REG" ] && awk -F'\t' -v l="$1" '$2==l {print; exit}' "$REG"; }
-reg_gen_of_lane() { [ -f "$REG" ] && awk -F'\t' -v l="$1" '$2==l {print $5; exit}' "$REG"; }
+if [ -f "$CFG/registry.tsv" ]; then
+  while IFS="$(printf '\t')" read -r mpane mlane mrest; do
+    [ -n "$mlane" ] || continue
+    printf '%s\t%s\t%s\n' "$mpane" "$mlane" "$mrest" > "$REGD/$(sane "$mlane").row"
+  done < "$CFG/registry.tsv"
+  mv "$CFG/registry.tsv" "$CFG/registry.tsv.migrated" 2>/dev/null || true
+fi
 
-reg_remove_lane() {
-  [ -f "$REG" ] || return 0
-  tmp=$(mktemp "${TMPDIR:-/tmp}/org-waker.XXXXXX") || return 1
-  awk -F'\t' -v l="$1" '$2!=l' "$REG" > "$tmp" && mv "$tmp" "$REG"
-}
+reg_row_by_lane() { cat "$REGD/$(sane "$1").row" 2>/dev/null; }
+reg_gen_of_lane() { reg_row_by_lane "$1" | cut -f5; }
+reg_row_by_pane() { cat "$REGD"/*.row 2>/dev/null | awk -F'\t' -v p="$1" '$1==p {print; exit}'; }
+reg_remove_lane() { rm -f "$REGD/$(sane "$1").row"; }
 
 # --- durable records ------------------------------------------------------
 
@@ -263,14 +269,21 @@ maybe_drain() {
 # --- subcommands ----------------------------------------------------------
 
 cmd_on_event() {
-  # One trace line per event; herdr keeps handler stderr in
-  # `herdr plugin log list`, so this is the observability surface.
-  printf 'on-event ev=%s json=%.160s\n' "${HERDR_PLUGIN_EVENT:-none}" "${HERDR_PLUGIN_EVENT_JSON:-none}" >&2
   # Normalize the event name to underscore form. Measured on herdr 0.7.5
   # (2026-07-28): HERDR_PLUGIN_EVENT arrives dot-form (pane.exited) while the
   # payload envelope's .event is underscore (pane_exited); tolerate both.
   ev=$(printf '%s' "${HERDR_PLUGIN_EVENT:-}" | tr '.' '_')
   [ -n "$ev" ] || ev=$(printf '%s' "${HERDR_PLUGIN_EVENT_JSON:-}" | jq -r '.event // empty' 2>/dev/null)
+  # pane.focused is subscribed ONLY as a drain heartbeat: held wakes get a
+  # retry whenever the operator moves focus, instead of waiting for the next
+  # lane event. No trace line (focus changes are frequent), no payload parse.
+  if [ "$ev" = "pane_focused" ]; then
+    maybe_drain
+    exit 0
+  fi
+  # One trace line per lane-relevant event; herdr keeps handler stderr in
+  # `herdr plugin log list`, so this is the observability surface.
+  printf 'on-event ev=%s json=%.160s\n' "${ev:-none}" "${HERDR_PLUGIN_EVENT_JSON:-none}" >&2
   # NOTE: never write ${VAR:-{}} in sh: the first } ends the expansion,
   # appending a literal brace that makes jq exit nonzero on trailing garbage.
   payload=${HERDR_PLUGIN_EVENT_JSON:-}
@@ -357,9 +370,8 @@ cmd_register() {
   old=$(reg_gen_of_lane "$lane")
   [ -n "$old" ] && gen=$((old + 1))
   tmp=$(mktemp "${TMPDIR:-/tmp}/org-waker.XXXXXX") || fail "mktemp failed"
-  { [ -f "$REG" ] && awk -F'\t' -v l="$lane" '$2!=l' "$REG"; \
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pane" "$lane" "$todo" "$target" "$gen" "$org_root" "$(now_utc)"; } > "$tmp" \
-    && mv "$tmp" "$REG" || fail "cannot write $REG"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pane" "$lane" "$todo" "$target" "$gen" "$org_root" "$(now_utc)" > "$tmp" \
+    && mv "$tmp" "$REGD/$(sane "$lane").row" || fail "cannot write registry row"
   rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null || true
   printf '{"registered":"%s","pane":"%s","target":"%s","gen":%s}\n' "$lane" "$pane" "$target" "$gen"
 }
@@ -375,7 +387,7 @@ cmd_unregister() {
   [ -n "$lane" ] || fail "unregister needs --lane"
   row=$(reg_row_by_lane "$lane")
   pane=$(printf '%s' "$row" | cut -f1)
-  reg_remove_lane "$lane" || fail "cannot rewrite $REG"
+  reg_remove_lane "$lane"
   [ -n "$pane" ] && rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null
   # An expected close-out has nothing pending to say about the lane. Parse
   # filenames exactly: a bare glob would also purge lanes this one suffixes
@@ -391,10 +403,11 @@ cmd_unregister() {
 }
 
 cmd_list() {
-  echo "registry ($REG):"
-  if [ -s "$REG" ]; then
+  echo "registry ($REGD):"
+  set -- "$REGD"/*.row
+  if [ -e "$1" ]; then
     printf 'PANE\tLANE\tTODO\tTARGET\tGEN\tORG_ROOT\tREGISTERED\n'
-    cat "$REG"
+    cat "$REGD"/*.row
   else
     echo "  (empty)"
   fi
@@ -410,8 +423,9 @@ cmd_startup() {
   # event stream, because agent detection may still be settling right after
   # restore and ringing on it now would false-positive. Iterate a snapshot:
   # the ring path rewrites the registry.
-  if [ -s "$REG" ]; then
-    cat "$REG" 2>/dev/null | while IFS="$(printf '\t')" read -r pane lane todo target gen rest; do
+  set -- "$REGD"/*.row
+  if [ -e "$1" ]; then
+    cat "$REGD"/*.row 2>/dev/null | while IFS="$(printf '\t')" read -r pane lane todo target gen rest; do
       [ -n "$pane" ] || continue
       $HERDR pane get "$pane" >/dev/null 2>&1 && continue
       spool_append "$lane" "$(jq -cn --arg p "$pane" --arg l "$lane" --arg g "$gen" --arg t "$(now_utc)" \
@@ -434,9 +448,11 @@ cmd_doctor() {
   echo "  config dir: $CFG"
   echo "  herdr     : $($HERDR --version 2>/dev/null || echo MISSING)"
   echo "  jq        : $(command -v jq || echo MISSING)"
-  rows=0; [ -f "$REG" ] && rows=$(wc -l < "$REG" | tr -d ' ')
+  rows=0
+  set -- "$REGD"/*.row
+  [ -e "$1" ] && rows=$#
   echo "  registered lanes: $rows"
-  [ "$rows" -gt 0 ] && sed 's/^/    /' "$REG"
+  [ "$rows" -gt 0 ] && cat "$REGD"/*.row | sed 's/^/    /'
   set -- "$CFG"/pending/*.msg
   if [ -e "$1" ]; then echo "  pending wakes: $#"; else echo "  pending wakes: 0"; fi
   set -- "$CFG"/pending/*.claim
