@@ -1,34 +1,46 @@
 #!/bin/sh
-# ghost-probe — classify a target PTY's input line BEFORE any send
-# (no-fusion hard law). Discriminates Claude Code suggestion GHOST text
-# (placeholder the operator accepts with Tab/→) from REAL operator typing.
+# ghost-probe: classify a target agent's input line BEFORE any send (no-fusion
+# hard law). Discriminates Claude Code suggestion GHOST text (the placeholder
+# the operator accepts with Tab or the right arrow) from REAL operator typing.
 # Field-validated recipe 2026-06-10; design doc:
 # https://gist.github.com/jonasvanderhaegen/4f6251458e529d290db93ee7afada592
 #
-# This script never touches the PTY. The caller gathers tails via Herdr CLI
-# (herdr agent read / herdr pane read for rendered) or Solo MCP when present,
-# and, in probe mode, sends ONE space between two tails, then a backspace
-# afterwards to restore net-zero either way.
+# This script never touches the target. The caller gathers tails and, in probe
+# mode, sends ONE space between two tails, then a backspace afterwards so the
+# net effect is zero either way.
+#
+# ON HERDR, START WITH live, THEN probe. `herdr pane read` strips ANSI by
+# default and `--format ansi` keeps the styling, so BOTH sources still show a
+# ghost's text: there is no styling-stripped source that renders a ghost as an
+# empty prompt line. zero-touch therefore needs Solo's raw output (or an
+# equivalent) and will call a ghost TYPED without it. That errs toward refusing
+# to send, which is safe but useless, so on a pure Herdr box the working
+# sequence is live (is the operator typing right now?) then probe.
+#
 # Subcommands:
 #   zero-touch --rendered FILE --raw FILE
-#       Step 1, no PTY interaction. A ghost is drawn out-of-band: Solo strips
-#       its styling, so the RAW prompt line is empty while the RENDERED line
-#       shows text. Verdicts: EMPTY | GHOST | TYPED | AMBIGUOUS.
+#       Step 1, no interaction, and only meaningful when the raw source strips a
+#       ghost's styling to an empty prompt line (Solo does; Herdr does not).
+#       Verdicts: EMPTY | GHOST | TYPED | AMBIGUOUS.
 #   probe --before FILE --after FILE
-#       Step 2, deterministic. before/after = rendered tails around sending
-#       ONE space: a ghost VANISHES instantly; real typing is RETAINED.
-#       Verdicts: GHOST | TYPED | AMBIGUOUS. Probe ONCE, never in a loop.
+#       Deterministic. before/after are rendered tails around sending ONE space:
+#       a ghost VANISHES instantly, real typing is RETAINED. Probe ONCE, never
+#       in a loop. Verdicts: GHOST | TYPED | AMBIGUOUS.
 #   live --t0 FILE --t1 FILE
-#       Guard: two rendered tails moments apart. If the prompt line changed
-#       between them, that is LIVE typing — do not probe, do not send.
+#       Guard: two rendered tails moments apart. A prompt line that changed
+#       between them is LIVE typing: do not probe, do not send.
 #       Verdicts: LIVE | STABLE.
 #
-# Options: --prompt-char C (default "❯", the Claude Code prompt).
+# Gathering tails on Herdr:
+#   herdr agent read <name> --source visible --lines 40 > /tmp/tail.t0
+#   herdr pane read  <pane> --source visible --lines 40 > /tmp/tail.t0
+#
+# Options: --prompt-char C (default the Claude Code prompt character).
 # FILE may be - for stdin (at most one input per invocation).
 #
 # Exit codes: 0 = safe to send (EMPTY, GHOST, STABLE)
-#             1 = DO NOT SEND (TYPED, LIVE) — route to the durable channel
-#             2 = AMBIGUOUS or usage error — gather better tails, do not send
+#             1 = DO NOT SEND (TYPED, LIVE), route to the durable channel
+#             2 = AMBIGUOUS or usage error, gather better tails, do not send
 set -u
 
 PROMPT="❯"
