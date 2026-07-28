@@ -104,7 +104,7 @@ if [ -f "$CFG/registry.tsv" ]; then
   mv "$CFG/registry.tsv" "$CFG/registry.tsv.migrated" 2>/dev/null || true
 fi
 
-reg_row_by_lane() { cat "$REGD/$(sane "$1").row" 2>/dev/null; }
+reg_row_by_lane() { cat "$REGD/$(sane "$1").row" 2>/dev/null || true; }
 reg_gen_of_lane() { reg_row_by_lane "$1" | cut -f5; }
 reg_row_by_pane() { cat "$REGD"/*.row 2>/dev/null | awk -F'\t' -v p="$1" '$1==p {print; exit}'; }
 reg_remove_lane() { rm -f "$REGD/$(sane "$1").row"; }
@@ -541,15 +541,28 @@ cmd_unregister() {
   pane=$(printf '%s' "$row" | cut -f1)
   reg_remove_lane "$lane"
   [ -n "$pane" ] && rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null
-  # An expected close-out has nothing pending to say about the lane. Parse
-  # filenames exactly: a bare glob would also purge lanes this one suffixes
-  # (rev-<lane> is real reviewer naming).
-  for f in "$CFG"/pending/*.msg; do
-    [ -e "$f" ] || break
-    b=${f##*/}; b=${b%.msg}
-    g=${b##*-g}
-    l=${b#*-}; l=${l%-g"$g"}
-    [ "$l" = "$(sane "$lane")" ] && rm -f "$f"
+  # Close-out purge of held wakes for this lane. Every permanent removal of a
+  # pending .msg/.claim must write exactly one rings.jsonl line (audit
+  # invariant). A silent rm left held:undelivered lying when a late-landing
+  # Enter had already delivered the wake and unregister then ate the file.
+  # Parse filenames exactly: a bare glob would also purge lanes this one
+  # suffixes (rev-<lane> is real reviewer naming).
+  for f in "$CFG"/pending/*.msg "$CFG"/pending/*.claim; do
+    [ -e "$f" ] || continue
+    b=${f##*/}
+    case "$b" in
+      *.msg.claim) base=${b%.msg.claim} ;;
+      *.msg)       base=${b%.msg} ;;
+      *)           continue ;;
+    esac
+    g=${base##*-g}
+    l=${base#*-}; l=${l%-g"$g"}
+    if [ "$l" = "$(sane "$lane")" ]; then
+      text=$(sed -n '2p' "$f" 2>/dev/null || true)
+      [ -n "$text" ] || text=$(tr '\n' ' ' < "$f" 2>/dev/null || true)
+      log_ring "$lane" "$g" "dropped:unregistered" "$text"
+      rm -f "$f"
+    fi
   done
   printf '{"unregistered":"%s"}\n' "$lane"
 }
