@@ -119,12 +119,18 @@ toast() {
 
 # Last input-line content of a rendered tail, after ghost-probe's prompt_text
 # (plugins/herdr-agent-org-*/scripts/ghost-probe.sh). Sentinel when no prompt
-# line exists in the frame.
+# line exists in the frame. Grok's TUI draws the composer inside a box, so the
+# extracted line after the prompt char ends with U+2502 (light vertical); strip
+# that decoration (and re-trim) so an empty grok composer classifies clear.
 prompt_text() {
   printf '%s\n' "$1" | awk -v p="$PROMPT_CHAR" -v np="$NP" '
     { i = index($0, p); if (i) { found = 1; line = substr($0, i + length(p)) } }
     END {
       if (!found) { print np; exit }
+      gsub(/^[ \t]+/, "", line); gsub(/[ \t\r]+$/, "", line)
+      # U+2502 box-drawing light vertical — grok TUI composer border only.
+      # Literal UTF-8 bytes (portable on macOS /usr/bin/awk; no gawk required).
+      gsub(/│/, "", line)
       gsub(/^[ \t]+/, "", line); gsub(/[ \t\r]+$/, "", line)
       print line
     }
