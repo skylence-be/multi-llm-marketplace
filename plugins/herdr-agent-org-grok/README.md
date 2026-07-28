@@ -25,7 +25,7 @@ onto those primitives and a **filesystem board** (no Solo MCP).
   - `org-audit` — on-demand cold review (never on a cadence)
   - `herdr` — control surface skill (pane/agent/workspace CLI)
 - **Scripts**:
-  - `board` — filesystem board (todos, comments, pads, blockers); `set-status` best-effort publishes lane status into the herdr sidebar pane (`pane report-metadata`), `ready` lists unblocked pending todos, `create --tags`/`list --tags` tag and filter todos, `query <text>` case-insensitively searches todo files, `list`/`ready` support `--json`, and every mutating command snapshots a best-effort silent git commit when git is available
+  - `board` — filesystem board (todos, comments, pads, blockers); `set-status` best-effort publishes lane status into the herdr sidebar pane (`pane report-metadata`), `ready` lists unblocked pending todos, `create --tags`/`list --tags` tag and filter todos, `query <text>` case-insensitively searches todo files, `list`/`ready`/`get` support `--json`, and every mutating command snapshots a best-effort silent git commit when git is available
   - `dispatch-worker` — split pane + `agent start` + pointer prompt
   - `build-slot` — machine-wide compile serializer
   - `ghost-probe.sh` — no-fusion input-line classifier (same recipe as Solo variant)
