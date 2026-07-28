@@ -10,7 +10,7 @@
 #
 # Usage:
 #   waker-ctl present                       # exit 0 iff the plugin is installed
-#   waker-ctl register --pane ID --lane NAME --target ORCH [--todo SLUG]
+#   waker-ctl register --pane ID --lane NAME --target ORCH [--todo SLUG] [--beat-note TEXT]
 #   waker-ctl unregister --lane NAME        # BEFORE reaping the lane agent (L6)
 #   waker-ctl list
 #   waker-ctl drain                         # deliver held wakes now
@@ -22,6 +22,9 @@ HERDR="${HERDR_BIN_PATH:-herdr}"
 
 now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 sane() { printf '%s' "$1" | tr ':/' '--'; }
+# Flatten newlines/tabs/CR to spaces so a beat note is one TSV field. Chosen
+# over reject: orchestrator paste with a stray newline still stores a usable line.
+flatten_note() { printf '%s' "$1" | tr '\n\t\r' '   '; }
 
 CFG=$($HERDR plugin config-dir "$PLUGIN_ID" 2>/dev/null || true)
 
@@ -51,13 +54,14 @@ shift
 
 case "$cmd" in
   register)
-    pane=""; lane=""; target=""; todo=""; org_root="${HERDR_ORG_ROOT:-}"
+    pane=""; lane=""; target=""; todo=""; beat_note=""; org_root="${HERDR_ORG_ROOT:-}"
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --pane) pane=$2; shift 2 ;;
         --lane) lane=$2; shift 2 ;;
         --target) target=$2; shift 2 ;;
         --todo) todo=$2; shift 2 ;;
+        --beat-note) beat_note=$(flatten_note "$2"); shift 2 ;;
         --org-root) org_root=$2; shift 2 ;;
         *) echo "waker-ctl register: unknown arg $1" >&2; exit 2 ;;
       esac
@@ -69,8 +73,15 @@ case "$cmd" in
     old=$(cut -f5 "$REGD/$(sane "$lane").row" 2>/dev/null)
     [ -n "${old:-}" ] && gen=$((old + 1))
     tmp=$(mktemp "${TMPDIR:-/tmp}/org-waker.XXXXXX")
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pane" "$lane" "$todo" "$target" "$gen" "$org_root" "$(now_utc)" > "$tmp" \
-      && mv "$tmp" "$REGD/$(sane "$lane").row"
+    # Field 8 (beat_note) is written only when set so a no-flag register keeps
+    # today's exact 7-field row (list + ring line unchanged).
+    if [ -n "$beat_note" ]; then
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pane" "$lane" "$todo" "$target" "$gen" "$org_root" "$(now_utc)" "$beat_note" > "$tmp" \
+        && mv "$tmp" "$REGD/$(sane "$lane").row"
+    else
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pane" "$lane" "$todo" "$target" "$gen" "$org_root" "$(now_utc)" > "$tmp" \
+        && mv "$tmp" "$REGD/$(sane "$lane").row"
+    fi
     rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null || true
     printf '{"registered":"%s","pane":"%s","target":"%s","gen":%s}\n' "$lane" "$pane" "$target" "$gen"
     ;;

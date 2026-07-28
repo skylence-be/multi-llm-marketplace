@@ -33,18 +33,19 @@ herdr plugin action invoke doctor --plugin skylence.org-waker
 
 ```
 [WAKE g<gen>] lane <lane> -> <status>. board get <todo>
+[WAKE g<gen>] lane <lane> -> <status>. board get <todo>. NOTE: <beat-note>
 [WAKE g<gen>] lane <lane> PANE exited (exit 1) while registered. Crash-class: board get <todo>, consider a replacer.
 [WAKE g<gen>] lane <lane>: agent process GONE (last status working). Crash-class: board get <todo>, consider a replacer.
 ```
 
-The payload is a pointer, not content: the board comment trail remains the contract; the ring only makes it timely. `g<gen>` is the registration generation; a re-dispatched lane bumps it, and pending wakes from an older generation are dropped at drain instead of costing a turn.
+The payload is a pointer, not content: the board comment trail remains the contract; the ring only makes it timely. `g<gen>` is the registration generation; a re-dispatched lane bumps it, and pending wakes from an older generation are dropped at drain instead of costing a turn. When the lane was registered with `--beat-note <text>`, every ring (settle, block, and crash-class) appends `. NOTE: <text>` so the orchestrator receives the beat script on the same line as the pointer — held wakes keep working unchanged because the note is baked into the ring line at composition time and pending files already store the full line.
 
 ## The registry contract
 
 Everything lives under the plugin config dir, the one root both the handler environment (`HERDR_PLUGIN_CONFIG_DIR`) and a plain shell (`herdr plugin config-dir skylence.org-waker`) resolve identically:
 
 ```
-registry/<lane>.row   one TSV row per lane: pane_id  lane  todo  target  gen  org_root  registered_at
+registry/<lane>.row   one TSV row per lane: pane_id  lane  todo  target  gen  org_root  registered_at  [beat_note]
 state/                per-pane last status, dead markers, drain debounce
 pending/              held wakes (line 1 target, line 2 wake text), <epoch-ms>-<lane>-g<gen>.msg
 spool/<lane>.jsonl    append-only event records (orchestrator catch-up surface)
@@ -54,7 +55,7 @@ log/rings.jsonl       delivery audit
 The `registry/` row files are the interface: the org plugins' `dispatch-worker`/`waker-ctl` write them through the same upsert semantics as `waker register` (re-registering a lane bumps `gen` and clears its per-pane state; one file per lane, so concurrent registrars cannot clobber each other, and a pre-0.2.0 `registry.tsv` migrates on first touch). Registration and steering:
 
 ```bash
-waker register --pane <pane_id> --lane <name> --target <orchestrator-agent> [--todo <slug>] [--org-root <path>]
+waker register --pane <pane_id> --lane <name> --target <orchestrator-agent> [--todo <slug>] [--org-root <path>] [--beat-note <text>]
 waker unregister --lane <name>     # BEFORE reaping the agent at close-out
 waker list
 waker drain                        # also exposed as the drain action
