@@ -10,7 +10,7 @@
 #   board path
 #   board list [--status STATUS] [--tags a,b] [--json]
 #   board ready [--json]
-#   board get <slug>
+#   board get <slug> [--json]
 #   board create <slug> [--title TEXT] [--status STATUS] [--owner NAME] [--body-file PATH] [--tags a,b]
 #   board set-status <slug> <status>
 #   board set-owner <slug> <agent-name|"">
@@ -317,10 +317,47 @@ cmd_ready() {
 
 cmd_get() {
   need_root
-  slug=$1
+  slug=$1; shift || true
+  json=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      *) shift ;;
+    esac
+  done
   p=$(todo_path "$slug")
   [ -f "$p" ] || { echo "board: no todo $slug" >&2; exit 1; }
-  cat "$p"
+
+  if [ "$json" -eq 1 ]; then
+    st=$(front_get "$p" status)
+    ti=$(front_get "$p" title)
+    ow=$(front_get "$p" owner)
+    tags_raw=$(front_get "$p" tags)
+    blockers_raw=$(front_get "$p" blockers)
+
+    body=$(awk '
+      BEGIN { fm_count=0; body_started=0 }
+      /^---$/ {
+        fm_count++
+        if (fm_count == 2) { reading=1; next }
+        next
+      }
+      /^## Comments$/ { exit }
+      reading {
+        if (body_started) printf "\n"
+        printf "%s", $0
+        body_started=1
+      }
+    ' "$p")
+
+    comment_count=$(grep -c '^### ' "$p" 2>/dev/null || echo 0)
+
+    printf '{\"slug\":\"%s\",\"title\":\"%s\",\"status\":\"%s\",\"owner\":\"%s\",\"tags\":%s,\"blockers\":%s,\"comment_count\":%d,\"body\":\"%s\"}\n' \
+      "$(json_escape "$slug")" "$(json_escape "$ti")" "$(json_escape "$st")" "$(json_escape "$ow")" \
+      "$(json_array "$tags_raw")" "$(json_array "$blockers_raw")" "$comment_count" "$(json_escape "$body")"
+  else
+    cat "$p"
+  fi
 }
 
 cmd_create() {
@@ -529,7 +566,7 @@ case "$cmd" in
   path) printf '%s\n' "$ROOT" ;;
   list) cmd_list "$@" ;;
   ready) cmd_ready "$@" ;;
-  get) [ "$#" -ge 1 ] || usage; cmd_get "$1" ;;
+  get) [ "$#" -ge 1 ] || usage; cmd_get "$@" ;;
   create) [ "$#" -ge 1 ] || usage; cmd_create "$@" ;;
   set-status) [ "$#" -ge 2 ] || usage; cmd_set_status "$1" "$2" ;;
   set-owner) [ "$#" -ge 1 ] || usage; cmd_set_owner "$1" "${2:-}" ;;
