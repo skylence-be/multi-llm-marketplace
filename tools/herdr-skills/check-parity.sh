@@ -71,6 +71,7 @@ both herdr-worker \
   "contract, not a menu" \
   "STAY RESIDENT" \
   "doorbell" \
+  "pane run" \
   "feature-loop-skill"
 both replacer \
   "contract, not a menu"
