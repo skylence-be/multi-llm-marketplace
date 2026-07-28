@@ -29,7 +29,7 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
 - **Hooks** (`hooks/hooks.json`, wired on install):
   - `org-lane-mark.sh` (PreToolUse on Bash and skyline_run) records one line per org event, `dispatch` or `wait`
   - `org-stop-gate.sh` (Stop) blocks a marked session's FIRST stop with the anti-idle sweep
-  - `org-conduct-refresh.sh` (SessionStart, matcher `compact`) re-injects the re-read-your-role-skill order
+  - `org-conduct-refresh.sh` (SessionStart, matchers `startup|resume|compact`) primes the role-skill contract in fresh sessions and re-injects the re-read order after compaction
 - **templates/claude-md.md**: worker guidance to paste into `~/.claude/CLAUDE.md` on a machine that runs lane workers.
 
 ## Install
@@ -39,21 +39,17 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
 /plugin install herdr-agent-org-claude@multi-llm-marketplace
 ```
 
-Then, inside Herdr:
+Then bootstrap IN THE PANE SHELL, BEFORE starting claude. Exports made inside a Claude session do not persist across its shell calls; the claude process inherits the pane shell's env and `dispatch-worker` forwards it to workers via `--env`:
 
 ```bash
-herdr
-# in a pane:
+# inside Herdr, in a pane:
+export HERDR_ORG_ROOT="$HOME/.herdr-org/my-feature"
+export PATH="<plugin-root>/scripts:$PATH"   # board, dispatch-worker, waker-ctl
+board init my-feature
 claude
 ```
 
-Initialize a board once per org:
-
-```bash
-export HERDR_ORG_ROOT="$HOME/.herdr-org/my-feature"
-"${CLAUDE_PLUGIN_ROOT}/scripts/board" init my-feature
-export PATH="${CLAUDE_PLUGIN_ROOT}/scripts:$PATH"
-```
+(Print the two export lines once from any session with the plugin: `printf 'export HERDR_ORG_ROOT="%s"\nexport PATH="%s/scripts:$PATH"\n' "$HOME/.herdr-org/my-feature" "$CLAUDE_PLUGIN_ROOT"`.)
 
 Split panes do NOT inherit the requester's environment: they get the herdr server's env (measured on herdr 0.7.5, 2026-07-28). `dispatch-worker` therefore passes `--env HERDR_ORG_ROOT=...` and `--env PATH=...` on the split itself; a hand-rolled `pane split` must do the same or the worker resolves neither the board nor the org scripts.
 

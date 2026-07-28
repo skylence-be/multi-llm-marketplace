@@ -1,5 +1,5 @@
 {
-  "description": "Agent-org session discipline for Grok on Herdr: org-lane-mark marks sessions that dispatch Herdr workers (PreToolUse on shell/run when command mentions herdr agent start or dispatch-worker); org-conduct-refresh re-injects role-skill re-read order after compaction (SessionStart compact matcher); org-stop-gate blocks a marked session's first Stop with anti-idle checklist. All inert if never dispatched workers. Commands use exact ${GROK_PLUGIN_ROOT} load-time substitution (nested ${VAR:-default} expands empty).",
+  "description": "Agent-org session discipline for Grok on Herdr: org-lane-mark marks sessions that dispatch Herdr workers (PreToolUse on shell/run when command mentions herdr agent start or dispatch-worker); org-conduct-prime primes the role-skill contract on startup|resume and org-conduct-refresh re-injects the re-read order after compaction; org-stop-gate blocks a marked session's first Stop with the anti-idle checklist. All inert if never dispatched workers. Commands use exact ${GROK_PLUGIN_ROOT} load-time substitution (nested ${VAR:-default} expands empty). Grok SessionStart stdout may be dropped by some versions, so AGENTS.md carries the same Binding contract line.",
   "hooks": {
     "PreToolUse": [
       {
@@ -21,6 +21,16 @@
             "type": "command",
             "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/org-conduct-refresh.sh\"",
             "statusMessage": "org-conduct-refresh"
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${GROK_PLUGIN_ROOT}/hooks/org-conduct-prime.sh\"",
+            "statusMessage": "org-conduct-prime"
           }
         ]
       }

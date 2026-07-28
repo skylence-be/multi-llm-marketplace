@@ -32,7 +32,7 @@ onto those primitives and a **filesystem board** (no Solo MCP).
   - `waker-ctl` — org-side client of the org-waker herdr plugin (register/unregister/list/drain/doctor)
 - **Hooks** (Grok lifecycle):
   - org-lane-mark (PreToolUse when shell runs `herdr agent start` / `dispatch-worker`)
-  - org-conduct-refresh (SessionStart compact)
+  - org-conduct-prime / org-conduct-refresh (SessionStart `startup|resume` primes the role-skill contract; `compact` re-injects it)
   - org-stop-gate (Stop anti-idle for marked sessions)
 - **AGENTS.md** worker guidance for sessions under this org
 
@@ -44,19 +44,14 @@ grok plugin marketplace update multi-llm-marketplace
 grok plugin install herdr-agent-org-grok@skylence-be/multi-llm-marketplace --trust
 ```
 
-Then, inside Herdr:
+Then bootstrap IN THE PANE SHELL, BEFORE starting the agent (exports made inside a session do not persist across its shell calls; the agent process inherits the pane shell's env and `dispatch-worker` forwards it via `--env`):
 
 ```bash
-herdr
-# in a pane:
-grok   # or your preferred agent CLI as orchestrator
-```
-
-Init a board once per org:
-
-```bash
-"${GROK_PLUGIN_ROOT}/scripts/board" init my-feature
+# inside Herdr, in a pane:
 export HERDR_ORG_ROOT="$HOME/.herdr-org/my-feature"
+export PATH="<plugin-root>/scripts:$PATH"   # board, dispatch-worker, waker-ctl
+board init my-feature
+grok   # or your preferred agent CLI as orchestrator
 ```
 
 ## Solo vs Herdr substrate

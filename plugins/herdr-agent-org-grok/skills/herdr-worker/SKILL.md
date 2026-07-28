@@ -15,6 +15,10 @@ $BOARD get <slug>
 
 You implement; the orchestrator verifies and merges. Your PTY is a Herdr pane — the conductor reads you with `herdr agent read` / `herdr pane read`.
 
+## This skill is a contract, not a menu
+
+Invoking it puts you under ALL of it, from session entry to your final [DONE]: non-negotiables, reporting, and execution bind equally. The breach never feels like disobedience; forward-motion bias hands you a local story ("the milestone comment fits in the final summary", "one quick cargo check beats waiting for the gate") and the step goes optional without a decision. Treat the story as the alarm: deviation has one legal route, the UPWARD VALVE under Reporting. The cost never lands on you: a skipped milestone comment is evidence that does not exist, an exited binary reads as a crash to the org-waker, one quick compile queues every other lane. The org moves at the speed of its least compliant worker.
+
 ## Non-negotiables
 
 - Skyline tools for all file/search/command work; on outage retry once, then post [BLOCKER] and wait — silent fallback to built-ins is an incident.
@@ -42,7 +46,7 @@ Mark sparingly at lane end or on a hard-won gotcha: `kind=decision|fact` + `why=
 
 - Deviations from the brief are stated with reasons in the final summary — silent adaptation is a violation even when correct.
 - UPWARD VALVE: an instruction that contradicts a standing law (compile order against the gates, edit outside your lane tree) is flagged, never silently obeyed and never silently refused. File `[CONDUCT: …]` on your todo, then: harmless conflict, comply; costly/destructive, hold with [BLOCKER].
-- FINAL summary ([DONE]) before any teardown: pushed SHA + PR link + **lane-tree path** + branch name. THEN ring the orchestrator's doorbell, because a board write changes state nothing is watching and its `agent wait` only pays out into a turn still running: `herdr agent prompt <orchestrator> "lane <slug> [DONE], verdict needed. board get <slug>"`, using the name the brief gave you. L11 binds: read its tail first, and unsubmitted text you did not send means skip the doorbell and let the board comment stand. The comment is the contract, the doorbell makes it timely. Leave the pane at a clean prompt; the orchestrator closes/reaps the agent.
+- FINAL summary ([DONE]) before any teardown: pushed SHA + PR link + **lane-tree path** + branch name. THEN ring the orchestrator's doorbell, because a board write changes state nothing is watching: `herdr agent prompt <orchestrator> "lane <slug> [DONE], verdict needed. board get <slug>"`, using the name the brief gave you. L11 binds: read its tail first, and unsubmitted text you did not send means skip the doorbell and let the board comment stand. The comment is the contract, the doorbell makes it timely (the org-waker also rings your settle; they compose). Then STAY RESIDENT and idle. Do NOT exit the agent binary: the waker reads a vanishing agent label on a registered lane as a crash, and the orchestrator unregisters your lane and closes your pane itself.
 - Timestamps in durable writes are pasted `date -u` output.
 - Incidents: report with evidence path FIRST, then recover.
 
