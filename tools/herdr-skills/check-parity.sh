@@ -65,11 +65,13 @@ both orchestrator \
   "binding exactly as the LAWS" \
   "Peer orchestrators" \
   "test -n \"\${HERDR_ORG_ROOT" \
-  "--wake-target"
+  "--wake-target" \
+  "feature-loop-skill"
 both herdr-worker \
   "contract, not a menu" \
   "STAY RESIDENT" \
-  "doorbell"
+  "doorbell" \
+  "feature-loop-skill"
 both replacer \
   "contract, not a menu"
 both org-audit \
