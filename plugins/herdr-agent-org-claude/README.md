@@ -21,7 +21,7 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
   - `org-audit` is an on-demand cold review, never scheduled
   - `herdr` is the low-level control surface (pane, agent, workspace CLI)
 - **Scripts**:
-  - `board` is the filesystem board (todos, comments, pads, blockers); `set-status` best-effort publishes the lane's status into the herdr sidebar pane (`pane report-metadata`)
+  - `board` is the filesystem board (todos, comments, pads, blockers); `set-status` best-effort publishes the lane's status into the herdr sidebar pane (`pane report-metadata`), `ready` lists unblocked pending todos, `create --tags`/`list --tags` tag and filter todos, `query <text>` case-insensitively searches todo files, `list`/`ready` support `--json`, and every mutating command snapshots a best-effort silent git commit when git is available
   - `dispatch-worker` splits a pane, starts a named agent, sends the pointer prompt, and reports the post-send state
   - `build-slot` is the machine-wide compile serializer
   - `ghost-probe.sh` is the no-fusion input-line classifier
