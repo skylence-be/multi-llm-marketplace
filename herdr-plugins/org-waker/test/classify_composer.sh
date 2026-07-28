@@ -56,6 +56,10 @@ check grok-parked-box "$(printf '╭──────────────�
 # Grok boxed with other text → foreign (never empty-submit).
 check grok-foreign-box "$(printf '╭─────────────────────────────╮\n│ %s unrelated operator text   │\n╰──── Grok 4.5 (medium) ── ───╯\nShift+Tab:mode  |  Ctrl+x:shortcuts' "$PROMPT_CHAR")" "$SENT" foreign
 
+# Claude mid-turn queue: composer line is the exact QUEUED_HINT → delivered-equivalent.
+# One read is enough in verify_submitted; classifier returns the new `queued` verdict.
+check queued-hint "$(printf 'some scrollback\n%s %s' "$PROMPT_CHAR" "$QUEUED_HINT")" "$SENT" queued
+
 if [ "$failed" -eq 0 ]; then
   echo "classify_composer.sh: OK"
 else

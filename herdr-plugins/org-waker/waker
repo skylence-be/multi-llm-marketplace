@@ -44,6 +44,9 @@ set -u
 PLUGIN_ID="skylence.org-waker"
 HERDR="${HERDR_BIN_PATH:-herdr}"
 PROMPT_CHAR="${ORG_WAKER_PROMPT_CHAR:-❯}"
+# Exact Claude Code mid-turn queue indicator (composer line after a successful queue).
+# Conservative: full string match only — no substring guessing.
+QUEUED_HINT="Press up to edit queued messages"
 NP="$(printf '\001')NOPROMPT"
 DRAIN_CAP=5
 STALE_CLAIM_SECS=300
@@ -156,15 +159,19 @@ composer_clear() {
 # returned the exit code of `agent prompt` could report "delivered" for a
 # prompt still parked, unsubmitted, on the target's composer line.
 #
-# classify_composer TAIL SENT_LINE -> prints clear|parked|foreign
+# classify_composer TAIL SENT_LINE -> prints clear|parked|queued|foreign
 # Pure text classification (no herdr calls), split out so it is unit-testable
 # with a fake tail. Reuses prompt_text (the existing prompt-line awk).
+# `queued` is the exact QUEUED_HINT text: proof the prompt entered Claude's
+# mid-turn queue (delivered-equivalent; verify_submitted trusts one read).
 classify_composer() {
   line=$(prompt_text "$1")
   if [ "$line" = "$NP" ] || [ -z "$line" ]; then
     echo clear
   elif [ "$line" = "$2" ]; then
     echo parked
+  elif [ "$line" = "$QUEUED_HINT" ]; then
+    echo queued
   else
     echo foreign
   fi
@@ -173,9 +180,11 @@ classify_composer() {
 # verify_submitted TARGET LINE -> 0 confirmed submitted, 1 not delivered.
 # Resolves the target's pane, settles so paste can render, then classifies
 # the composer line: clear is trusted only after a second read also says
-# clear; our own text still parked gets ONE empty submit and a re-check;
-# anything else on the line is left alone and reported undelivered -- never
-# empty-submit text we did not send (fusion hazard).
+# clear; the exact QUEUED_HINT counts as delivered on ONE read (a rendered
+# hint is already proof the prompt queued); our own text still parked gets
+# ONE empty submit and a re-check; anything else on the line is left alone
+# and reported undelivered -- never empty-submit text we did not send
+# (fusion hazard).
 verify_submitted() {
   pane=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.pane_id // empty' 2>/dev/null)
   [ -n "$pane" ] || return 1
@@ -190,6 +199,11 @@ verify_submitted() {
       sleep 1
       tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null) || return 1
       [ "$(classify_composer "$tail" "$2")" = "clear" ] || return 1
+      return 0
+      ;;
+    queued)
+      # Rendered queued hint is already proof the prompt entered the mid-turn
+      # queue; one read is enough (no double-read settle).
       return 0
       ;;
     foreign) return 1 ;;
