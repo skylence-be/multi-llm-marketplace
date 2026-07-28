@@ -23,6 +23,19 @@ if [ -f tools/soloterm-skills/sync-skills.py ]; then
   fi
 fi
 
+# The herdr role skills ship as deliberate claude/grok voice variants, so no
+# byte-level source of truth exists; parity of the LAW set and load-bearing
+# invariant phrases is checked instead. The failure this catches is one
+# variant updated and its sibling forgotten (marketplace#37's read-source
+# contradiction was exactly this class).
+if [ -f tools/herdr-skills/check-parity.sh ]; then
+  if ! sh tools/herdr-skills/check-parity.sh >/dev/null 2>&1; then
+    echo "pre-commit: herdr skill pairs have drifted (laws or invariants)."
+    sh tools/herdr-skills/check-parity.sh 2>&1 | sed 's/^/  /'
+    fail=1
+  fi
+fi
+
 # Cheap syntax gate on shipped shell and JSON. Catches the class of typo that
 # otherwise reaches a machine where the hook silently stops loading.
 # The checker follows the SHEBANG: core-hud.sh uses process substitution
