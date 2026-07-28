@@ -132,7 +132,22 @@ list_literal() {
 }
 
 json_escape() {
-  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk -v RS="$(printf '\1')" '
+    BEGIN {
+      for (k = 0; k < 32; k++) ctrl[sprintf("%c", k)] = sprintf("\\u%04x", k)
+      ctrl["\t"] = "\\t"
+      ctrl["\r"] = "\\r"
+      ctrl["\n"] = "\\n"
+    }
+    {
+      out = ""
+      n = length($0)
+      for (i = 1; i <= n; i++) {
+        c = substr($0, i, 1)
+        if (c in ctrl) { out = out ctrl[c] } else { out = out c }
+      }
+      printf "%s", out
+    }'
 }
 
 json_array() {
@@ -152,6 +167,8 @@ git_snapshot() {
   # git_snapshot CMD SLUG -> best-effort commit; fully silent, never fails the caller
   cmd=$1; slug=$2
   command -v git >/dev/null 2>&1 || return 0
+  root_real=$(cd "$ROOT" 2>/dev/null && pwd -P) || return 0
+  [ "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)" = "$root_real" ] || return 0
   ( git -C "$ROOT" add -A && git -C "$ROOT" -c user.name=board -c user.email=board@local commit -q -m "$cmd $slug" ) >/dev/null 2>&1 || true
   return 0
 }
