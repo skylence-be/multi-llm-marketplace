@@ -1,7 +1,8 @@
 #!/bin/sh
 # parked_retry.sh: stub proof for org-waker parked-recovery hardening.
 # C1 settle-before-recheck, C2 one empty-submit retry, C3 own-text recovery
-# at delivery. Uses HERDR_BIN_PATH → fake herdr with canned tails; no live pane.
+# at delivery; F1 foreign-after-settle holds; F2 pre-Enter parked reconfirm.
+# Uses HERDR_BIN_PATH → fake herdr with canned tails; no live pane.
 set -eu
 
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -94,9 +95,11 @@ export HERDR_BIN_PATH="$FAKE"
 . "$WAKER" list >/dev/null 2>&1
 
 SENT="[WAKE g1] lane stub-lane -> idle. board get stub-lane"
+FOREIGN="operator was typing something else"
 PC="$PROMPT_CHAR"
 PARKED_TAIL=$(printf 'scroll\n%s %s\n' "$PC" "$SENT")
 CLEAR_TAIL=$(printf 'scroll\n%s \n' "$PC")
+FOREIGN_TAIL=$(printf 'scroll\n%s %s\n' "$PC" "$FOREIGN")
 
 reset_state() {
   rm -rf "$ORG_WAKER_STUB_STATE"
@@ -148,9 +151,9 @@ record() {
 reset_state
 # composer_clear: two empty agent reads
 write_seq agent_read "$CLEAR_TAIL" "$CLEAR_TAIL"
-# deliver: agent get (status), agent prompt, verify: settle + pane parked,
+# deliver → verify: settle + pane parked; recover: pre-Enter parked,
 # empty submit + settle + pane clear
-write_seq pane_read "$PARKED_TAIL" "$CLEAR_TAIL"
+write_seq pane_read "$PARKED_TAIL" "$PARKED_TAIL" "$CLEAR_TAIL"
 ring_or_hold "stub-lane" "1" "orch" "$SENT"
 record "parked-then-clear" "delivered"
 runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
@@ -162,8 +165,8 @@ fi
 # --- (2) parked through both empty submits → held:undelivered -------------
 reset_state
 write_seq agent_read "$CLEAR_TAIL" "$CLEAR_TAIL"
-# verify: first parked, then after submit1 parked, after submit2 parked
-write_seq pane_read "$PARKED_TAIL" "$PARKED_TAIL" "$PARKED_TAIL"
+# verify parked; try0 pre+post parked; try1 pre+post parked (5 reads, 2 runs)
+write_seq pane_read "$PARKED_TAIL" "$PARKED_TAIL" "$PARKED_TAIL" "$PARKED_TAIL" "$PARKED_TAIL"
 ring_or_hold "stub-lane" "1" "orch" "$SENT"
 record "parked-both-submits" "held:undelivered"
 runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
@@ -176,8 +179,8 @@ fi
 reset_state
 # composer_clear sees stable parked own-text (not clear)
 write_seq agent_read "$PARKED_TAIL" "$PARKED_TAIL"
-# recover_own_text: pane read parked, empty submit, settle, pane clear
-write_seq pane_read "$PARKED_TAIL" "$CLEAR_TAIL"
+# recover_own_text: pane read parked; recover: pre-Enter parked, Enter, clear
+write_seq pane_read "$PARKED_TAIL" "$PARKED_TAIL" "$CLEAR_TAIL"
 ring_or_hold "stub-lane" "1" "orch" "$SENT"
 record "own-text-recovery" "delivered"
 if [ -s "$ORG_WAKER_STUB_STATE/prompts" ]; then
@@ -193,8 +196,42 @@ if [ "$runs" -lt 1 ]; then
   failed=1
 fi
 
+# --- (4) foreign-after-settle → held, never delivered (F1) -----------------
+reset_state
+write_seq agent_read "$CLEAR_TAIL" "$CLEAR_TAIL"
+# verify parked; pre-Enter parked; Enter; post-settle foreign → fail hold
+write_seq pane_read "$PARKED_TAIL" "$PARKED_TAIL" "$FOREIGN_TAIL"
+ring_or_hold "stub-lane" "1" "orch" "$SENT"
+record "foreign-after-settle" "held:undelivered"
+runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
+if [ "$runs" -ne 1 ]; then
+  echo "FAIL foreign-after-settle: expected exactly 1 pane run, got $runs"
+  failed=1
+fi
+
+# --- (5) content-mutated-before-Enter → no Enter (F2) ---------------------
+reset_state
+# composer_clear sees stable parked own-text
+write_seq agent_read "$PARKED_TAIL" "$PARKED_TAIL"
+# recover_own_text parked; recover pre-Enter foreign → abort without Enter
+write_seq pane_read "$PARKED_TAIL" "$FOREIGN_TAIL"
+ring_or_hold "stub-lane" "1" "orch" "$SENT"
+record "content-mutated-before-Enter" "held:composer"
+runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
+if [ "$runs" -ne 0 ]; then
+  echo "FAIL content-mutated-before-Enter: expected 0 pane runs, got $runs"
+  failed=1
+else
+  echo "ok content-mutated-before-Enter: no empty submit on mutated line"
+fi
+if [ -s "$ORG_WAKER_STUB_STATE/prompts" ]; then
+  echo "FAIL content-mutated-before-Enter: agent prompt should not run"
+  cat "$ORG_WAKER_STUB_STATE/prompts"
+  failed=1
+fi
+
 echo "--- stub path: $FAKE"
-echo "--- three outcome lines:"
+echo "--- outcome lines:"
 printf '%s' "$outcome_lines"
 echo "--- rings.jsonl:"
 cat "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl" 2>/dev/null || true
