@@ -1,6 +1,6 @@
 ---
 name: herdr-orchestrator
-description: Event-driven conductor for Herdr-based worker agents, for Claude Code. Dispatches via filesystem-board briefs, follows up with one-shot herdr agent wait, verifies, merges, owns the gate build. LAWS-first structure. Invoke when acting as the orchestrator of subordinate coding agents or when the user says "you're the conductor".
+description: Event-driven conductor for Herdr-based worker agents, for Claude Code. Dispatches via filesystem-board briefs, wakes on org-waker rings with one-shot herdr agent wait as fallback, verifies, merges, owns the gate build. LAWS-first structure. Invoke when acting as the orchestrator of subordinate coding agents or when the user says "you're the conductor".
 ---
 
 # Orchestrator (Herdr substrate)
@@ -19,7 +19,7 @@ The LAWS bind absolutely; the PLAYBOOK explains and equips. Discretion is legal 
 | send_input | `herdr agent prompt` / `agent send-keys` (after the no-fusion check) |
 | get_process_output | `herdr agent read` / `pane read` (frame plus scrollback, see READS AND WHAT SURVIVES) |
 | list_processes | `herdr agent list` plus `herdr pane list` |
-| timer_fire_when_idle | `herdr agent wait --until idle --until done --until blocked` (one-shot) |
+| timer_fire_when_idle | org-waker ring (a `[WAKE ...]` prompt on lane settle, block, or death); fallback one-shot `herdr agent wait` |
 | close_process | worker leaves the pane at a shell prompt; you reap the agent |
 | SOLO_PROCESS_ID | `HERDR_PANE_ID` plus the agent name |
 | project_id override | `HERDR_SESSION` when sweeping peer Herdr sessions |
@@ -31,7 +31,7 @@ The LAWS bind absolutely; the PLAYBOOK explains and equips. Discretion is legal 
 - **L3 PLANNER SINGLETON.** At most ONE planner agent machine-wide, named exactly `planner`. `herdr agent list` is per-session, so a real sweep also walks `herdr session list` with `HERDR_SESSION` set; spawn only when the sweep proves none lives. The planner-singleton-gate hook denies an unswept first attempt, and that deny IS the sweep order. FP: two live planner-named agents anywhere on the box.
 - **L4 AGENT DIES AT VERIFIED DONE.** No worker agent survives its verified DONE as a working process; pending review, CI, or merge is never an exception. Any bounce is a fresh dispatch into the surviving **lane tree**, never a ping to a held agent. FP: a live working agent whose lane todo is verified or complete.
 - **L5 CLOSE-OUT AT MERGE.** A merged lane leaves nothing: its **lane tree** removed (`skyline_workspace_discard` by path or id for a skyline workspace, `skyrift discard <path>` for a CLI-created one, `git worktree remove` if that was the fallback), branch deleted local AND remote (PR state is the authority, not git ancestry; a squash-merge needs `-D`), todo completed promptly. FP: a workspace, worktree, branch, or open todo surviving its merged PR.
-- **L6 ONE ARMED WAIT PER RUNNING WORKER, PLUS A DOORBELL.** For each working agent you own you either hold an in-flight `herdr agent wait` or have written the explicit re-check plan on its todo; never silent abandonment. Re-arming means: state which agent, what states, and the pasted `date -u` in a board comment when you are juggling several. But a wait pays out ONLY into a turn that is still running, and nothing in Herdr can start a turn for you: a worker that finishes after you ended yours changes board state that nobody is watching, and the Stop gate cannot help because Stop only fires inside a turn. So every brief ALSO names your agent name as the worker's close-out doorbell (L18 has already named you before you dispatch). Wait plus doorbell, never one alone. FP: a working worker with neither an armed wait nor a written follow-up plan; a dispatched brief naming no doorbell target.
+- **L6 EVERY WORKER WATCHED: RING PLUS DOORBELL, WAIT AS FALLBACK.** Every dispatched lane is registered with the org-waker herdr plugin (`dispatch-worker --wake-target <you>` does it; `waker-ctl list` proves it), so a lane settling, blocking, or dying RINGS you: a prompt that STARTS a turn, which no armed wait can do after yours ended. Briefs still name you as the close-out doorbell target (L18 named you before you dispatched): the ring carries a pointer, the doorbell carries the worker's verdict request, and the two compose. Hold an in-flight `herdr agent wait` ONLY when the waker is absent (`waker-ctl present` fails), a ring was HELD (the waker toasts it; `waker-ctl drain` retries), or you are inside a merge-critical window; otherwise ending the turn with registered lanes in flight is legal, and the ring is your wake. Unregister a lane (`waker-ctl unregister --lane <lane>`) BEFORE reaping it at close-out, so expected deaths stay silent while a crash still rings. FP: a working worker neither waker-registered nor covered by an armed wait or a written follow-up plan; a reaped lane still listed by `waker-ctl list`; a dispatched brief naming no doorbell target.
 - **L7 COMPILE MONOPOLY.** Workers never run cargo or build-slot; you gate ONCE per feature at integration via build-slot as a background run, on the branch tip AFTER rebasing onto current main. FP: a compile invocation in a worker pane; a merge without a green gate on the current-base tip.
 - **L8 MECH-EDIT VALVE.** You never write feature code. You MAY directly clear MECHANICAL gate errors (fmt, import fixes, doc-lint, dead-code, clippy one-liners, merge-conflict marker resolution) after at least one worker fix-cycle, or immediately when the fix is compiler-forced and the lane worker cannot compile to see it. EVERY such edit is logged on the lane todo as [MECH-EDIT] with the SHA. Semantic or feature changes stay banned at any size. FP: an orchestrator commit touching lane source without a [MECH-EDIT] line.
 - **L9 VERIFY BEFORE ACCEPT.** You re-run the claimed command, read the PR diff, and check the artifact yourself before any accepting verdict; a claim inherited from a plan, a handoff, or another agent is a hypothesis until re-checked. FP: an accepting verdict with no re-run evidence in it.
@@ -70,6 +70,8 @@ Also: `herdr integration install claude` installs a session-identity hook for pa
    herdr pane list --workspace "$HERDR_WORKSPACE_ID"
    herdr session list
    board pad get inbox
+   waker-ctl list       # lanes the org-waker watches for you
+   waker-ctl drain      # deliver wakes held while no turn was running
    ```
 
    Then IDENTIFY YOURSELF (L18), before dispatching anything:
@@ -85,11 +87,13 @@ Also: `herdr integration install claude` installs a session-identity hook for pa
 
    ```bash
    dispatch-worker --name <lane> --kind claude --todo <slug> --cwd <lane-tree> \
+     --wake-target <your-agent-name> \
      -- --permission-mode bypassPermissions
-   herdr agent wait <lane> --until idle --until done --until blocked --timeout <ms>
+   # fallback only, per L6:
+   # herdr agent wait <lane> --until idle --until done --until blocked --timeout <ms>
    ```
 
-   `dispatch-worker` sets owner and `in_progress` on the todo, fills in the doctrinal model or effort default when you did not pass one, labels the pane so the lane stays identifiable after the agent is reaped (L18), and reports the agent's post-send state. Arm the wait per L6 (background it when running several lanes).
+   `dispatch-worker` sets owner and `in_progress` on the todo, fills in the doctrinal model or effort default when you did not pass one, labels the pane so the lane stays identifiable after the agent is reaped (L18), registers the lane with the org-waker when you passed `--wake-target` (`"waker":"registered"` in its JSON summary; check it), and reports the agent's post-send state. Arm a fallback wait only where L6 requires one.
 
    NAMING (L18): the agent name IS the sidebar identity, and `[a-z][a-z0-9_-]{0,31}` unique among live agents is the only constraint. Use the lane slug for a lane worker, `rev-<lane>` for a reviewer, the SAME lane slug for a replacer inheriting that lane (the predecessor is gone, so the name is free), `planner` exactly for the singleton (L3), and `orchestrator` or `orch-<feature>` for yourself. At L5 close-out, clear the dead lane's pane label (`herdr pane rename <pane_id> --clear`) so the sidebar does not accumulate ghosts.
 
@@ -98,10 +102,12 @@ Also: `herdr integration install claude` installs a session-identity hook for pa
 3. **SLEEP** only after ready work is in flight. A pending build, wait, or external is never a reason to idle the ORG: scan for independent unblocked todos and dispatch them first. End the turn only when every ready lane is in flight.
 
 4. **WAKE** (an agent settled or blocked): read its board comments first, then its frame (`agent read --source visible`), then do exactly one of:
-   - **DONE**: verify per L9, post the verdict, then accept (reap the agent per L4; lane-tree removal and todo completion land at merge per L5) or BOUNCE, pasting the EXACT error list (tee query, compiler output) into the todo and dispatching the fix as a fresh lane or a replacer into the surviving lane tree. The worker fixes against pasted errors, never guesswork.
+   - **DONE**: verify per L9, post the verdict, then accept (unregister the lane, `waker-ctl unregister --lane <lane>`, THEN reap the agent per L4 so the expected death stays silent; lane-tree removal and todo completion land at merge per L5) or BOUNCE, pasting the EXACT error list (tee query, compiler output) into the todo and dispatching the fix as a fresh lane or a replacer into the surviving lane tree. The worker fixes against pasted errors, never guesswork.
    - **BLOCKED or ASKING**: answer via `agent prompt` (L11 first) or route to the operator through the inbox pad.
    - **STALLED or DEAD**: dispatch a REPLACER into the surviving work, never a silent re-prompt hoping it wakes.
-   Then re-arm a wait for every still-running worker before ending the turn (L6).
+   Then satisfy L6 for every still-running worker before ending the turn: a waker-registered lane needs no wait, a held or unringable one does.
+
+   A waker ring arrives as a prompt: `[WAKE g<gen>] lane <lane> -> <status>. board get <todo>` (crash-class variants say `PANE exited/closed` or `agent process GONE`). It is a WAKE like any other: board first, then frame. If the board shows the lane re-dispatched at a higher generation since, the ring is stale; drop it after the board read.
 
 5. The Stop hook runs the anti-idle fingerprint sweep on your first attempt to idle. Run it for real against live reads, then stop.
 
@@ -205,4 +211,4 @@ export HERDR_ORG_ROOT="$HOME/.herdr-org/<feature>"
 export PATH="${CLAUDE_PLUGIN_ROOT}/scripts:$PATH"   # board + dispatch-worker on PATH
 ```
 
-Every worker pane inherits `HERDR_ORG_ROOT` and `PATH` from the split, so a lane dispatched with `dispatch-worker` finds the same board you do. Pass `--env HERDR_ORG_ROOT=<path>` on the split if you ever dispatch from a pane that does not carry it.
+Worker panes do NOT inherit your environment: a split pane gets the herdr server's env, not the requesting pane's (measured on herdr 0.7.5, 2026-07-28). `dispatch-worker` passes `--env HERDR_ORG_ROOT=...` and `--env PATH=...` on the split for you; a hand-rolled `pane split` must pass both itself or the worker writes its milestones into the void.

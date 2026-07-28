@@ -80,13 +80,8 @@ front_get() {
   ' "$1"
 }
 
-front_set() {
-  # front_set FILE KEY VALUE  (rewrites frontmatter in place)
-  front_set_simple "$1" "$2" "$3"
-  front_set_simple "$1" "updated" "$(now_utc)"
-}
-
-# Avoid infinite recursion on updated: special-case simple rewrite helper
+# Rewrites one frontmatter key in place. Kept separate from set_field so the
+# updated: stamp can reuse it without recursing.
 front_set_simple() {
   f=$1; k=$2; v=$3
   tmp=$(mktemp "${TMPDIR:-/tmp}/herdr-board.XXXXXX")

@@ -83,7 +83,7 @@ Read sources: `visible`, `recent`, `recent-unwrapped` (prefer for logs), `detect
 - Use `--current`, an explicit pane ID, or a unique agent name — never another client's focused pane.
 - Do not close workspaces/tabs/panes you did not create unless asked.
 - Never `herdr server stop` unless the operator explicitly intends to kill the session.
-- Alternate-screen agents may not put history into host scrollback; if larger `--lines` yields nothing new, ask the agent to write a markdown file path as fallback.
+- Scrollback dies with the pane, and Herdr's docs say alternate-screen agents (Claude Code among them) never put history into host scrollback. Measured on herdr 0.7.5 (2026-07-23), the scrollback DOES carry committed transcript, so a bigger `--lines` can recover past turns; measure per box (`herdr pane read <pane> --source recent --lines 300`). Durable evidence still belongs in files or board comments, never in a pane tail.
 
 ## Org usage
 

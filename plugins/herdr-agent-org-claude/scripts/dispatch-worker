@@ -5,7 +5,7 @@
 # Usage:
 #   dispatch-worker --name NAME [--kind KIND] [--cwd PATH] [--direction right|down] \
 #                   [--todo SLUG] [--prompt TEXT] [--timeout MS] \
-#                   [--upgrade-reason TEXT] [-- agent-args...]
+#                   [--wake-target ORCH] [--upgrade-reason TEXT] [-- agent-args...]
 #
 # Defaults to --kind claude. The doctrinal default model/effort is filled in
 # when you did not pass one, so silence at dispatch cannot resolve to whatever
@@ -27,6 +27,9 @@
 # the sidebar after its agent is reaped (L18).
 # Board side-effects when --todo is set: set-owner, set-status in_progress, and
 # the upgrade filing when there is one.
+# With --wake-target (or HERDR_ORG_WAKER_TARGET set) and the org-waker herdr
+# plugin installed, the lane is registered so its settle, block, or death
+# rings the conductor (L6); absent either, dispatch proceeds unregistered.
 set -eu
 
 HERDR="${HERDR_BIN_PATH:-herdr}"
@@ -38,6 +41,7 @@ TODO=""
 PROMPT=""
 TIMEOUT="60000"
 UPGRADE_REASON=""
+WAKE_TARGET="${HERDR_ORG_WAKER_TARGET:-}"
 EXTRA_ARGS=""
 
 usage() {
@@ -60,6 +64,7 @@ while [ "$#" -gt 0 ]; do
     --prompt) PROMPT=$2; shift 2 ;;
     --timeout) TIMEOUT=$2; shift 2 ;;
     --upgrade-reason) UPGRADE_REASON=$2; shift 2 ;;
+    --wake-target) WAKE_TARGET=$2; shift 2 ;;
     --) shift; EXTRA_ARGS=$*; break ;;
     -h|--help) usage ;;
     *) echo "dispatch-worker: unknown arg $1" >&2; usage ;;
@@ -121,15 +126,18 @@ fi
   exit 2
 }
 
-SPLIT_ARGS="pane split --current --direction $DIR --no-focus"
+# Panes are launched by the herdr server and do NOT inherit this process's
+# environment (measured on herdr 0.7.5, 2026-07-28), so the board root and
+# PATH must ride the split explicitly or the worker resolves neither.
+set -- pane split --current --direction "$DIR" --no-focus
 if [ -n "$CWD" ]; then
-  SPLIT_ARGS="$SPLIT_ARGS --cwd $CWD"
+  set -- "$@" --cwd "$CWD"
 elif [ -n "${PWD:-}" ]; then
-  SPLIT_ARGS="$SPLIT_ARGS --cwd $PWD"
+  set -- "$@" --cwd "$PWD"
 fi
-
-# shellcheck disable=SC2086
-split_json=$($HERDR $SPLIT_ARGS)
+[ -n "${HERDR_ORG_ROOT:-}" ] && set -- "$@" --env "HERDR_ORG_ROOT=$HERDR_ORG_ROOT"
+set -- "$@" --env "PATH=$PATH"
+split_json=$($HERDR "$@")
 pane_id=$(printf '%s\n' "$split_json" | jq -r '.result.pane.pane_id // empty')
 [ -n "$pane_id" ] || {
   echo "dispatch-worker: failed to parse pane_id from:" >&2
@@ -147,6 +155,17 @@ fi
 # L18: label the pane too. The agent name carries sidebar identity while the
 # agent lives; the pane label outlives it, so a reaped lane stays legible.
 $HERDR pane rename "$pane_id" "${NAME}${TODO:+: $TODO}" >/dev/null 2>&1 || true
+
+# org-waker (L6): a registered lane's settle, block, or death rings the
+# conductor. Soft dependency: skipped without a --wake-target or the plugin;
+# the fallback-wait doctrine covers that org.
+WAKER="skipped"
+WCTL="$(dirname "$0")/waker-ctl"
+if [ -n "$WAKE_TARGET" ] && [ -x "$WCTL" ] && "$WCTL" present 2>/dev/null; then
+  if "$WCTL" register --pane "$pane_id" --lane "$NAME" --target "$WAKE_TARGET" ${TODO:+--todo "$TODO"} >/dev/null 2>&1; then
+    WAKER="registered"
+  fi
+fi
 
 # Point the worker at the brief.
 $HERDR agent prompt "$NAME" "$PROMPT" >/dev/null
@@ -168,7 +187,7 @@ if [ -n "$TODO" ] && [ -n "$BOARD" ]; then
   [ -n "$MARKERS" ] && { "$BOARD" comment "$TODO" "**$MARKERS** dispatched as $NAME (kind $KIND, pane $pane_id)" >/dev/null || true; }
 fi
 
-printf '{"agent":%s,"pane_id":%s,"kind":%s,"todo":%s,"state":%s,"model":%s,"effort":%s,"defaulted":%s,"upgrade":%s}\n' \
+printf '{"agent":%s,"pane_id":%s,"kind":%s,"todo":%s,"state":%s,"model":%s,"effort":%s,"defaulted":%s,"upgrade":%s,"waker":%s}\n' \
   "$(printf '%s' "$NAME" | jq -Rs .)" \
   "$(printf '%s' "$pane_id" | jq -Rs .)" \
   "$(printf '%s' "$KIND" | jq -Rs .)" \
@@ -177,4 +196,5 @@ printf '{"agent":%s,"pane_id":%s,"kind":%s,"todo":%s,"state":%s,"model":%s,"effo
   "$(printf '%s' "$MODEL" | jq -Rs .)" \
   "$(printf '%s' "$EFFORT" | jq -Rs .)" \
   "$(printf '%s' "$DEFAULTED" | jq -Rs .)" \
-  "$(printf '%s' "$MARKERS" | jq -Rs .)"
+  "$(printf '%s' "$MARKERS" | jq -Rs .)" \
+  "$(printf '%s' "$WAKER" | jq -Rs .)"
