@@ -28,8 +28,9 @@
 # Board side-effects when --todo is set: set-owner, set-status in_progress, and
 # the upgrade filing when there is one.
 # After the prompt send, dispatch-worker verifies the agent started working
-# within 4s, retries once with an empty submit (up to 8s) if not, and reports
-# submit=clean|recovered|failed in the JSON summary.
+# within 4s; on timeout it retries with an empty submit (up to 8s), then a
+# single re-send of the original prompt (up to 8s); reports
+# submit=clean|recovered|reprompted|failed in the JSON summary.
 # With --wake-target (or HERDR_ORG_WAKER_TARGET set) and the org-waker herdr
 # plugin installed, the lane is registered so its settle, block, or death
 # rings the conductor (L6); absent either, dispatch proceeds unregistered.
@@ -184,11 +185,11 @@ fi
 # Point the worker at the brief.
 $HERDR agent prompt "$NAME" "$PROMPT" >/dev/null
 
-# VERIFY-AFTER-SEND: a fresh agent can swallow its first prompt (field data:
-# 3 of 5 live dispatches left the pointer prompt unsubmitted in the fresh
-# worker's composer). Wait for it to start working; on timeout, retry once
-# with a single empty submit (a no-op if the prompt already landed) and wait
-# again before giving up.
+# VERIFY-AFTER-SEND: a fresh agent can swallow its first prompt two ways --
+# typed into an already-drafted composer (recovered by an empty submit) or
+# typed before the input box exists and discarded entirely (recovered only
+# by re-sending the prompt; field data hit both variants live). Escalate
+# through wait, empty-submit, then a single re-send before giving up.
 SUBMIT="failed"
 if $HERDR agent wait "$NAME" --until working --timeout 4000 >/dev/null 2>&1; then
   SUBMIT="clean"
@@ -196,6 +197,11 @@ else
   $HERDR pane run "$pane_id" "" >/dev/null 2>&1 || true
   if $HERDR agent wait "$NAME" --until working --timeout 8000 >/dev/null 2>&1; then
     SUBMIT="recovered"
+  else
+    $HERDR agent prompt "$NAME" "$PROMPT" >/dev/null 2>&1 || true
+    if $HERDR agent wait "$NAME" --until working --timeout 8000 >/dev/null 2>&1; then
+      SUBMIT="reprompted"
+    fi
   fi
 fi
 
