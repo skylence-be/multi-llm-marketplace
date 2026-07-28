@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # core-hud.sh: Claude Code statusline.
-# L1: [cfg model] model ·effort │ project ⎇ branch ~Nf +A -D
+# L1: session: ⏺ model · effort │ config: model · effort · adv model │ project ⎇ branch ~Nf +A -D
 # L2: gradient context bar (24 cells, 1/8-cell resolution) PCT% of CTX · safe · handoff banner
 # L3: 5h ▸ used% [spark] rate%/h → limit-vs-reset verdict · resets HH:MM
 # L4: 7d ▸ used% rate%/h · resets Day HH:MM · session cost
@@ -126,17 +126,18 @@ QC="" HIST=""
 _stale() { [ ! -f "$1" ] || [ $((NOW - $(stat -f%m "$1" 2>/dev/null || stat -c%Y "$1" 2>/dev/null || echo 0))) -gt "$2" ]; }
 
 # ── Parse stdin + settings in one jq call ──
-_cfg_eff=$(jq -r '.effortLevel // "default"' ~/.claude/settings.json 2>/dev/null || echo "default")
+_cfg_eff=$(jq -r '.effortLevel // ""' ~/.claude/settings.json 2>/dev/null || echo "")
 _cfg_model=$(jq -r '.model // ""' ~/.claude/settings.json 2>/dev/null || echo "")
+_cfg_adv=$(jq -r '.advisorModel // ""' ~/.claude/settings.json 2>/dev/null || echo "")
 HAS_RL=0
 IFS=$'\t' read -r MODEL DIR PCT CTX REM COST DUR_MS EFF HAS_RL U5 U7 R5 R7 < <(
-  jq -r --arg cfg_eff "$_cfg_eff" \
+  jq -r \
     '[(.model.display_name//"?"),(.workspace.project_dir//"."),
     (.context_window.used_percentage//0|floor),(.context_window.context_window_size//0),
     (.context_window.remaining_percentage//0|floor),
     (.cost.total_cost_usd//0),
     (.cost.total_duration_ms//0),
-    $cfg_eff,
+    (.effort.level//""),
     (if .rate_limits then 1 else 0 end),
     (.rate_limits.five_hour.used_percentage//null|if type=="number" then floor else "--" end),
     (.rate_limits.seven_day.used_percentage//null|if type=="number" then floor else "--" end),
@@ -167,13 +168,22 @@ case "$MODEL" in
   *[Hh]aiku*) MC=$G ;;
 esac
 
-# Effort chip (finally rendered; the old HUD parsed it and dropped it).
+# Effort chip: the LIVE session effort from stdin (.effort.level), which tracks
+# mid-session /effort changes. This used to render settings.json's effortLevel
+# glued to the live model name, so a session running at max still displayed the
+# configured low. Absent when the model has no effort parameter.
+# L1 group separators, shared so the spacing cannot drift between groups.
+# Named L1_* deliberately: SEP is already the \037 cache-record delimiter above,
+# and shadowing it corrupts every cached git record.
+L1_BAR=" $(x 240)│${N} "
+L1_DOT=" $(x 240)·${N} "
 EFF_CHIP=""
 case "$EFF" in
-  max) EFF_CHIP=" ${M}${B}·max${N}" ;;
-  high) EFF_CHIP=" ${Y}·high${N}" ;;
-  medium) EFF_CHIP=" ${D}·med${N}" ;;
-  low) EFF_CHIP=" ${D}·low${N}" ;;
+  max) EFF_CHIP="${L1_DOT}${M}${B}max${N}" ;;
+  xhigh) EFF_CHIP="${L1_DOT}${M}xhigh${N}" ;;
+  high) EFF_CHIP="${L1_DOT}${Y}high${N}" ;;
+  medium) EFF_CHIP="${L1_DOT}${D}med${N}" ;;
+  low) EFF_CHIP="${L1_DOT}${D}low${N}" ;;
 esac
 
 # ── Gradient context bar: 24 cells, 1/8-cell resolution ──
@@ -401,13 +411,16 @@ if [[ "$PCT" =~ ^[0-9]+$ ]]; then
 fi
 
 # ── Assembly ──
-_CFG_PFX=""
-if [[ -n "$_cfg_model" ]]; then
-  _ml=$(printf '%s' "$MODEL" | tr '[:upper:]' '[:lower:]')
-  _cl=$(printf '%s' "$_cfg_model" | tr '[:upper:]' '[:lower:]')
-  [[ "$_ml" != *"$_cl"* ]] && _CFG_PFX="${T}${_cfg_model}${N} "
-fi
-L1="${_CFG_PFX}${MC}${B}⏺ ${MODEL}${N}${EFF_CHIP}  $(x 240)│${N}  ${L1R}"
+# Two groups, deliberately not bundled: what this SESSION is running (live, from
+# stdin) and what settings.json CONFIGURES (model, effort, advisor). The old
+# layout printed the configured effort next to the live model name, which read
+# as one value and hid every mid-session /effort change.
+_cfg_bits="$_cfg_model"
+[[ -n "$_cfg_eff" ]] && _cfg_bits="${_cfg_bits:+${_cfg_bits}${L1_DOT}}${_cfg_eff}"
+[[ -n "$_cfg_adv" ]] && _cfg_bits="${_cfg_bits:+${_cfg_bits}${L1_DOT}}adv ${_cfg_adv}"
+_CFG_GRP=""
+[[ -n "$_cfg_bits" ]] && _CFG_GRP="${T}config:${N} ${T}${_cfg_bits}${N}${L1_BAR}"
+L1="${T}session:${N} ${MC}${B}⏺ ${MODEL}${N}${EFF_CHIP}${L1_BAR}${_CFG_GRP}${L1R}"
 
 if ((PCT == 0 && CTX > 0)); then
   _CTX_LABEL="$(x 250)${CL} avail${N}"
