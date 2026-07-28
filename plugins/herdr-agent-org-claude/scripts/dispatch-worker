@@ -7,6 +7,12 @@
 #                   [--todo SLUG] [--prompt TEXT] [--timeout MS] \
 #                   [--wake-target ORCH] [--upgrade-reason TEXT] [-- agent-args...]
 #
+# With no --direction, placement is automatic: the first worker splits the
+# orchestrator pane DOWN, later workers split the last live worker pane
+# RIGHT, and after every 3 live workers a fresh row is seeded below the
+# orchestrator (rows of at most 3). An explicit --direction forces a legacy
+# split of the current pane and skips the layout logic.
+#
 # Defaults to --kind claude. The doctrinal default model/effort is filled in
 # when you did not pass one, so silence at dispatch cannot resolve to whatever
 # the box happens to be installed at (marketplace#32):
@@ -40,7 +46,7 @@ HERDR="${HERDR_BIN_PATH:-herdr}"
 NAME=""
 KIND="claude"
 CWD=""
-DIR="right"
+DIR=""   # empty = auto layout (down below orchestrator, then right, rows of 3)
 TODO=""
 PROMPT=""
 TIMEOUT="60000"
@@ -133,7 +139,40 @@ fi
 # Panes are launched by the herdr server and do NOT inherit this process's
 # environment (measured on herdr 0.7.5, 2026-07-28), so the board root and
 # PATH must ride the split explicitly or the worker resolves neither.
-set -- pane split --current --direction "$DIR" --no-focus
+# PLACEMENT (operator orders 2026-07-28): with no explicit --direction the
+# layout is automatic: the first worker splits the orchestrator pane DOWN;
+# later workers split the most recent live worker pane RIGHT; when the live
+# worker count is a multiple of 3 the row is full and a fresh row is seeded
+# by splitting the orchestrator DOWN again. Worker panes are recognized by
+# the '<name>: <todo>' label this script sets (orch* labels excluded); a
+# reaped pane drops out of the list, so the layout self-heals, no state file.
+if [ -n "$DIR" ]; then
+  set -- pane split --current --direction "$DIR" --no-focus
+else
+  panes_json=$($HERDR pane list ${HERDR_WORKSPACE_ID:+--workspace "$HERDR_WORKSPACE_ID"} 2>/dev/null) || panes_json=""
+  sel=""
+  if [ -n "$panes_json" ]; then
+    sel=$(printf '%s\n' "$panes_json" | jq -r --arg self "${HERDR_PANE_ID:-}" '
+      [.result.panes[]
+       | select(.pane_id != $self)
+       | select((.label // "") | test("^[a-z][a-z0-9_-]*: "))
+       | select((.label // "") | test("^orch") | not)]
+      | "\(length) \(last | .pane_id // "")"' 2>/dev/null) || sel=""
+  fi
+  [ -n "$sel" ] || sel="0 "
+  n_workers=${sel%% *}
+  last_worker=${sel#* }
+  # command substitution strips the trailing space of "0 ", leaving sel="0":
+  # the suffix parse then yields last_worker="0", so clear it explicitly.
+  [ "$n_workers" -gt 0 ] 2>/dev/null || last_worker=""
+  if [ -n "$last_worker" ] && [ $((n_workers % 3)) -ne 0 ]; then
+    set -- pane split --pane "$last_worker" --direction right --no-focus
+  elif [ -n "${HERDR_PANE_ID:-}" ]; then
+    set -- pane split --pane "$HERDR_PANE_ID" --direction down --no-focus
+  else
+    set -- pane split --current --direction down --no-focus
+  fi
+fi
 if [ -n "$CWD" ]; then
   set -- "$@" --cwd "$CWD"
 elif [ -n "${PWD:-}" ]; then
