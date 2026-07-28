@@ -1,6 +1,6 @@
 id = "skylence.org-waker"
 name = "Org Waker"
-version = "0.1.0"
+version = "0.2.0"
 description = "Event-driven wake-up for the herdr agent-org: rings the registered orchestrator agent when a registered lane settles, blocks, or dies. Unregistered panes are ignored entirely."
 min_herdr_version = "0.7.4"
 platforms = ["macos", "linux"]
@@ -18,6 +18,12 @@ command = ["sh", "waker", "on-event"]
 
 [[events]]
 on = "pane.closed"
+command = ["sh", "waker", "on-event"]
+
+# Heartbeat only: pane.focused retries held wakes whenever the operator moves
+# focus; the handler exits before any payload parse or trace line.
+[[events]]
+on = "pane.focused"
 command = ["sh", "waker", "on-event"]
 
 # After session restore: sweep stale delivery claims and toast if held wakes

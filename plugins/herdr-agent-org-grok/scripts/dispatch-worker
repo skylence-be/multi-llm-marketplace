@@ -139,12 +139,23 @@ pane_id=$(printf '%s\n' "$split_json" | jq -r '.result.pane.pane_id // empty')
   exit 1
 }
 
-if [ -n "$EXTRA_ARGS" ]; then
-  # shellcheck disable=SC2086
-  $HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- $EXTRA_ARGS >/dev/null
-else
-  $HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" >/dev/null
-fi
+# A freshly split pane's shell needs a beat before `agent start` accepts it
+# (agent_pane_busy: "not an available shell"; hit live 2026-07-28). Retry with
+# a short backoff instead of racing the shell prompt.
+tries=0
+until { if [ -n "$EXTRA_ARGS" ]; then
+          # shellcheck disable=SC2086
+          $HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- $EXTRA_ARGS >/dev/null 2>&1
+        else
+          $HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" >/dev/null 2>&1
+        fi; }; do
+  tries=$((tries + 1))
+  if [ "$tries" -ge 10 ]; then
+    echo "dispatch-worker: agent start failed after $tries tries on pane $pane_id" >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 # L18: label the pane too. The agent name carries sidebar identity while the
 # agent lives; the pane label outlives it, so a reaped lane stays legible.
