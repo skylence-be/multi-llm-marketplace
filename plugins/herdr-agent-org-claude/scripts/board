@@ -19,6 +19,7 @@
 #   board pad get <name>
 #   board pad append <name> <text...>
 #   board pad write <name>   # body from stdin
+#   board pad archive <name>
 #
 # Status values: pending | in_progress | blocked | verified | complete
 set -eu
@@ -32,6 +33,7 @@ board_root() {
     printf '%s\n' "$PWD/.herdr-org"
     return
   fi
+  echo "board: HERDR_ORG_ROOT unset; using ${HOME}/.herdr-org/default (wrong org? export it in the pane shell before your agent starts)" >&2
   printf '%s\n' "${HOME}/.herdr-org/default"
 }
 
@@ -299,6 +301,20 @@ cmd_pad_write() {
   printf 'wrote %s\n' "$p"
 }
 
+cmd_pad_archive() {
+  need_root
+  name=$1
+  p="$PADS/$name"
+  case "$name" in
+    *.md) ;;
+    *) p="$PADS/${name}.md" ;;
+  esac
+  [ -f "$p" ] || { echo "board: no pad $name" >&2; exit 1; }
+  mkdir -p "$PADS/archive"
+  mv "$p" "$PADS/archive/$(basename "$p")"
+  printf 'archived pads/archive/%s\n' "$(basename "$p")"
+}
+
 usage() {
   awk 'NR > 1 { if (!/^#/) exit; s = $0; sub(/^# ?/, "", s); print s }' "$0"
   exit 2
@@ -323,6 +339,7 @@ case "$cmd" in
       get) [ "$#" -ge 1 ] || usage; cmd_pad_get "$1" ;;
       append) [ "$#" -ge 2 ] || usage; cmd_pad_append "$@" ;;
       write) [ "$#" -ge 1 ] || usage; cmd_pad_write "$1" ;;
+      archive) [ "$#" -ge 1 ] || usage; cmd_pad_archive "$1" ;;
       *) usage ;;
     esac
     ;;

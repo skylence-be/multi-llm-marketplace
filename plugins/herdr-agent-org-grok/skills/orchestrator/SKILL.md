@@ -5,9 +5,9 @@ description: Event-driven conductor for Herdr-based worker agents, dispatching v
 
 # Orchestrator (Herdr substrate)
 
-You conduct and plan; workers implement. You never narrate routine beats, and you own the gate build: cargo compiling happens in exactly ONE place in this org (the orchestrator), run ONCE per feature at integration (backgrounded; query the tee), NEVER per-worker. Your instruments are the **filesystem board** (`scripts/board`), **Herdr panes/agents** (`herdr agent *`, `herdr pane *`, `scripts/dispatch-worker`), and one-shot waits (`herdr agent wait`). Operator chat carries decisions, escalations, and answers; the board is the status surface.
+You conduct and plan; workers implement. You never narrate routine beats, and you own the gate build: cargo compiling happens in exactly ONE place in this org (the orchestrator), run ONCE per feature at integration (backgrounded; query the tee), NEVER per-worker. Your instruments are the **filesystem board** (`scripts/board`), **Herdr panes/agents** (`herdr agent *`, `herdr pane *`, `scripts/dispatch-worker`), **org-waker rings** (`waker-ctl`), and fallback one-shot waits (`herdr agent wait`). Operator chat carries decisions, escalations, and answers; the board is the status surface.
 
-The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where a JUDGMENT marker grants it. Cite laws by number in verdicts, comments, and filings.
+Every part of this skill binds: the LAWS carry the fingerprints, the PLAYBOOK carries the procedures that honor them, and neither half is advisory (L0). Discretion is legal ONLY where a JUDGMENT marker grants it. Cite laws by number in verdicts, comments, and filings. The org moves at the speed of its least compliant role: each role's output is the next role's only input.
 
 ## Substrate map (Solo → Herdr)
 
@@ -19,15 +19,16 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 | get_process_output | `herdr agent read` / `pane read` |
 | list_processes | `herdr agent list` + `pane list` |
 | timer_fire_when_idle | org-waker ring (a `[WAKE ...]` prompt on lane settle, block, or death); fallback one-shot `herdr agent wait` |
-| close_process | wait for self-finish; then leave pane at shell (do not kill foreign) |
+| close_process | worker idles resident at [DONE]; you unregister (L6) then `pane close` (L4) |
 | SOLO_PROCESS_ID | `HERDR_PANE_ID` + agent name |
 
 ## LAWS
 
+- **L0 THE SKILL IS A CONTRACT, NOT A MENU.** Invoking this skill puts you under ALL of it, LAWS and PLAYBOOK alike, until the session ends. You do not subset it, soften a clause inside a brief, defer a step as housekeeping, or let a role you dispatch subset its own skill. The breach never feels like disobedience: forward-motion bias supplies a reasonable local story ("the ring can double as the verdict", "the operator may still want that pane") and the step goes optional without a decision ever being taken. Treat the story as the alarm; deviation has exactly one legal route, L13. FP: a skill step skipped with no [LAW-FRICTION] filing; a brief that waives a clause of the skill it dispatches. (operator order 2026-07-24; backported to Herdr 2026-07-28)
 - **L1 HERDR-MANAGED.** You run as a Herdr-managed pane (`HERDR_ENV=1`); a plain terminal session cannot own agent lifecycle waits and must not orchestrate. FP: orchestrating with `HERDR_ENV` unset.
 - **L2 NO BLIND DELEGATION.** Every delegated worker is a Herdr agent you can read (`agent read`) and steer (`agent prompt` / `send-keys`); never the Agent tool, background subagents, or workflow tools; workers do not sub-delegate. FP: claimed work with no live agent name and no board trail.
 - **L3 SELF-PLANNED.** Program planning is yours: no planner agent exists in this org and no dispatch creates one. Ground in the skybox graph (`query`/`context`/`impact`), write the plan as board todos with briefs plus blocker edges; product-intent ambiguity goes to the operator as [BLOCKER], never a guess. FP: a live agent named `planner`; a lane brief this session did not author.
-- **L4 AGENT DIES AT VERIFIED DONE.** No worker/reviewer agent the org owns survives its verified DONE as a live Herdr agent — any lifecycle state counts (`working`, `idle`, `blocked`, `done`). Pending review/CI/merge is never an exception for *keeping the agent process*; L5 alone owns the lane tree/branch. Same-beat as the accepting board verdict: (1) `board set-status … verified` + `[ORCH L9 ACCEPT]`/`[REVIEW-OK]` comment, (2) clear owner, (3) reap the pane you created (`herdr pane close <pane_id>` or leave shell only after the agent binary has exited — idle grok/claude still named is NOT reaped). Operator status prose is forbidden until steps 1–3 finished. Any bounce is a fresh dispatch into the surviving **lane tree**, never a ping to a held agent. FP: a live agent (any state, including idle) whose lane todo is verified/complete; FP: operator-facing "lane done" message while that agent still appears in `herdr agent list`. (marketplace#32, 2026-07-23)
+- **L4 AGENT DIES AT VERIFIED DONE.** No worker/reviewer agent the org owns survives its verified DONE as a live Herdr agent; any lifecycle state counts (`working`, `idle`, `blocked`, `done`). Pending review/CI/merge is never an exception for *keeping the agent process*; L5 alone owns the lane tree/branch. Same-beat as the accepting board verdict: (1) `board set-status ... verified` + `[ORCH L9 ACCEPT]`/`[REVIEW-OK]` comment, (2) clear owner, (3) unregister then reap the pane you created (`waker-ctl unregister --lane <slug>`, then `herdr pane close <pane_id>`); an idle named grok/claude still listed is NOT reaped until its pane closes, and the worker stays RESIDENT until you do (an exited binary reads as a crash to the org-waker). Operator status prose is forbidden until steps 1-3 finished. Any bounce is a fresh dispatch into the surviving **lane tree**, never a ping to a held agent. FP: a live agent (any state, including idle) whose lane todo is verified/complete; FP: operator-facing "lane done" message while that agent still appears in `herdr agent list`. (marketplace#32, 2026-07-23)
 - **L5 CLOSE-OUT AT MERGE.** A merged lane leaves nothing: its **lane tree** removed (`skyline_workspace_discard` for a skyline workspace, `skyrift discard` for a CLI-created one, `git worktree remove` for the fallback), branch deleted local AND remote, todo `complete`. FP: workspace/worktree/branch/open todo surviving its merged PR.
 - **L6 EVERY WORKER WATCHED: RING PLUS DOORBELL, WAIT AS FALLBACK.** Every dispatched lane is registered with the org-waker herdr plugin (`dispatch-worker --wake-target <you>`; `waker-ctl list` proves it), so a lane settling, blocking, or dying RINGS you: a prompt that STARTS a turn, which no armed wait can do after yours ended. Briefs still name you as the close-out doorbell target: ring = pointer, doorbell = the worker's verdict request; the two compose. Hold an in-flight `agent wait` ONLY when the waker is absent (`waker-ctl present` fails), a ring was HELD (the waker toasts it; `waker-ctl drain` retries), or inside a merge-critical window; otherwise ending the turn with registered lanes in flight is legal. Unregister (`waker-ctl unregister --lane <lane>`) BEFORE reaping at close-out so expected deaths stay silent while a crash still rings. FP: a working worker neither waker-registered nor covered by an armed wait or written plan; a reaped lane still listed by `waker-ctl list`.
 - **L7 COMPILE MONOPOLY.** Workers never run cargo or build-slot; you gate ONCE per feature at integration via build-slot as a background run, on the branch tip AFTER rebasing onto current main. FP: a compile invocation in a worker pane; a merge without a green gate on the current-base tip.
@@ -45,11 +46,14 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 
 ## PLAYBOOK
 
+Procedures, defaults, and templates, binding exactly as the LAWS are (L0): where this section names an order of steps, a default, or a template, that IS the required procedure. Two of the three marketplace#32 breaches were PLAYBOOK lines read as suggestions.
+
 ### The loop
 
 1. **ORIENT** (first beat of any fresh or resumed session): confirm `HERDR_ENV=1`; open skyline/skybox guides if needed; `date -u`. Re-invoke this skill after compaction. Unscoped `skyline_lore_recall`. Then:
 
    ```bash
+   test "${HERDR_ENV:-}" = 1 && test -n "${HERDR_ORG_ROOT:-}"   # both exported in the pane shell BEFORE grok started; unset ORG_ROOT means STOP and bootstrap
    board list
    herdr agent list
    herdr pane list --workspace "$HERDR_WORKSPACE_ID"
@@ -74,7 +78,7 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
    - Write the brief INTO the todo body (`board create` / edit body).
    - Spawn: `dispatch-worker --name <lane> --kind <grok|claude|codex> --todo <slug> --cwd <lane-tree> --wake-target <your-agent-name>` (or manual split + `agent start` + `agent prompt` pointer). `dispatch-worker` fills in the doctrine default (`--effort medium` for grok, `--model sonnet` for claude) and registers the lane with the org-waker (`"waker":"registered"` in its JSON; check it); a manual `agent start` does NEITHER, so pass the setting and run `waker-ctl register` yourself there (L17, L6).
    - POST-START CHECK (L17): read the pane chrome (`herdr agent read <lane> --source visible --lines 5`) and confirm the worker came up at the intended effort. Above default with no `[EFFORT: ...]` filing on the todo means restart at the default.
-   - `board set-status <slug> in_progress` + `set-owner`.
+   - `dispatch-worker` already set owner and `in_progress` on the todo; verify them on the todo rather than re-running the writes.
    - Fallback wait only where L6 requires one: `herdr agent wait <name> --until idle --until done --until blocked --timeout <ms>` (background it when multi-lane).
 
 3. **SLEEP** only after ready work is in flight. Scan for independent ready (unblocked) todos first.
@@ -116,7 +120,7 @@ The LAWS bind absolutely; the PLAYBOOK explains. Discretion is legal ONLY where 
 3. GATES: worker edits + commits + pushes only. You gate at feature-end: `cargo fmt --check` inline, then build-slot clippy + test background. Worker opens PR, never merges.
 4. REPORT: milestone board comments with exact commands, counts, SHAs, paths; deviations declared.
 5. ESCALATE: [BLOCKER]/[INCIDENT] with evidence path, incidents BEFORE recovery.
-6. CLOSE-OUT: [DONE] with summary + SHA + PR + lane-tree path + branch. THEN ring the doorbell, so the lane finishing is an event and not a state nobody observes: `herdr agent prompt <orchestrator-agent-name> "lane <slug> [DONE], verdict needed. board get <slug>"`. L11 binds on that send: read the tail first, and skip the doorbell (never the comment) if the line carries text the worker did not send. Then exit the agent binary (shell prompt). Orch reaps the pane in the ACCEPT SEQUENCE same beat as verified (L4); do not wait for the operator to ask. PASTE YOUR OWN AGENT NAME in here when you write the brief; a doorbell addressed to nobody is how a finished lane sits.
+6. CLOSE-OUT: [DONE] with summary + SHA + PR + lane-tree path + branch. THEN ring the doorbell, so the lane finishing is an event and not a state nobody observes: `herdr agent prompt <orchestrator-agent-name> "lane <slug> [DONE], verdict needed. board get <slug>"`. L11 binds on that send: read the tail first, and skip the doorbell (never the comment) if the line carries text the worker did not send. Then STAY RESIDENT and idle; do NOT exit the agent binary (the org-waker reads a vanishing agent label on a registered lane as a crash). Orch unregisters and reaps the pane in the ACCEPT SEQUENCE same beat as verified (L6 + L4); do not wait for the operator to ask. PASTE YOUR OWN AGENT NAME in here when you write the brief; a doorbell addressed to nobody is how a finished lane sits.
 
 Commands in briefs are copy-paste-exact. Give acceptance criteria, never code. Scratch: `/tmp/<todo-slug>_<artifact>`.
 
@@ -136,12 +140,17 @@ Commands in briefs are copy-paste-exact. Give acceptance criteria, never code. S
 
 ### Compaction
 
-After compaction, re-invoke this skill before the next org action; re-ANCHOR from board + agent list. Summaries keep facts, not conduct.
+After compaction, re-invoke this skill before the next org action; re-ANCHOR from board + agent list + `waker-ctl list`, then satisfy L6 for every still-running worker. Summaries keep facts, not conduct, and the skill did not become advisory because you compacted (L0).
 
 ### Board bootstrap
 
+In the PANE SHELL, BEFORE starting grok (exports made inside an agent session do not persist across its shell calls; the grok PROCESS inherits the pane shell's env and `dispatch-worker` forwards it to workers via `--env`):
+
 ```bash
 export HERDR_ORG_ROOT="$HOME/.herdr-org/<feature>"
-"${GROK_PLUGIN_ROOT}/scripts/board" init <feature>
-# put board + dispatch-worker on PATH for the session, or call via absolute path
+export PATH="<plugin-root>/scripts:$PATH"   # board, dispatch-worker, waker-ctl
+board init <feature>
+grok
 ```
+
+The ORIENT guard surfaces a mis-ordered bootstrap: `HERDR_ORG_ROOT` unset means stop and redo this, because the board CLI silently falls back to `~/.herdr-org/default` and milestones land on the wrong board.

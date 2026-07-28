@@ -7,6 +7,10 @@ description: Successor pickup on the Herdr substrate. Inherit a predecessor work
 
 Your context is fresh; the predecessor's knowledge survives only in artifacts. Trust artifacts, never prose. On Herdr this bites harder than on Solo: your predecessor's pane was reaped and its scrollback went with it, so the board todo and git are all there is.
 
+## This skill is a contract, not a menu
+
+All seven steps below run, in order, before you continue the lane. You are here precisely because a predecessor's state stopped being legible; a step you skip recreates that hole for your own successor, and you will not be the one paying for it. The breach arrives as a reasonable local story ("the handover comment reads complete, the git baseline is a formality"), never as a decision to disobey. Trust artifacts, never prose, and that includes the prose you tell yourself.
+
 1. CONTRACT: read the lane todo body and the issues it references (`board get <slug>`). That is your acceptance criteria.
 2. HANDOVER: read the todo comments newest-first. The last [HANDOVER] or checkpoint comment is your starting state; earlier milestones are history.
 3. TREE: verify it yourself with `git status`, `git log --oneline -5`, and `git diff --stat` in the inherited **lane tree** (absolute path from the brief or todo, usually a skyline/skyrift workspace under `<repo>-workspaces/`). If it is a workspace: confirm `.skyrift-workspace` is present and still untracked, and `skyline_workspace_list` with the source's absolute `from_path` should show it. Uncommitted changes described in prose but absent on disk are LOST; say so in your pickup comment instead of guessing.

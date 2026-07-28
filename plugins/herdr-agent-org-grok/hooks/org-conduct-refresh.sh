@@ -15,14 +15,14 @@ MARKED=0
 [ "$MARKED" -eq 1 ] || exit 0
 
 cat <<'EOF'
-ORG CONDUCT REFRESH (compaction just ran — Herdr substrate): the summary you
-now run on keeps facts, not conduct — your role skill's text is gone and decay
-from here is self-invisible. Before the next org action: (1) re-invoke your
+ORG CONDUCT REFRESH (compaction just ran; Herdr substrate): the summary you
+now run on keeps facts, not conduct, and the skill did not become advisory
+because you compacted (L0). Before the next org action: (1) re-invoke your
 role skill (orchestrator; herdr-worker/replacer if you were dispatched; herdr
-for control surface); (2) re-ANCHOR from the board + Herdr — board list +
-herdr agent list + herdr pane list; the board is truth, the summary is hearsay:
-re-verify any of its claims before acting on them; (3) re-arm one-shot agent
-waits for every still-working worker you own — a missed wait right after
-compaction means conduct did not survive; (4) confirm HERDR_ENV=1 still holds.
+for control surface); (2) re-ANCHOR from board list + herdr agent list +
+herdr pane list + waker-ctl list; the board is truth, the summary is hearsay:
+re-verify its claims before acting on them; (3) satisfy L6 for every
+still-working worker: waker-registered lanes ring you, anything else needs
+its fallback agent-wait re-armed; (4) confirm HERDR_ENV=1 still holds.
 EOF
 exit 0
