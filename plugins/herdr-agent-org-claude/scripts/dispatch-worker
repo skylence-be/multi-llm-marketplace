@@ -5,7 +5,7 @@
 # Usage:
 #   dispatch-worker --name NAME [--kind KIND] [--cwd PATH] [--direction right|down] \
 #                   [--todo SLUG] [--prompt TEXT] [--timeout MS] \
-#                   [--wake-target ORCH] [--upgrade-reason TEXT] [-- agent-args...]
+#                   [--wake-target ORCH] [--beat-note TEXT] [--upgrade-reason TEXT] [-- agent-args...]
 #
 # With no --direction, placement is automatic: the first worker splits the
 # orchestrator pane DOWN, later workers split the last live worker pane
@@ -39,7 +39,9 @@
 # submit=clean|recovered|reprompted|failed in the JSON summary.
 # With --wake-target (or HERDR_ORG_WAKER_TARGET set) and the org-waker herdr
 # plugin installed, the lane is registered so its settle, block, or death
-# rings the conductor (L6); absent either, dispatch proceeds unregistered.
+# rings the conductor (L6); optional --beat-note TEXT is stored with the
+# registration and appended to every wake ring as `NOTE: <text>`.
+# Absent wake-target or plugin, dispatch proceeds unregistered.
 set -eu
 
 HERDR="${HERDR_BIN_PATH:-herdr}"
@@ -52,6 +54,7 @@ PROMPT=""
 TIMEOUT="60000"
 UPGRADE_REASON=""
 WAKE_TARGET="${HERDR_ORG_WAKER_TARGET:-}"
+BEAT_NOTE=""
 EXTRA_ARGS=""
 
 usage() {
@@ -75,6 +78,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT=$2; shift 2 ;;
     --upgrade-reason) UPGRADE_REASON=$2; shift 2 ;;
     --wake-target) WAKE_TARGET=$2; shift 2 ;;
+    --beat-note) BEAT_NOTE=$2; shift 2 ;;
     --) shift; EXTRA_ARGS=$*; break ;;
     -h|--help) usage ;;
     *) echo "dispatch-worker: unknown arg $1" >&2; usage ;;
@@ -217,7 +221,7 @@ $HERDR pane rename "$pane_id" "${NAME}${TODO:+: $TODO}" >/dev/null 2>&1 || true
 WAKER="skipped"
 WCTL="$(dirname "$0")/waker-ctl"
 if [ -n "$WAKE_TARGET" ] && [ -x "$WCTL" ] && "$WCTL" present 2>/dev/null; then
-  if "$WCTL" register --pane "$pane_id" --lane "$NAME" --target "$WAKE_TARGET" ${TODO:+--todo "$TODO"} >/dev/null 2>&1; then
+  if "$WCTL" register --pane "$pane_id" --lane "$NAME" --target "$WAKE_TARGET" ${TODO:+--todo "$TODO"} ${BEAT_NOTE:+--beat-note "$BEAT_NOTE"} >/dev/null 2>&1; then
     WAKER="registered"
   fi
 fi

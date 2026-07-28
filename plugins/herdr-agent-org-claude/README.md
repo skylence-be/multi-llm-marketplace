@@ -22,7 +22,7 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
   - `herdr` is the low-level control surface (pane, agent, workspace CLI)
 - **Scripts**:
   - `board` is the filesystem board (todos, comments, pads, blockers); `set-status` best-effort publishes the lane's status into the herdr sidebar pane (`pane report-metadata`), `ready` lists unblocked pending todos, `create --tags`/`list --tags` tag and filter todos, `query <text>` case-insensitively searches todo files, `list`/`ready`/`get` support `--json`, and every mutating command snapshots a best-effort silent git commit when git is available
-  - `dispatch-worker` splits a pane (auto layout: first worker below the orchestrator, later workers rightward in rows of at most 2, a fresh row per 2; explicit `--direction` overrides), starts a named agent, sends the pointer prompt, and reports the post-send state
+  - `dispatch-worker` splits a pane (auto layout: first worker below the orchestrator, later workers rightward in rows of at most 2, a fresh row per 2; explicit `--direction` overrides), starts a named agent, sends the pointer prompt, and reports the post-send state; optional `--beat-note TEXT` is forwarded to waker registration so settle/block/death rings carry the orchestrator's beat script
   - `build-slot` is the machine-wide compile serializer
   - `ghost-probe.sh` is the no-fusion input-line classifier
   - `waker-ctl` is the org-side client of the org-waker herdr plugin (register, unregister, list, drain, doctor)
