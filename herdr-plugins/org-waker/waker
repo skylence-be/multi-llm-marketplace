@@ -171,17 +171,27 @@ classify_composer() {
 }
 
 # verify_submitted TARGET LINE -> 0 confirmed submitted, 1 not delivered.
-# Resolves the target's pane, reads its visible tail, and classifies the
-# composer line: clear (or a queued indicator) reads as delivered; our own
-# text still parked gets ONE empty submit and a re-check; anything else on
-# the line is left alone and reported undelivered -- never empty-submit text
-# we did not send (fusion hazard).
+# Resolves the target's pane, settles so paste can render, then classifies
+# the composer line: clear is trusted only after a second read also says
+# clear; our own text still parked gets ONE empty submit and a re-check;
+# anything else on the line is left alone and reported undelivered -- never
+# empty-submit text we did not send (fusion hazard).
 verify_submitted() {
   pane=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.pane_id // empty' 2>/dev/null)
   [ -n "$pane" ] || return 1
+  # Paste can land after herdr returns from agent prompt; settle before the
+  # first read so a still-empty composer is not raced into a false clear.
+  sleep 1
   tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null) || return 1
   case "$(classify_composer "$tail" "$2")" in
-    clear) return 0 ;;
+    clear)
+      # First clear may be pre-render emptiness. Trust only if a second
+      # read after another settle window is still clear.
+      sleep 1
+      tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null) || return 1
+      [ "$(classify_composer "$tail" "$2")" = "clear" ] || return 1
+      return 0
+      ;;
     foreign) return 1 ;;
     parked)
       $HERDR pane run "$pane" "" >/dev/null 2>&1 || true
