@@ -25,7 +25,7 @@ onto those primitives and a **filesystem board** (no Solo MCP).
   - `org-audit` — on-demand cold review (never on a cadence)
   - `herdr` — control surface skill (pane/agent/workspace CLI)
 - **Scripts**:
-  - `board` — filesystem board (todos, comments, pads, blockers)
+  - `board` — filesystem board (todos, comments, pads, blockers); `set-status` best-effort publishes lane status into the herdr sidebar pane (`pane report-metadata`)
   - `dispatch-worker` — split pane + `agent start` + pointer prompt
   - `build-slot` — machine-wide compile serializer
   - `ghost-probe.sh` — no-fusion input-line classifier (same recipe as Solo variant)
