@@ -229,6 +229,73 @@ if [ -s "$ORG_WAKER_STUB_STATE/prompts" ]; then
   cat "$ORG_WAKER_STUB_STATE/prompts"
   failed=1
 fi
+# --- helpers for count-based audit assertions -----------------------------
+count_outcome() {
+  # count_outcome OUTCOME — lines in rings.jsonl with that outcome
+  jq -s --arg o "$1" '[.[] | select(.outcome == $o)] | length' \
+    "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl" 2>/dev/null || echo 0
+}
+
+assert_count() {
+  # assert_count LABEL OUTCOME WANT
+  got=$(count_outcome "$2")
+  if [ "$got" != "$3" ]; then
+    echo "FAIL $1: outcome=$2 count=$got want $3"
+    failed=1
+  else
+    echo "ok $1: outcome=$2 count=$got"
+  fi
+}
+
+# --- (6) unregister purges pending → exactly one dropped:unregistered ----
+# Evidence path for the silent-rm gap: held wake file exists, lane close-out
+# removes it; audit must record dropped:unregistered (not vanish silently).
+reset_state
+: > "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl"
+printf 'orch\n%s\n' "$SENT" > "$HERDR_PLUGIN_CONFIG_DIR/pending/1000-stub-lane-g1.msg"
+# Sibling lane must not be purged (rev-<lane> reviewer naming / suffix safety).
+printf 'orch\nother wake\n' > "$HERDR_PLUGIN_CONFIG_DIR/pending/1001-rev-stub-lane-g1.msg"
+cmd_unregister --lane stub-lane >/dev/null
+assert_count "unregister-drop" "dropped:unregistered" "1"
+if [ -e "$HERDR_PLUGIN_CONFIG_DIR/pending/1000-stub-lane-g1.msg" ]; then
+  echo "FAIL unregister-drop: pending .msg still present"
+  failed=1
+else
+  echo "ok unregister-drop: pending .msg removed"
+fi
+if [ ! -e "$HERDR_PLUGIN_CONFIG_DIR/pending/1001-rev-stub-lane-g1.msg" ]; then
+  echo "FAIL unregister-drop: sibling rev-<lane> was purged"
+  failed=1
+else
+  echo "ok unregister-drop: sibling rev-<lane> untouched"
+  rm -f "$HERDR_PLUGIN_CONFIG_DIR/pending/1001-rev-stub-lane-g1.msg"
+fi
+
+# --- (7) drain success path → exactly one drain-delivered ----------------
+reset_state
+: > "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl"
+printf 'orch\n%s\n' "$SENT" > "$HERDR_PLUGIN_CONFIG_DIR/pending/2000-stub-lane-g1.msg"
+# do_drain → composer_clear (2 agent reads) → deliver → verify clear (2 pane reads)
+write_seq agent_read "$CLEAR_TAIL" "$CLEAR_TAIL" "$CLEAR_TAIL" "$CLEAR_TAIL"
+write_seq pane_read "$CLEAR_TAIL" "$CLEAR_TAIL"
+do_drain
+assert_count "drain-success" "drain-delivered" "1"
+if [ -e "$HERDR_PLUGIN_CONFIG_DIR/pending/2000-stub-lane-g1.msg" ] || \
+   [ -e "$HERDR_PLUGIN_CONFIG_DIR/pending/2000-stub-lane-g1.msg.claim" ]; then
+  echo "FAIL drain-success: claim/msg still present after drain-delivered"
+  failed=1
+else
+  echo "ok drain-success: pending claim consumed"
+fi
+# Exactly one rings line total for this scenario (no double-log).
+total=$(wc -l < "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl" | tr -d ' ')
+if [ "$total" -ne 1 ]; then
+  echo "FAIL drain-success: expected 1 rings line, got $total"
+  cat "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl"
+  failed=1
+else
+  echo "ok drain-success: exactly 1 rings line"
+fi
 
 echo "--- stub path: $FAKE"
 echo "--- outcome lines:"
