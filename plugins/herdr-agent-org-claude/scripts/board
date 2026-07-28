@@ -337,21 +337,21 @@ cmd_get() {
     blockers_raw=$(front_get "$p" blockers)
 
     body=$(awk '
-      BEGIN { fm_count=0; body_started=0 }
-      /^---$/ {
+      BEGIN { fm_count=0; in_body=0; first=1 }
+      /^---$/ && fm_count < 2 {
         fm_count++
-        if (fm_count == 2) { reading=1; next }
+        if (fm_count == 2) { in_body=1 }
         next
       }
       /^## Comments$/ { exit }
-      reading {
-        if (body_started) printf "\n"
+      in_body == 1 {
+        if (!first) printf "\n"
         printf "%s", $0
-        body_started=1
+        first=0
       }
     ' "$p")
 
-    comment_count=$(grep -c '^### ' "$p" 2>/dev/null || echo 0)
+    comment_count=$(sed -n '/^## Comments$/,$p' "$p" | awk '/^### / { count++ } END { print count+0 }')
 
     printf '{\"slug\":\"%s\",\"title\":\"%s\",\"status\":\"%s\",\"owner\":\"%s\",\"tags\":%s,\"blockers\":%s,\"comment_count\":%d,\"body\":\"%s\"}\n' \
       "$(json_escape "$slug")" "$(json_escape "$ti")" "$(json_escape "$st")" "$(json_escape "$ow")" \
