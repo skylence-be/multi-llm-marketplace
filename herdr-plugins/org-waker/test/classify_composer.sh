@@ -45,6 +45,17 @@ check empty "$(printf 'some scrollback\n%s ' "$PROMPT_CHAR")" "$SENT" clear
 # no prompt line in the visible frame at all: reads as clear too (queued or scrolled off).
 check no-prompt-line "$(printf 'some scrollback\nno prompt char here')" "$SENT" clear
 
+# Grok 4.5 boxed composer (measured 2026-07-28): border glyphs U+256D/U+2500/U+256E
+# top, U+2502 on the composer line, U+2570/U+2500/U+256F bottom. Empty middle line
+# must classify clear (not a lone border glyph).
+check grok-empty-box "$(printf '╭─────────────────────────────╮\n│ %s                           │\n╰──── Grok 4.5 (medium) ── ───╯\nShift+Tab:mode  |  Ctrl+x:shortcuts' "$PROMPT_CHAR")" "$SENT" clear
+
+# Grok boxed with EXACTLY the sent text after the prompt char → parked.
+check grok-parked-box "$(printf '╭─────────────────────────────╮\n│ %s %s                     │\n╰──── Grok 4.5 (medium) ── ───╯\nShift+Tab:mode  |  Ctrl+x:shortcuts' "$PROMPT_CHAR" "$SENT")" "$SENT" parked
+
+# Grok boxed with other text → foreign (never empty-submit).
+check grok-foreign-box "$(printf '╭─────────────────────────────╮\n│ %s unrelated operator text   │\n╰──── Grok 4.5 (medium) ── ───╯\nShift+Tab:mode  |  Ctrl+x:shortcuts' "$PROMPT_CHAR")" "$SENT" foreign
+
 if [ "$failed" -eq 0 ]; then
   echo "classify_composer.sh: OK"
 else
