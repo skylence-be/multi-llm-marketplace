@@ -20,7 +20,6 @@ onto those primitives and a **filesystem board** (no Solo MCP).
 
 - **Skills** (roles):
   - `orchestrator` — conductor; dispatches via Herdr panes + board
-  - `planner` — machine-wide program planner singleton
   - `herdr-worker` — worker conduct for dispatched agents
   - `replacer` — successor pickup after stall/compaction kill
   - `org-audit` — on-demand cold review (never on a cadence)
@@ -78,7 +77,7 @@ lane trees) is shared with the Solo siblings; only the control plane changes.
 ## Typical flow
 
 1. Operator: "you're the conductor" → invoke `orchestrator` skill.
-2. Orchestrator inits/reads board, optionally routes planning to `planner`.
+2. Orchestrator inits/reads board and plans the program itself (L3: no planner agent exists in this org).
 3. Dispatch: `dispatch-worker` (or manual split + `agent start --kind grok\|claude\|codex`) with a pointer to a board todo.
 4. Worker runs `herdr-worker` skill; reports milestones via `board comment`.
 5. The org-waker rings the orchestrator on lane settle/block/death (fallback `agent wait`); it verifies claims, merges; workers never compile.

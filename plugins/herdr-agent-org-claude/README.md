@@ -16,7 +16,6 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
 
 - **Skills** (roles):
   - `orchestrator` conducts: dispatches via Herdr panes plus the board, verifies, merges, owns the single gate build
-  - `planner` is the machine-wide program planner singleton
   - `herdr-worker` is worker conduct for dispatched agents
   - `replacer` is successor pickup after a stall, kill, or compaction
   - `org-audit` is an on-demand cold review, never scheduled
@@ -31,7 +30,6 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
   - `org-lane-mark.sh` (PreToolUse on Bash and skyline_run) records one line per org event, `dispatch` or `wait`
   - `org-stop-gate.sh` (Stop) blocks a marked session's FIRST stop with the anti-idle sweep
   - `org-conduct-refresh.sh` (SessionStart, matcher `compact`) re-injects the re-read-your-role-skill order
-  - `planner-singleton-gate.sh` (PreToolUse) denies an unswept planner-named `agent start` on its first attempt (the deny IS the sweep order; a post-sweep retry within 30 minutes passes)
 - **templates/claude-md.md**: worker guidance to paste into `~/.claude/CLAUDE.md` on a machine that runs lane workers.
 
 ## Install
@@ -92,7 +90,7 @@ Doctrine (LAWS, compile monopoly, no-fusion, verify-before-accept, MCP-first lan
 ## Typical flow
 
 1. Operator: "you're the conductor", which invokes the `orchestrator` skill.
-2. Orchestrator initializes or reads the board, and routes planning to the `planner` singleton unless it is running on a model that self-plans.
+2. Orchestrator initializes or reads the board and plans the program itself (L3: no planner agent exists in this org).
 3. Dispatch: `dispatch-worker --name <lane> --kind claude --todo <slug> --cwd <lane-tree> -- --permission-mode bypassPermissions`.
 4. The worker invokes `herdr-worker` and reports milestones via `board comment`.
 5. The orchestrator arms `herdr agent wait`, verifies claims by re-running them, gates the build once, and merges. Workers never compile.

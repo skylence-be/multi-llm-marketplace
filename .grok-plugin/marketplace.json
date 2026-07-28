@@ -42,7 +42,7 @@
     },
     {
       "name": "herdr-agent-org-grok",
-      "description": "Skylence agent-org for Grok on Herdr substrate. Orchestrator, planner, herdr-worker, replacer, org-audit + herdr control skill; filesystem board CLI; dispatch-worker; build-slot; ghost-probe. Dispatches via herdr agent start in real panes (no Solo MCP). Session-discipline hooks use exact ${GROK_PLUGIN_ROOT} load-time paths. Requires HERDR_ENV=1 and herdr >= 0.7.",
+      "description": "Skylence agent-org for Grok on Herdr substrate. Orchestrator, herdr-worker, replacer, org-audit + herdr control skill; filesystem board CLI; dispatch-worker; waker-ctl; build-slot; ghost-probe. Dispatches via herdr agent start in real panes (no Solo MCP); the org-waker herdr plugin rings on lane settle/block/death. The orchestrator self-plans: no planner agent exists in this org. Session-discipline hooks use exact ${GROK_PLUGIN_ROOT} load-time paths. Requires HERDR_ENV=1 and herdr >= 0.7.",
       "source": {
         "type": "local",
         "path": "./plugins/herdr-agent-org-grok"
@@ -54,7 +54,6 @@
         "herdr",
         "orchestrator",
         "multi-agent",
-        "planner",
         "terminal-multiplexer"
       ]
     }

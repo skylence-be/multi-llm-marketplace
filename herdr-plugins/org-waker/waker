@@ -141,11 +141,14 @@ composer_clear() {
 }
 
 hold_wake() {
-  # hold_wake LANE GEN LINE WHY
+  # hold_wake LANE GEN TARGET LINE WHY
+  # File line 1 is the target, line 2 the wake text, so drain never has to
+  # re-derive the target from the registry (a dead lane has no row, and
+  # guessing from another row could ring a different org's orchestrator).
   f="$CFG/pending/$(epoch_ms)-$(sane "$1")-g$2.msg"
-  printf '%s\n' "$3" > "$f" 2>/dev/null || true
-  log_ring "$1" "$2" "held:$4" "$3"
-  toast "org-waker held a wake ($4)" "$3"
+  printf '%s\n%s\n' "$3" "$4" > "$f" 2>/dev/null || true
+  log_ring "$1" "$2" "held:$5" "$4"
+  toast "org-waker held a wake ($5)" "$4"
 }
 
 deliver() {
@@ -174,13 +177,13 @@ deliver() {
 ring_or_hold() {
   # ring_or_hold LANE GEN TARGET LINE
   if ! composer_clear "$3"; then
-    hold_wake "$1" "$2" "$4" "composer"
+    hold_wake "$1" "$2" "$3" "$4" "composer"
     return 0
   fi
   if deliver "$3" "$4"; then
     log_ring "$1" "$2" "delivered" "$4"
   else
-    hold_wake "$1" "$2" "$4" "undelivered"
+    hold_wake "$1" "$2" "$3" "$4" "undelivered"
   fi
 }
 
@@ -224,14 +227,10 @@ do_drain() {
       rm -f "$c"
       continue
     fi
-    line=$(cat "$c" 2>/dev/null)
-    target=$(reg_row_by_lane "$lane" | cut -f4)
-    if [ -z "$target" ]; then
-      # Row gone (dead lane): ring whichever target the org last registered.
-      target=$([ -f "$REG" ] && tail -n 1 "$REG" | cut -f4)
-    fi
-    if [ -z "$target" ]; then
-      log_ring "$lane" "$gen" "dropped:no-target" "$line"
+    target=$(head -n 1 "$c" 2>/dev/null)
+    line=$(sed -n '2p' "$c" 2>/dev/null)
+    if [ -z "$target" ] || [ -z "$line" ]; then
+      log_ring "$lane" "$gen" "dropped:malformed" "$(cat "$c" 2>/dev/null | tr '\n' ' ')"
       rm -f "$c"
       continue
     fi
@@ -405,6 +404,24 @@ cmd_list() {
 
 cmd_startup() {
   sweep_stale_claims
+  # Reconcile: an event that fired while the server was down is lost forever,
+  # so a registered lane whose PANE no longer exists at startup gets its
+  # crash ring synthesized here. Panes that still exist are left to the live
+  # event stream, because agent detection may still be settling right after
+  # restore and ringing on it now would false-positive. Iterate a snapshot:
+  # the ring path rewrites the registry.
+  if [ -s "$REG" ]; then
+    cat "$REG" 2>/dev/null | while IFS="$(printf '\t')" read -r pane lane todo target gen rest; do
+      [ -n "$pane" ] || continue
+      $HERDR pane get "$pane" >/dev/null 2>&1 && continue
+      spool_append "$lane" "$(jq -cn --arg p "$pane" --arg l "$lane" --arg g "$gen" --arg t "$(now_utc)" \
+        '{event:"pane_missing_at_startup", pane_id:$p, lane:$l, gen:($g|tonumber? // 0), timestamp:$t}')"
+      reg_remove_lane "$lane"
+      rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null || true
+      ring_or_hold "$lane" "$gen" "$target" \
+        "[WAKE g${gen}] lane ${lane} PANE MISSING at startup (its death event was lost while the server was down). Crash-class: board get ${todo:-$lane}, consider a replacer."
+    done
+  fi
   set -- "$CFG"/pending/*.msg
   [ -e "$1" ] || exit 0
   toast "org-waker: $# held wake(s) pending" "Run the drain action (herdr plugin action invoke drain --plugin $PLUGIN_ID) or wait for the next lane event."
