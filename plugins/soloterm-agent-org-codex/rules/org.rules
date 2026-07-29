@@ -7,7 +7,7 @@ prefix_rule(pattern=["cargo", "nextest"], decision="forbidden", justification="O
 prefix_rule(pattern=["cargo-nextest"], decision="forbidden", justification="OPERATOR-ONLY (order 2026-06-06): nextest froze the machine.")
 prefix_rule(pattern=["/Users/jv/.cargo/bin/cargo", "nextest"], decision="forbidden", justification="OPERATOR-ONLY (order 2026-06-06): nextest froze the machine.")
 prefix_rule(pattern=["/Users/jv/.cargo/bin/cargo-nextest"], decision="forbidden", justification="OPERATOR-ONLY (order 2026-06-06): nextest froze the machine.")
-prefix_rule(pattern=["cargo", ["build", "check", "clippy", "test", "doc", "run", "bench", "install"]], decision="forbidden", justification="BUILD-SLOT LAW (operator 2026-06-10): compiling commands run ONE AT A TIME machine-wide. Re-run wrapped: build-slot cargo <same args>. (8GB machine; parallel builds OOM.)")
+prefix_rule(pattern=["cargo", ["build", "check", "clippy", "test", "doc", "run", "bench", "install"]], decision="forbidden", justification="BUILD-SLOT LAW (operator 2026-06-10): compiling commands run ONE AT A TIME machine-wide. Re-run wrapped: build-slot cargo <same args>.")
 prefix_rule(pattern=["/Users/jv/.cargo/bin/cargo", ["build", "check", "clippy", "test", "doc", "run", "bench", "install"]], decision="forbidden", justification="BUILD-SLOT LAW (operator 2026-06-10): re-run wrapped: build-slot cargo <same args>.")
 prefix_rule(pattern=["go", ["build", "test", "run", "vet"]], decision="forbidden", justification="BUILD-SLOT LAW (operator 2026-06-10): compiling go commands run through the slot: build-slot go <same args>.")
 prefix_rule(pattern=["build-slot"], decision="allow", justification="machine-wide compile serializer — the sanctioned path for every compiling command")
