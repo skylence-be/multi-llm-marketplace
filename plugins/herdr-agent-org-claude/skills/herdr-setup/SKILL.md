@@ -1,6 +1,6 @@
 ---
 name: herdr-setup
-description: One-shot playbook to bootstrap a fresh macOS box from "herdr installed" to "org-ready": preflight, org-waker wiring, board bootstrap, ecosystem plugin picks, and an end-to-end verification checklist. Invoke when the operator says "set up herdr for the org".
+description: 'One-shot playbook to bootstrap a fresh macOS box from "herdr installed" to "org-ready": preflight, org-waker wiring, board bootstrap, ecosystem plugin picks, and an end-to-end verification checklist. Invoke when the operator says "set up herdr for the org".'
 ---
 
 # Herdr org bootstrap (one-shot)
@@ -23,7 +23,7 @@ Read the `--kind` possible-values list. It must include both `claude` and `grok`
 command -v jq && jq --version
 command -v gh && gh --version
 ```
-`jq` parses every Herdr JSON response: `board`, `dispatch-worker`, and `waker-ctl` all shell out to it, and silently break without it. `gh` opens and inspects PRs (workers open, never merge; L14). Either missing: install it (`brew install jq gh` on macOS) before continuing; nothing downstream degrades gracefully without them.
+`jq` is required by `dispatch-worker` (parses Herdr JSON for pane splits, agent status, and the summary payload) and by the org-waker plugin script itself (`herdr-plugins/org-waker/waker`, plus its test suites). `board` and `waker-ctl` do not call jq. `gh` opens and inspects PRs (workers open, never merge; L14). Either missing: install it (`brew install jq gh` on macOS) before continuing; nothing downstream degrades gracefully without them.
 
 ## S2 Org-waker wiring
 
@@ -45,18 +45,20 @@ Verify either path landed:
 waker-ctl present
 herdr plugin action invoke doctor --plugin skylence.org-waker
 ```
-`waker-ctl present` exits 0 with no output when the plugin's config dir resolves, exit 1 with a stderr message when it does not. The `doctor` action runs async: it returns a `log_id` immediately with `status: running`. Read the completed result with:
+`waker-ctl present` exits 0 with no output when the plugin's config dir resolves, and exit 1 with no output when it does not (verified 2026-07-29: `HERDR_BIN_PATH` pointed at a failing stub). Other `waker-ctl` subcommands print a stderr message when the plugin is missing; `present` is silent by design. The `doctor` action runs async: it returns a `log_id` immediately with `status: running`. Read the completed result with:
 ```bash
 herdr plugin log list --plugin skylence.org-waker
 ```
 and find that `log_id`'s entry; its `stdout` reports herdr/jq versions, registered lanes, pending wakes, and the last few `rings.jsonl` lines.
 
-Then the correctness gate, both suites, from the repo root:
+Then the correctness gate, both suites, from the repo root (dev box with a checkout):
 ```bash
 sh herdr-plugins/org-waker/test/classify_composer.sh
 sh herdr-plugins/org-waker/test/parked_retry.sh
 ```
 Each prints its own `OK` line (`classify_composer.sh: OK`, `parked_retry.sh: OK`) at the end when every case passes. Anything else means stop before dispatching: the wake mechanism's classification or retry logic is broken, and lanes will hang silently instead of ringing the orchestrator.
+
+**Consumer box (no repo checkout):** you cannot run those two suites from a path that does not exist. Either clone `skylence-be/multi-llm-marketplace` long enough to run them from its root, or treat the doctor action above plus the S5 live probe as your gate. Do not invent a substitute shell check.
 
 ## S3 Board bootstrap
 
@@ -105,9 +107,10 @@ Install syntax for any of the above: `herdr plugin install <owner>/<repo>` (`--r
 
 ## S5 Verification checklist (end-to-end)
 
-Prove the wake path actually works before calling the box org-ready. Dispatch a throwaway probe with `--wake-target`:
+Prove the wake path actually works before calling the box org-ready. Dispatch a throwaway probe with `--wake-target` and an explicit `--prompt` (do not pass `--todo` for a nonexistent slug: the default pointer asks for `board get <slug>`, board side-effects fail, and the probe dead-ends):
 ```bash
-dispatch-worker --name probe --todo <throwaway-slug> --wake-target orchestrator \
+dispatch-worker --name probe --wake-target orchestrator \
+  --prompt $'Reply with the single word PROBE_OK, then idle. Do not edit files.' \
   --cwd /abs/scratch-tree -- --permission-mode bypassPermissions
 ```
 1. Confirm the settle ring arrives WITHOUT an operator pressing Enter; the orchestrator pane should receive the wake prompt on its own.
