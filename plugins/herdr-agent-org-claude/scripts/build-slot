@@ -1,5 +1,5 @@
 #!/bin/sh
-# build-slot: machine-wide compile serializer (one build at a time; 8GB RAM).
+# build-slot: machine-wide compile serializer (one build at a time).
 # Usage: build-slot cargo clippy --all-targets -- -D warnings
 # mkdir-style lock, interoperable with skyline_run's lock_path on the same dir.
 set -u
