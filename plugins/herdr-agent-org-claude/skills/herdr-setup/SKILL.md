@@ -1,6 +1,6 @@
 ---
 name: herdr-setup
-description: 'One-shot playbook to bootstrap a fresh macOS box from "herdr installed" to "org-ready": preflight, org-waker wiring, board bootstrap, ecosystem plugin picks, and an end-to-end verification checklist. Invoke when the operator says "set up herdr for the org".'
+description: 'One-shot playbook to bootstrap a fresh macOS box from "herdr installed" to "org-ready": preflight, org-waker wiring, optional ActivityWatch context (aw-context install + category sync), board bootstrap, ecosystem plugin picks, and an end-to-end verification checklist. Invoke when the operator says "set up herdr for the org".'
 ---
 
 # Herdr org bootstrap (one-shot)
@@ -59,6 +59,56 @@ sh herdr-plugins/org-waker/test/parked_retry.sh
 Each prints its own `OK` line (`classify_composer.sh: OK`, `parked_retry.sh: OK`) at the end when every case passes. Anything else means stop before dispatching: the wake mechanism's classification or retry logic is broken, and lanes will hang silently instead of ringing the orchestrator.
 
 **Consumer box (no repo checkout):** you cannot run those two suites from a path that does not exist. Either clone `skylence-be/multi-llm-marketplace` long enough to run them from its root, or treat the doctor action above plus the S5 live probe as your gate. Do not invent a substitute shell check.
+
+## S2.5 ActivityWatch context (aw-context) — optional
+
+Gives every agent on the box read access to the operator's real desktop
+activity (current window, presence, afk-filtered per-app time) plus
+category-tree/settings management, via the `skylence.aw-context` herdr plugin.
+Skip cleanly when ActivityWatch is not part of this box's workflow; nothing
+later depends on it.
+
+Preflight — an aw-server must already answer or everything below is a no-op:
+```bash
+curl -sf --max-time 3 http://127.0.0.1:5600/api/0/info
+```
+No answer: install and start ActivityWatch (aw-server + aw-watcher-window +
+aw-watcher-afk) first, or skip this section.
+
+Same dev/consumer split as S2, same stale-link warning for the dev form:
+```bash
+herdr plugin link <abs-path-to-repo>/herdr-plugins/aw-context                    # dev box
+herdr plugin install skylence-be/multi-llm-marketplace/herdr-plugins/aw-context  # consumer box
+```
+
+Verify (doctor is async like org-waker's: the invoke returns a `log_id` with
+`status: running`; read the completed stdout in the log list):
+```bash
+herdr plugin action invoke doctor --plugin skylence.aw-context
+herdr plugin log list --plugin skylence.aw-context
+```
+doctor must report aw-server reachable and BOTH watcher buckets fresh. A
+WARN/stale bucket line means the watchers are not actually reporting, and
+every "current activity" answer agents get will be quietly stale — fix the
+watchers before wiring agents to the data.
+
+Category consistency, so per-app summaries mean the same thing on every box.
+Idempotent: an in-sync tree prints `already in sync` and writes nothing, so
+run it unconditionally on every setup pass. Any real write snapshots the
+prior tree to the plugin config dir `backups/` first.
+```bash
+sh <plugin-path>/awctx category sync <plugin-path>/presets/agent-org.json
+```
+`<plugin-path>` is `<abs-path-to-repo>/herdr-plugins/aw-context` on a dev box;
+on a consumer box it is the installed plugin root (the directory holding the
+`manifest_path` shown by `herdr plugin list`).
+
+Agent wiring, per the plugin README: put `awctx` on PATH once and add one
+instruction line to agent briefs (agents then self-serve via
+`awctx agent-help`, and check `awctx doctor` before trusting numbers):
+```bash
+ln -s <plugin-path>/awctx ~/.local/bin/awctx
+```
 
 ## S3 Board bootstrap
 
