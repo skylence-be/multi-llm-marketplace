@@ -72,7 +72,7 @@ Procedures, defaults, and templates, binding exactly as the LAWS are (L0): where
 
    If `agent rename` fails because detection has not classified your pane as an agent yet, the `pane rename` alone still labels the sidebar; retry on the next beat.
 
-   NAMING (L18): the agent name IS the sidebar identity; `[a-z][a-z0-9_-]{0,31}`, unique among live agents. Lane slug for a lane worker, `rev-<lane>` for a reviewer, the SAME lane slug for a replacer inheriting it (the predecessor is gone, so the name is free). At L5 close-out clear the dead lane's pane label (`herdr pane rename <pane_id> --clear`).
+   NAMING (L18): the agent name IS the sidebar identity; `[a-z][a-z0-9_-]{0,31}`, unique among live agents. Lane tied to a GitHub issue ⇒ prefix `i<nr>-` (`i736-repo-name-lookup`; reviewer `rev-i736-repo-name-lookup`) so the sidebar is issue-addressable at a glance — the `i` is required, names must start with a letter, and on 32-char overflow trim the SLUG, never the prefix; no issue, no prefix. Otherwise lane slug for a lane worker, `rev-<name>` for a reviewer, the SAME name for a replacer inheriting it (the predecessor is gone, so the name is free — keeping it preserves the prefix). At L5 close-out clear the dead lane's pane label (`herdr pane rename <pane_id> --clear`).
 
 2. **DISPATCH** (one atomic beat per lane; big features = batch of beats):
    - PRE-STAGE when acceptance depends on runnable artifacts (prove binary/index/smoke; paste into brief).
