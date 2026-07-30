@@ -31,7 +31,10 @@
 #   registry/<lane>.row pane_id  lane  todo  target  gen  org_root  registered_at  [beat_note]
 #   state/status--<pane>   last seen agent_status + agent label
 #   state/dead--<pane>     dead-ring-fired marker
-#   pending/<ms>-<lane>-g<gen>.msg   held wake line (claimed as .claim)
+#   pending/<ms>-<lane>-g<gen>.msg   held wake: target / text / sent|unsent
+#                                    (claimed as .claim; `sent` = the prompt
+#                                    paste already reached the target, drain
+#                                    must never re-prompt it)
 #   spool/<lane>.jsonl     append-only event records (catch-up surface)
 #   log/rings.jsonl        delivery audit
 #
@@ -270,37 +273,49 @@ verify_submitted() {
 }
 
 hold_wake() {
-  # hold_wake LANE GEN TARGET LINE WHY
+  # hold_wake LANE GEN TARGET LINE WHY SENT
   # File line 1 is the target, line 2 the wake text, so drain never has to
   # re-derive the target from the registry (a dead lane has no row, and
   # guessing from another row could ring a different org's orchestrator).
+  # Line 3 is the sent marker: `sent` means the prompt paste ALREADY reached
+  # the target once (Claude Code queues every mid-turn paste, even when the
+  # composer verification afterwards is inconclusive), so drain must never
+  # re-prompt it; it may only Enter-recover a parked copy or infer submission.
+  # Measured 2026-07-30, lane i331-runtime-facts: one done event, one
+  # held:undelivered entry, 3+ actual deliveries, because every drain retry
+  # re-pasted a prompt the target had already queued.
   f="$CFG/pending/$(epoch_ms)-$(sane "$1")-g$2.msg"
-  printf '%s\n%s\n' "$3" "$4" > "$f" 2>/dev/null || true
+  printf '%s\n%s\n%s\n' "$3" "$4" "${6:-unsent}" > "$f" 2>/dev/null || true
   log_ring "$1" "$2" "held:$5" "$4"
   toast "org-waker held a wake ($5)" "$4"
 }
 
-deliver() {
-  # deliver TARGET LINE -> 0 delivered, 1 not
+send_prompt() {
+  # send_prompt TARGET LINE -> 0 the prompt call was accepted (the paste is
+  # now in the target's hands and MUST NOT be repeated), 1 nothing was sent.
+  # No --wait even for settled targets: submit confirmation is
+  # verify_submitted's job, and a wait timeout on an accepted paste would
+  # read as failure and re-arm the exact duplicate machine this split kills.
   tstatus=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.agent_status // "unknown"' 2>/dev/null || echo unknown)
   case "$tstatus" in
-    working)
-      # Claude Code queues a mid-turn prompt cleanly (herdmates, live-verified);
-      # --wait would time out on the still-running turn and read as failure.
+    working|idle|done)
       $HERDR agent prompt "$1" "$2" >/dev/null 2>&1 || return 1
-      ;;
-    idle|done)
-      # Verify-after-send: a settled agent must advance within ~5s or the
-      # prompt did not land (agent_prompt_stalled).
-      $HERDR agent prompt "$1" "$2" --wait --timeout 8000 >/dev/null 2>&1 || return 1
       ;;
     *)
       # blocked: typing into an approval dialog is wrong input. unknown: no basis.
       return 1
       ;;
   esac
-  # Neither prompt branch above proves the Enter actually submitted (skylore
-  # mark 90): verify the composer cleared before calling this delivered.
+  return 0
+}
+
+deliver() {
+  # deliver TARGET LINE -> 0 delivered, 1 not (nothing sent OR unverified;
+  # callers that need the distinction use send_prompt + verify_submitted).
+  send_prompt "$1" "$2" || return 1
+  # The prompt call alone does not prove the Enter actually submitted
+  # (skylore mark 90): verify the composer cleared before calling this
+  # delivered.
   verify_submitted "$1" "$2"
 }
 
@@ -308,19 +323,25 @@ ring_or_hold() {
   # ring_or_hold LANE GEN TARGET LINE
   if ! composer_clear "$3"; then
     # Own-text recovery: a previously parked copy of THIS wake already sits on
-    # the composer. Empty-submit that parked copy (do not re-prompt — that would
+    # the composer. Empty-submit that parked copy (do not re-prompt, that would
     # duplicate); success counts as delivery. Foreign text keeps holding.
     if recover_own_text "$3" "$4"; then
       log_ring "$1" "$2" "delivered" "$4"
       return 0
     fi
-    hold_wake "$1" "$2" "$3" "$4" "composer"
+    hold_wake "$1" "$2" "$3" "$4" "composer" "unsent"
     return 0
   fi
-  if deliver "$3" "$4"; then
+  if ! send_prompt "$3" "$4"; then
+    hold_wake "$1" "$2" "$3" "$4" "unsendable" "unsent"
+    return 0
+  fi
+  if verify_submitted "$3" "$4"; then
     log_ring "$1" "$2" "delivered" "$4"
   else
-    hold_wake "$1" "$2" "$3" "$4" "undelivered"
+    # The paste already happened; hold as SENT so drain only recovers or
+    # infers, and never pastes a second copy.
+    hold_wake "$1" "$2" "$3" "$4" "unverified" "sent"
   fi
 }
 
@@ -366,9 +387,38 @@ do_drain() {
     fi
     target=$(head -n 1 "$c" 2>/dev/null)
     line=$(sed -n '2p' "$c" 2>/dev/null)
+    sent=$(sed -n '3p' "$c" 2>/dev/null)   # absent on pre-marker files = unsent
     if [ -z "$target" ] || [ -z "$line" ]; then
       log_ring "$lane" "$gen" "dropped:malformed" "$(cat "$c" 2>/dev/null | tr '\n' ' ')"
       rm -f "$c"
+      continue
+    fi
+    if [ "$sent" = "sent" ]; then
+      # This wake's paste already reached the target once. NEVER re-prompt:
+      # Claude Code queued that paste even though verification could not
+      # confirm it, so a second prompt is a guaranteed duplicate. Legal moves
+      # only: infer submission from a clear+stable composer (a paste cannot
+      # leave the composer without submitting or queueing), Enter-recover a
+      # parked copy of our exact text, or accept the rendered queued hint.
+      if composer_clear "$target"; then
+        log_ring "$lane" "$gen" "drain-delivered:inferred" "$line"
+        rm -f "$c"
+      elif recover_own_text "$target" "$line"; then
+        log_ring "$lane" "$gen" "drain-delivered" "$line"
+        rm -f "$c"
+      else
+        pane=$($HERDR agent get "$target" 2>/dev/null | jq -r '.result.agent.pane_id // empty' 2>/dev/null)
+        tail=""
+        [ -n "$pane" ] && tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null)
+        if [ -n "$tail" ] && [ "$(classify_composer "$tail" "$line")" = "queued" ]; then
+          log_ring "$lane" "$gen" "drain-delivered" "$line"
+          rm -f "$c"
+        else
+          mv "$c" "${c%.claim}" 2>/dev/null || true
+          # Foreign text or unreadable target: keep holding, in order.
+          break
+        fi
+      fi
       continue
     fi
     if composer_clear "$target"; then
