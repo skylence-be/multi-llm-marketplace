@@ -34,10 +34,30 @@ fi
 org=$1
 shift
 
+# Reject names that would bind the session to the wrong place. Each of these
+# was reproduced before it was guarded (review of #80, 2026-07-30): a forgotten
+# org name (`orgclaude --resume`) creates a junk board literally named
+# "--resume" and silently routes the whole session, workers included, into it;
+# a name containing `/` or `..` git-inits a board OUTSIDE ~/.herdr-org where no
+# listing or sweep will ever find it; an empty name binds to ~/.herdr-org
+# itself. Whitespace is rejected too, since org roots travel through
+# whitespace-splitting surfaces (dispatch-worker --env, waker rows).
+case $org in
+  ''|-*|.|..|*/*|*[!a-zA-Z0-9._-]*)
+    echo "orgclaude: invalid org name '$org' (letters, digits, dot, dash, underscore; no leading dash)" >&2
+    exit 2
+    ;;
+esac
+
 HERDR_ORG_ROOT="$HOME/.herdr-org/$org"
 export HERDR_ORG_ROOT
 
-if [ ! -d "$HERDR_ORG_ROOT" ]; then
+# Test for the board SHAPE, not bare directory existence: a root left behind by
+# an aborted init (directory present, todos/ missing) would otherwise skip
+# creation and start a session whose every board call fails with a misleading
+# "run: board init". cmd_init is idempotent, so completing a half-made root is
+# safe.
+if [ ! -d "$HERDR_ORG_ROOT/todos" ]; then
   echo "orgclaude: no board at $HERDR_ORG_ROOT - creating it" >&2
   # Pass the ABSOLUTE path deliberately: `board init <bare-name>` resolves to
   # $HOME/.herdr-org/<name> and ignores HERDR_ORG_ROOT entirely, so only this
