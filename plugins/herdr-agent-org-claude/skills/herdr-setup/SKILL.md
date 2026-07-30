@@ -62,13 +62,36 @@ Each prints its own `OK` line (`classify_composer.sh: OK`, `parked_retry.sh: OK`
 
 ## S3 Board bootstrap
 
-Exports made INSIDE a Claude session die with that shell call: each tool call starts a fresh shell from the profile. `HERDR_ORG_ROOT` and the scripts `PATH` must therefore live in the **pane shell**, exported BEFORE `claude` starts, so the claude process inherits them and forwards them to workers itself:
+Exports made INSIDE a Claude session die with that shell call: each tool call starts a fresh shell from the profile. `HERDR_ORG_ROOT` and the scripts `PATH` must therefore reach the **claude process** itself, set before it starts, so it forwards them to workers.
+
+**Use `orgclaude`.** It does all of it and `exec`s claude:
 
 ```bash
-# inside Herdr, in the pane shell, BEFORE starting claude:
+# inside Herdr, in the pane shell:
+orgclaude <org-name>                 # creates the board when missing
+orgclaude <org-name> --model opus    # further args pass through to claude
+```
+
+Install it once by putting the plugin's `scripts/` dir on `PATH` from your shell rc. Resolve it by newest mtime so a plugin version bump needs no edit:
+
+```zsh
+# >>> herdr-org >>>
+typeset -a _horg=( "$HOME"/.claude/plugins/cache/*/herdr-agent-org-claude/*/scripts(N/om) )
+(( ${#_horg} )) && path=( "${_horg[1]}" $path )
+unset _horg
+# <<< herdr-org <<<
+```
+
+That also puts `board`, `dispatch-worker`, `waker-ctl` and `build-slot` on `PATH` in the pane shell, so you can inspect a board without going through claude.
+
+**Do NOT reimplement `orgclaude` as a shell function that warns on a missing board and starts claude anyway.** That was the original form and it cost ~25 minutes on 2026-07-30: the warning went to stderr microseconds before a full-screen TUI took the terminal, so the operator rarely saw it and the agent never did. From inside, the org simply had no board and every call fell back to `~/.herdr-org/default`. A typo'd org name was indistinguishable from a new one. Create the board or refuse to start; do not warn and continue.
+
+The equivalent by hand:
+
+```bash
 export HERDR_ORG_ROOT="$HOME/.herdr-org/<org-name>"
 export PATH="<plugin-root>/scripts:$PATH"   # board, dispatch-worker, waker-ctl
-board init <org-name>
+board init "$HERDR_ORG_ROOT"
 claude
 ```
 
@@ -76,13 +99,17 @@ claude
 ```bash
 board init /abs/path/to/org   # only this form can put the org somewhere else
 ```
-Every OTHER board subcommand (`get`, `list`, `comment`, `set-status`, ...) reads `HERDR_ORG_ROOT` correctly; only `init`'s own root resolution is special.
+Every OTHER board subcommand (`get`, `list`, `comment`, `set-status`, ...) reads `HERDR_ORG_ROOT` correctly; only `init`'s own root resolution is special. `orgclaude` passes the absolute path for exactly this reason.
 
 **ORIENT guard**, the first thing any orchestrator or worker session should check:
 ```bash
 test -n "$HERDR_ORG_ROOT"
 ```
-Unset means stop and redo the export block above; never improvise with ad-hoc exports inside the Claude session, since they die with the current shell call. Left unset, the board CLI silently falls back to `~/.herdr-org/default`, quietly sending this org's milestones to the wrong board. Also remember a split worker pane does NOT inherit the requesting pane's environment (measured herdr 0.7.5, 2026-07-28): `dispatch-worker` forwards `HERDR_ORG_ROOT` and `PATH` via `--env` from your own process env, which is exactly why both must be exported before `claude` starts.
+Unset means stop and redo the bootstrap above; never improvise with ad-hoc exports inside the Claude session, since they die with the current shell call. Left unset, the board CLI silently falls back to `~/.herdr-org/default`, quietly sending this org's milestones to the wrong board.
+
+**Read that guard with the harness Bash tool, not `skyline_run`.** `skyline_run` children inherit the skyline daemon's environment (a LaunchAgent, cwd `/`), where `HERDR_*` is stale or unset regardless of what your pane has — so a `skyline_run` read of `HERDR_ORG_ROOT` is not evidence about your own process. Measured 2026-07-30: it reported `HERDR_ORG_ROOT` unset and `HERDR_PANE_ID=w5:p1` while the real pane was `wG:p1` in a different workspace. Filesystem checks (`ls ~/.herdr-org/<org>`) are daemon-independent and settle it either way.
+
+Also remember a split worker pane does NOT inherit the requesting pane's environment (measured herdr 0.7.5, 2026-07-28): `dispatch-worker` forwards `HERDR_ORG_ROOT` and `PATH` via `--env` from your own process env.
 
 ## S4 Recommended ecosystem plugins (surveyed 2026-07-28)
 

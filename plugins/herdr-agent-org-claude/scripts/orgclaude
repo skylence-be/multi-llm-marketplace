@@ -1,0 +1,63 @@
+#!/bin/sh
+# orgclaude: start a Claude session bound to exactly one herdr-org board.
+#
+# WHY THIS IS A SCRIPT AND NOT A SHELL FUNCTION. HERDR_ORG_ROOT and the plugin
+# scripts dir have to be in the environment of the CLAUDE PROCESS, not of your
+# interactive shell: claude forwards both to workers itself, and dispatch-worker
+# reads them from its own env to decide the board a worker writes to. A script
+# that exports and then `exec`s claude gives claude precisely that environment,
+# because exec replaces this process and the child inherits it. Nothing needs to
+# leak back into the caller, so no function, no `source`, no dotfile logic.
+#
+#   orgclaude binary-skyline             conduct that org in this pane
+#   orgclaude xve-be --model opus        further args pass through to claude
+#   orgclaude binary-skybox --resume     resume the last session instead of a new one
+#
+# A missing board is CREATED, not warned about. The older shell-function form
+# printed "no board yet (run: board init X)" to stderr and started claude anyway;
+# that warning landed on the screen microseconds before a full-screen TUI took it
+# over, so the operator rarely saw it and the agent never did. From inside, the
+# org simply had no board, and every board call fell back to ~/.herdr-org/default
+# with only a one-line stderr note. Measured 2026-07-30: ~25 minutes of a
+# conductor repeatedly reporting its org root unset while four sibling orgs ran
+# fine. A typo in the org name was likewise indistinguishable from a new org.
+set -eu
+
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if [ "$#" -lt 1 ]; then
+  echo "usage: orgclaude <org-name> [claude args ...]" >&2
+  echo "orgs: $(ls "$HOME/.herdr-org" 2>/dev/null | tr '\n' ' ')" >&2
+  exit 2
+fi
+
+org=$1
+shift
+
+HERDR_ORG_ROOT="$HOME/.herdr-org/$org"
+export HERDR_ORG_ROOT
+
+if [ ! -d "$HERDR_ORG_ROOT" ]; then
+  echo "orgclaude: no board at $HERDR_ORG_ROOT - creating it" >&2
+  # Pass the ABSOLUTE path deliberately: `board init <bare-name>` resolves to
+  # $HOME/.herdr-org/<name> and ignores HERDR_ORG_ROOT entirely, so only this
+  # form stays correct if the root is ever relocated.
+  if ! "$here/board" init "$HERDR_ORG_ROOT"; then
+    echo "orgclaude: board init failed; not starting claude" >&2
+    exit 1
+  fi
+fi
+
+# Put board, dispatch-worker, waker-ctl and build-slot on PATH for claude and for
+# every shell it spawns. Idempotent so a nested invocation cannot stack entries.
+case ":$PATH:" in
+  *":$here:"*) ;;
+  *) PATH="$here:$PATH"; export PATH ;;
+esac
+
+if ! command -v claude >/dev/null 2>&1; then
+  echo "orgclaude: claude is not on PATH" >&2
+  exit 127
+fi
+
+exec claude "$@"
