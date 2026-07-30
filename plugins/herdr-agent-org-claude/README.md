@@ -40,17 +40,32 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
 /plugin install herdr-agent-org-claude@multi-llm-marketplace
 ```
 
-Then bootstrap IN THE PANE SHELL, BEFORE starting claude. Exports made inside a Claude session do not persist across its shell calls; the claude process inherits the pane shell's env and `dispatch-worker` forwards it to workers via `--env`:
+Then start a session bound to one org. `orgclaude` is on the plugin's `scripts/`
+dir; put that dir on your `PATH` once (see [Setup](skills/herdr-setup/SKILL.md) S3)
+and the rest is one command:
 
 ```bash
 # inside Herdr, in a pane:
-export HERDR_ORG_ROOT="$HOME/.herdr-org/my-feature"
-export PATH="<plugin-root>/scripts:$PATH"   # board, dispatch-worker, waker-ctl
-board init my-feature
-claude
+orgclaude my-feature                 # creates the board if it does not exist yet
+orgclaude my-feature --model opus    # further args pass through to claude
+orgclaude my-feature --resume        # resume the last session instead of a new one
 ```
 
-(Print the two export lines once from any session with the plugin: `printf 'export HERDR_ORG_ROOT="%s"\nexport PATH="%s/scripts:$PATH"\n' "$HOME/.herdr-org/my-feature" "$CLAUDE_PLUGIN_ROOT"`.)
+`orgclaude` exports `HERDR_ORG_ROOT`, puts `scripts/` on `PATH`, creates the board
+when it is missing, and then `exec`s claude. It is a script rather than a shell
+function on purpose: those two variables only need to reach the CLAUDE PROCESS —
+claude forwards them to workers itself, and `dispatch-worker` reads them from its
+own env — so `exec` from a script is sufficient and nothing has to leak back into
+your interactive shell.
+
+The equivalent by hand, if you are not using `orgclaude`:
+
+```bash
+export HERDR_ORG_ROOT="$HOME/.herdr-org/my-feature"
+export PATH="<plugin-root>/scripts:$PATH"   # board, dispatch-worker, waker-ctl
+board init "$HERDR_ORG_ROOT"
+claude
+```
 
 Split panes do NOT inherit the requester's environment: they get the herdr server's env (measured on herdr 0.7.5, 2026-07-28). `dispatch-worker` therefore passes `--env HERDR_ORG_ROOT=...` and `--env PATH=...` on the split itself; a hand-rolled `pane split` must do the same or the worker resolves neither the board nor the org scripts.
 
