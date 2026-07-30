@@ -51,6 +51,25 @@ orgclaude my-feature --model opus    # further args pass through to claude
 orgclaude my-feature --resume        # resume the last session instead of a new one
 ```
 
+### orgclaude reference
+
+```
+orgclaude <org-name> [claude args ...]
+```
+
+| Parameter | Required | Rules |
+|---|---|---|
+| `<org-name>` | yes, first argument | Letters, digits, `.` `_` `-` only. Rejected before anything touches disk: empty, leading `-`, any `/`, `.`, `..`, whitespace or other characters. Resolves to `~/.herdr-org/<name>`; a missing board is created, an invalid name creates nothing. |
+| everything after | no | Passed to `claude` verbatim. orgclaude owns no flags of its own, so any claude flag works: `--resume`, `--model opus`, `--permission-mode bypassPermissions`, … |
+
+Order matters: the first argument is always consumed as the org name, so
+`orgclaude --resume my-feature` is rejected with exit 2 rather than creating a
+board named `--resume` (which is exactly what the unvalidated 1.4.0 did).
+
+Exit codes: `2` usage error or invalid name, `1` board creation failed, `127`
+claude not on PATH. Otherwise orgclaude `exec`s claude, so the exit code you see
+is claude's own. Run with no arguments to print usage plus the existing orgs.
+
 `orgclaude` exports `HERDR_ORG_ROOT`, puts `scripts/` on `PATH`, creates the board
 when it is missing, and then `exec`s claude. It is a script rather than a shell
 function on purpose: those two variables only need to reach the CLAUDE PROCESS —
