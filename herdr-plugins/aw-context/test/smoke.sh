@@ -56,6 +56,15 @@ if curl -sf --max-time 2 "${AWCTX_SERVER:-http://127.0.0.1:5600}/api/0/info" >/d
     echo 'FAIL: category sync (live)'; fail=1
   fi
   rm -f "$pre"
+  # Bootstrap: export current state, re-apply it, expect zero writes.
+  bl=$(mktemp)
+  if sh "$AWCTX" bootstrap export "$bl" >/dev/null 2>&1 \
+     && [ "$(sh "$AWCTX" bootstrap apply "$bl" 2>/dev/null | grep -cv 'already in sync')" = 0 ]; then
+    echo 'ok: bootstrap export/apply idempotent (live)'
+  else
+    echo 'FAIL: bootstrap export/apply (live)'; fail=1
+  fi
+  rm -f "$bl"
 else
   echo 'skip: no live aw-server; live assertions not run'
 fi

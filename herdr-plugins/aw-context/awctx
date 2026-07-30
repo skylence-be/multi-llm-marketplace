@@ -274,6 +274,58 @@ cmd_category_sync() {
   echo "categories synced from $file$([ "$replace" = false ] || printf ' (replace)')"
 }
 
+# Portable desired-state config for a whole AW instance. export captures this
+# machine's category tree plus the portable settings keys (device-specific
+# keys like landingpage/hostname and telemetry timestamps are deliberately
+# excluded); apply brings a fresh instance to exactly that state. Both sides
+# skip no-op writes, so apply is safe to rerun on every device, every time.
+BOOTSTRAP_KEYS='startOfDay startOfWeek durationDefault theme views'
+
+cmd_bootstrap_export() {
+  need_jq
+  out=${1:-}
+  s=$(fetch "$API/settings") || die "aw-server unreachable at $SERVER"
+  doc=$(printf '%s' "$s" | jq --arg keys "$BOOTSTRAP_KEYS" '
+    {classes: (.classes // []),
+     settings: (. as $s | ($keys | split(" "))
+       | map({key: ., value: $s[.]}) | from_entries
+       | with_entries(select(.value != null)))}')
+  if [ -n "$out" ]; then
+    printf '%s\n' "$doc" > "$out"
+    echo "baseline exported to $out"
+  else
+    printf '%s\n' "$doc"
+  fi
+}
+
+cmd_bootstrap_apply() {
+  need_jq
+  [ $# -ge 1 ] || die 'usage: awctx bootstrap apply <baseline.json>'
+  f=$1
+  [ -r "$f" ] || die "cannot read $f"
+  jq -e 'has("classes") and has("settings")' "$f" >/dev/null 2>&1 \
+    || die "$f is not a baseline (need {classes: [...], settings: {...}})"
+  cur=$(fetch "$API/settings/classes") || die "aw-server unreachable at $SERVER"
+  want=$(jq -c .classes "$f")
+  if [ "$(printf '%s' "$cur" | jq -cS .)" = "$(printf '%s' "$want" | jq -cS .)" ]; then
+    echo 'classes: already in sync'
+  else
+    backup_classes
+    printf '%s' "$want" | post_setting classes || die 'classes write failed'
+    echo "classes: replaced ($(printf '%s' "$cur" | jq 'if . == null then 0 else length end') -> $(printf '%s' "$want" | jq length) entries)"
+  fi
+  for k in $(jq -r '.settings | keys[]' "$f"); do
+    wv=$(jq -c --arg k "$k" '.settings[$k]' "$f")
+    cv=$(fetch "$API/settings/$k") || cv=null
+    if [ "$(printf '%s' "$cv" | jq -cS .)" = "$(printf '%s' "$wv" | jq -cS .)" ]; then
+      echo "$k: already in sync"
+    else
+      printf '%s' "$wv" | post_setting "$k" || die "write failed for setting '$k'"
+      echo "$k: set"
+    fi
+  done
+}
+
 cmd_setting() {
   [ $# -ge 1 ] || die 'usage: awctx setting <key> [<json-value>]'
   if [ $# -eq 1 ]; then
@@ -308,6 +360,8 @@ write side (changes the human's own ActivityWatch — use deliberately):
   awctx category add <Path> <regex> [--ignore-case]   add or update a rule
   awctx category rm <Path>         remove one category entry
   awctx category sync <file> [--replace]   upsert a category set (or replace tree)
+  awctx bootstrap export [file]    capture tree + portable settings as a baseline
+  awctx bootstrap apply <file>     bring a fresh instance to that exact state
   awctx setting <key> [<json>]     read or write any aw-server setting
 Category writes snapshot the prior tree to $CFG_DIR/backups first.
 
@@ -336,6 +390,13 @@ case ${1:-agent-help} in
       *)   die 'usage: awctx category add|rm ...' ;;
     esac ;;
   setting)    shift; cmd_setting "$@" ;;
+  bootstrap)
+    shift; sub=${1:-}; [ $# -eq 0 ] || shift
+    case $sub in
+      export) cmd_bootstrap_export "$@" ;;
+      apply)  cmd_bootstrap_apply "$@" ;;
+      *)      die 'usage: awctx bootstrap export|apply ...' ;;
+    esac ;;
   agent-help|help|-h|--help) cmd_agent_help ;;
   *) die "unknown command '$1' (try: awctx agent-help)" ;;
 esac

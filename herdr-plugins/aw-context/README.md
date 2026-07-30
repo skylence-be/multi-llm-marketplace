@@ -29,6 +29,8 @@ awctx category add <Path> <re> [--ignore-case]    add or update a rule
 awctx category rm <Path>         remove one category entry
 awctx category sync <file> [--replace]    upsert a category set / replace tree
 awctx setting <key> [<json>]     read or write any aw-server setting
+awctx bootstrap export [file]    capture tree + portable settings as a baseline
+awctx bootstrap apply <file>     bring a fresh instance to that exact state
 ```
 
 Accuracy notes:
@@ -59,6 +61,18 @@ subcategories) used by the herdr-setup playbook:
 
 ```bash
 awctx category sync /abs/path/to/herdr-plugins/aw-context/presets/agent-org.json
+```
+
+For a whole fresh instance (a new device), `bootstrap` captures and replays
+the full desired state: the category tree plus the portable settings keys
+(`startOfDay`, `startOfWeek`, `durationDefault`, `theme`, `views` — the
+device-specific keys like `landingpage` and telemetry timestamps are
+excluded). `presets/aw-baseline.json` is the committed reference, exported
+2026-07-31; re-export and commit whenever the desired config changes.
+
+```bash
+awctx bootstrap export presets/aw-baseline.json   # on the reference machine
+awctx bootstrap apply  presets/aw-baseline.json   # on every other device
 ```
 
 ## Install
