@@ -27,6 +27,7 @@ awctx agent-help                 this list, as a tool card for the agent
 awctx categories                 category tree (name path + rule regex)
 awctx category add <Path> <re> [--ignore-case]    add or update a rule
 awctx category rm <Path>         remove one category entry
+awctx category sync <file> [--replace]    upsert a category set / replace tree
 awctx setting <key> [<json>]     read or write any aw-server setting
 ```
 
@@ -48,6 +49,17 @@ Every classes write first snapshots the previous tree into the plugin config
 dir (`.../skylence.aw-context/backups/classes-<utc>-<pid>.json`); restore is
 `awctx setting classes "$(cat <backup>)"`. `category add` upserts by exact
 name path; nested paths use `/` (e.g. `Work/Agents`).
+
+For identical categorization across machines, `category sync` brings the tree
+to a known state from a JSON file: default mode upserts the file's entries and
+leaves everything else alone, `--replace` makes the tree exactly the file.
+No-op syncs skip the write, so setup scripts can run it every time.
+`presets/agent-org.json` ships a starter set (`Work/Agents` + per-runtime
+subcategories) used by the herdr-setup playbook:
+
+```bash
+awctx category sync /abs/path/to/herdr-plugins/aw-context/presets/agent-org.json
+```
 
 ## Install
 

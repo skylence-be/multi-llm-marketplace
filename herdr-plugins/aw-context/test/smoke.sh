@@ -44,6 +44,18 @@ if curl -sf --max-time 2 "${AWCTX_SERVER:-http://127.0.0.1:5600}/api/0/info" >/d
   else
     echo 'FAIL: category add/rm roundtrip (live)'; fail=1
   fi
+  # Sync: temp preset upserts, second run is a no-op, then clean up.
+  pre=$(mktemp)
+  printf '%s' '[{"name":["Test","awctx-smoke"],"rule":{"type":"regex","regex":"awctx-smoke-nomatch-9f3a"}}]' > "$pre"
+  if sh "$AWCTX" category sync "$pre" >/dev/null 2>&1 \
+     && sh "$AWCTX" categories | grep -q 'Test/awctx-smoke' \
+     && sh "$AWCTX" category sync "$pre" 2>/dev/null | grep -q 'already in sync' \
+     && sh "$AWCTX" category rm 'Test/awctx-smoke' >/dev/null 2>&1; then
+    echo 'ok: category sync idempotent (live)'
+  else
+    echo 'FAIL: category sync (live)'; fail=1
+  fi
+  rm -f "$pre"
 else
   echo 'skip: no live aw-server; live assertions not run'
 fi

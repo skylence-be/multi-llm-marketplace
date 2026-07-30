@@ -242,6 +242,38 @@ cmd_category_rm() {
   echo "category '$name' removed"
 }
 
+# Bring the tree to a known state from a JSON file of category entries.
+# Default merges (upsert by exact name path, other entries untouched);
+# --replace makes the tree exactly the file. No-op writes are skipped, so
+# repeated syncs are safe in setup scripts.
+cmd_category_sync() {
+  need_jq
+  [ $# -ge 1 ] || die 'usage: awctx category sync <file.json> [--replace]'
+  file=$1; replace=false
+  [ "${2:-}" != --replace ] || replace=true
+  [ -r "$file" ] || die "cannot read $file"
+  jq -e 'type == "array" and all(.[]; .name and .rule)' "$file" >/dev/null 2>&1 \
+    || die "$file is not a category array (need [{name: [...], rule: {...}}, ...])"
+  cur=$(fetch "$API/settings/classes") || die "aw-server unreachable at $SERVER"
+  if [ "$replace" = true ]; then
+    new=$(jq -c . "$file")
+  else
+    new=$(printf '%s' "$cur" | jq -c --slurpfile want "$file" '
+      (if . == null then [] else . end)
+      | reduce $want[0][] as $w (.;
+          if any(.[]; .name == $w.name)
+          then map(if .name == $w.name then $w else . end)
+          else . + [$w] end)')
+  fi
+  if [ "$(printf '%s' "$cur" | jq -cS .)" = "$(printf '%s' "$new" | jq -cS .)" ]; then
+    echo 'categories already in sync (no write)'
+    return 0
+  fi
+  backup_classes
+  printf '%s' "$new" | post_setting classes || die 'classes update failed'
+  echo "categories synced from $file$([ "$replace" = false ] || printf ' (replace)')"
+}
+
 cmd_setting() {
   [ $# -ge 1 ] || die 'usage: awctx setting <key> [<json-value>]'
   if [ $# -eq 1 ]; then
@@ -275,6 +307,7 @@ write side (changes the human's own ActivityWatch — use deliberately):
   awctx categories                 category tree (name path + rule regex)
   awctx category add <Path> <regex> [--ignore-case]   add or update a rule
   awctx category rm <Path>         remove one category entry
+  awctx category sync <file> [--replace]   upsert a category set (or replace tree)
   awctx setting <key> [<json>]     read or write any aw-server setting
 Category writes snapshot the prior tree to $CFG_DIR/backups first.
 
@@ -298,6 +331,7 @@ case ${1:-agent-help} in
     shift; sub=${1:-}; [ $# -eq 0 ] || shift
     case $sub in
       add) cmd_category_add "$@" ;;
+      sync) cmd_category_sync "$@" ;;
       rm)  cmd_category_rm "$@" ;;
       *)   die 'usage: awctx category add|rm ...' ;;
     esac ;;
