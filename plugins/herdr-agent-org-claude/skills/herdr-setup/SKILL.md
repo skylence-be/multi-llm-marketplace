@@ -103,6 +103,18 @@ sh <plugin-path>/awctx category sync <plugin-path>/presets/agent-org.json
 on a consumer box it is the installed plugin root (the directory holding the
 `manifest_path` shown by `herdr plugin list`).
 
+Fresh device that should carry the FULL reference config (whole category tree
+plus portable settings: startOfDay, startOfWeek, durationDefault, theme,
+views), not just the agent categories layered on: apply the committed
+baseline instead — also idempotent, also backed up before any real write:
+```bash
+sh <plugin-path>/awctx bootstrap apply <plugin-path>/presets/aw-baseline.json
+```
+The baseline is exported from the reference machine with
+`awctx bootstrap export`; re-export and commit it whenever the desired
+ActivityWatch config changes, and every other box picks it up on its next
+setup pass.
+
 Agent wiring, per the plugin README: put `awctx` on PATH once and add one
 instruction line to agent briefs (agents then self-serve via
 `awctx agent-help`, and check `awctx doctor` before trusting numbers):
