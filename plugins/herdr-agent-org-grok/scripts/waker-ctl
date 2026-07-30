@@ -25,6 +25,18 @@ sane() { printf '%s' "$1" | tr ':/' '--'; }
 # Flatten newlines/tabs/CR to spaces so a beat note is one TSV field. Chosen
 # over reject: orchestrator paste with a stray newline still stores a usable line.
 flatten_note() { printf '%s' "$1" | tr '\n\t\r' '   '; }
+# JSON string escaper for ring lines: waker-ctl stays jq-free (unlike the
+# waker), so escape backslash+quote and flatten control whitespace instead.
+json_str() { printf '%s' "$1" | tr '\n\t\r' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+# log_ring LANE GEN OUTCOME TEXT: same line shape and key order as the
+# waker's log_ring, so rings.jsonl stays one uniform audit stream.
+log_ring() {
+  case "$2" in ''|*[!0-9]*) _g=0 ;; *) _g=$2 ;; esac
+  mkdir -p "$CFG/log" 2>/dev/null || true
+  printf '{"timestamp":"%s","lane":"%s","gen":%s,"outcome":"%s","text":"%s"}\n' \
+    "$(now_utc)" "$(json_str "$1")" "$_g" "$(json_str "$3")" "$(json_str "$4")" \
+    >> "$CFG/log/rings.jsonl" 2>/dev/null || true
+}
 
 CFG=$($HERDR plugin config-dir "$PLUGIN_ID" 2>/dev/null || true)
 
@@ -97,14 +109,28 @@ case "$cmd" in
     pane=$(cut -f1 "$REGD/$(sane "$lane").row" 2>/dev/null)
     rm -f "$REGD/$(sane "$lane").row"
     [ -n "$pane" ] && rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null
-    # Purge held wakes for the lane by exact filename parse (a glob would also
-    # purge lanes this one suffixes, e.g. rev-<lane>).
-    for f in "$CFG"/pending/*.msg; do
-      [ -e "$f" ] || break
-      b=${f##*/}; b=${b%.msg}
-      g=${b##*-g}
-      l=${b#*-}; l=${l%-g"$g"}
-      [ "$l" = "$(sane "$lane")" ] && rm -f "$f"
+    # Close-out purge of held wakes for the lane, by exact filename parse (a
+    # glob would also purge lanes this one suffixes, e.g. rev-<lane>). Every
+    # permanent removal of a pending .msg/.claim must write exactly one
+    # rings.jsonl line: the same audit invariant as the waker's own
+    # cmd_unregister. A silent rm here let a held wake vanish without a
+    # dropped:unregistered trace whenever close-out ran through waker-ctl.
+    for f in "$CFG"/pending/*.msg "$CFG"/pending/*.claim; do
+      [ -e "$f" ] || continue
+      b=${f##*/}
+      case "$b" in
+        *.msg.claim) base=${b%.msg.claim} ;;
+        *.msg)       base=${b%.msg} ;;
+        *)           continue ;;
+      esac
+      g=${base##*-g}
+      l=${base#*-}; l=${l%-g"$g"}
+      if [ "$l" = "$(sane "$lane")" ]; then
+        text=$(sed -n '2p' "$f" 2>/dev/null || true)
+        [ -n "$text" ] || text=$(tr '\n' ' ' < "$f" 2>/dev/null || true)
+        log_ring "$lane" "$g" "dropped:unregistered" "$text"
+        rm -f "$f"
+      fi
     done
     printf '{"unregistered":"%s"}\n' "$lane"
     ;;
