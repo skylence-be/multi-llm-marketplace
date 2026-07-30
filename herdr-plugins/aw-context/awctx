@@ -178,6 +178,84 @@ cmd_doctor() {
   exit "$fail"
 }
 
+# ---- write side: category tree + settings -------------------------------
+# Every write to the classes key first snapshots the current tree into the
+# plugin config dir, so a bad rule is one `awctx setting classes "$(cat ...)"`
+# away from undone.
+
+CFG_DIR="${HERDR_PLUGIN_CONFIG_DIR:-$HOME/.config/herdr/plugins/config/skylence.aw-context}"
+
+backup_classes() {
+  mkdir -p "$CFG_DIR/backups"
+  bf="$CFG_DIR/backups/classes-$(date -u +%Y%m%dT%H%M%SZ)-$$.json"
+  fetch "$API/settings/classes" > "$bf" || die "cannot read current classes at $SERVER"
+  printf 'backup: %s\n' "$bf" >&2
+}
+
+post_setting() { # $1 = key; JSON value on stdin
+  curl -sf --max-time 5 -X POST -H 'Content-Type: application/json' \
+    -d @- "$API/settings/$1" >/dev/null
+}
+
+cmd_categories() {
+  need_jq
+  fetch "$API/settings/classes" \
+    | jq -r '
+        if . == null or . == [] then "no category tree stored on this server"
+        else .[] | "\(.name | join("/"))  rule=\(.rule.type // "none")\(
+          if .rule.regex then "  /\(.rule.regex)/\(if .rule.ignore_case then "i" else "" end)" else "" end)"
+        end' \
+    || die "aw-server unreachable at $SERVER"
+}
+
+cmd_category_add() {
+  need_jq
+  [ $# -ge 2 ] || die 'usage: awctx category add <Name[/Sub...]> <regex> [--ignore-case]'
+  name=$1; regex=$2; ic=false
+  [ "${3:-}" != --ignore-case ] || ic=true
+  cur=$(fetch "$API/settings/classes") || die "aw-server unreachable at $SERVER"
+  backup_classes
+  printf '%s' "$cur" \
+    | jq --arg n "$name" --arg r "$regex" --argjson ic "$ic" '
+        (if . == null then [] else . end)
+        | ($n | split("/")) as $path
+        | ({type: "regex", regex: $r} + (if $ic then {ignore_case: true} else {} end)) as $rule
+        | if any(.[]; .name == $path)
+          then map(if .name == $path then .rule = $rule else . end)
+          else . + [{name: $path, rule: $rule}]
+          end' \
+    | post_setting classes || die 'classes update failed'
+  echo "category '$name' set: /$regex/$([ "$ic" = false ] || printf i)"
+}
+
+cmd_category_rm() {
+  need_jq
+  [ $# -ge 1 ] || die 'usage: awctx category rm <Name[/Sub...]>'
+  name=$1
+  cur=$(fetch "$API/settings/classes") || die "aw-server unreachable at $SERVER"
+  printf '%s' "$cur" | jq -e --arg n "$name" 'any(.[]?; .name == ($n | split("/")))' >/dev/null \
+    || die "no category named '$name' (see: awctx categories)"
+  backup_classes
+  printf '%s' "$cur" \
+    | jq --arg n "$name" '($n | split("/")) as $p | map(select(.name != $p))' \
+    | post_setting classes || die 'classes update failed'
+  echo "category '$name' removed"
+}
+
+cmd_setting() {
+  [ $# -ge 1 ] || die 'usage: awctx setting <key> [<json-value>]'
+  if [ $# -eq 1 ]; then
+    fetch "$API/settings/$1" || die "cannot read setting '$1' at $SERVER"
+    echo
+  else
+    need_jq
+    printf '%s' "$2" | jq -e . >/dev/null 2>&1 || die 'value is not valid JSON'
+    [ "$1" != classes ] || backup_classes
+    printf '%s' "$2" | post_setting "$1" || die "cannot write setting '$1' at $SERVER"
+    echo "setting '$1' updated"
+  fi
+}
+
 cmd_agent_help() {
   cat <<EOF
 awctx — real desktop activity of the human operator, from ActivityWatch.
@@ -192,6 +270,13 @@ aw-watcher-afk. All timestamps UTC. "afk" = no keyboard/mouse input.
   awctx events <bucket> [min] [n]  raw events JSON from any bucket
   awctx query '<program>' [hours]  raw aw-server query-language passthrough
   awctx doctor                     check server, watchers, freshness
+
+write side (changes the human's own ActivityWatch — use deliberately):
+  awctx categories                 category tree (name path + rule regex)
+  awctx category add <Path> <regex> [--ignore-case]   add or update a rule
+  awctx category rm <Path>         remove one category entry
+  awctx setting <key> [<json>]     read or write any aw-server setting
+Category writes snapshot the prior tree to $CFG_DIR/backups first.
 
 Interpretation rules: trust "doctor" before trusting numbers; "data age"
 over ~60s means watchers are lagging and "now" may be stale. Window titles
@@ -208,6 +293,15 @@ case ${1:-agent-help} in
   events)     shift; cmd_events "$@" ;;
   query)      shift; cmd_query "$@" ;;
   doctor)     shift; cmd_doctor "$@" ;;
+  categories) shift; cmd_categories "$@" ;;
+  category)
+    shift; sub=${1:-}; [ $# -eq 0 ] || shift
+    case $sub in
+      add) cmd_category_add "$@" ;;
+      rm)  cmd_category_rm "$@" ;;
+      *)   die 'usage: awctx category add|rm ...' ;;
+    esac ;;
+  setting)    shift; cmd_setting "$@" ;;
   agent-help|help|-h|--help) cmd_agent_help ;;
   *) die "unknown command '$1' (try: awctx agent-help)" ;;
 esac

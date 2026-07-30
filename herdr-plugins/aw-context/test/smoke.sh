@@ -35,6 +35,15 @@ if curl -sf --max-time 2 "${AWCTX_SERVER:-http://127.0.0.1:5600}/api/0/info" >/d
       echo "FAIL: awctx $c (live)"; fail=1
     fi
   done
+  # Write side: add a throwaway category, see it, remove it, see it gone.
+  if sh "$AWCTX" category add 'Test/awctx-smoke' 'awctx-smoke-nomatch-9f3a' >/dev/null 2>&1 \
+     && sh "$AWCTX" categories | grep -q 'Test/awctx-smoke' \
+     && sh "$AWCTX" category rm 'Test/awctx-smoke' >/dev/null 2>&1 \
+     && ! sh "$AWCTX" categories | grep -q 'Test/awctx-smoke'; then
+    echo 'ok: category add/rm roundtrip (live)'
+  else
+    echo 'FAIL: category add/rm roundtrip (live)'; fail=1
+  fi
 else
   echo 'skip: no live aw-server; live assertions not run'
 fi

@@ -23,6 +23,11 @@ awctx events <bucket> [min] [n]  raw events JSON from any bucket
 awctx query '<program>' [hours]  raw aw-server query-language passthrough
 awctx doctor                     check server, watchers, freshness
 awctx agent-help                 this list, as a tool card for the agent
+
+awctx categories                 category tree (name path + rule regex)
+awctx category add <Path> <re> [--ignore-case]    add or update a rule
+awctx category rm <Path>         remove one category entry
+awctx setting <key> [<json>]     read or write any aw-server setting
 ```
 
 Accuracy notes:
@@ -35,6 +40,14 @@ Accuracy notes:
   ~60s mean "current" answers are stale, and `doctor` says so.
 - Buckets are discovered by type (`currentwindow`, `afkstatus`), not by
   hostname, so the scripts survive machine renames.
+
+Write side: the category tree and all other aw-server settings are plain
+REST state (`/api/0/settings/<key>`; categories live under `classes`), so
+`category add/rm` and `setting` change what the human's own dashboard shows.
+Every classes write first snapshots the previous tree into the plugin config
+dir (`.../skylence.aw-context/backups/classes-<utc>-<pid>.json`); restore is
+`awctx setting classes "$(cat <backup>)"`. `category add` upserts by exact
+name path; nested paths use `/` (e.g. `Work/Agents`).
 
 ## Install
 
@@ -85,9 +98,9 @@ sh test/smoke.sh   # offline assertions always; live assertions when aw-server a
 
 ## Limitations
 
-- Read-only. It does not record herdr/agent activity into ActivityWatch; a
-  reverse `aw-watcher-herdr` (pane agent-status → AW bucket via `[[events]]`)
-  would be a natural follow-up plugin.
+- Writes cover settings/categories only. It does not record herdr/agent
+  activity into ActivityWatch; a reverse `aw-watcher-herdr` (pane
+  agent-status → AW bucket via `[[events]]`) would be a natural follow-up.
 - One machine: it reads the local aw-server; remote/synced AW instances need
   `AWCTX_SERVER` pointed at them explicitly.
 - `summary` needs both watcher buckets; a machine without aw-watcher-afk gets
