@@ -114,6 +114,8 @@ need "$C/skills/architect/SKILL.md" "TRANSCRIPTION-GRADE" "DRY-READ-CLEAN" "blue
 need "$C/templates/reviewer-brief.md" "READY:" "CANNOT-VERIFY"
 need "$C/scripts/dispatch-worker" "ADVISOR_UP"
 need "$C/scripts/orgclaude" "opusplan"
+need "$C/skills/fleet/SKILL.md" "ORGS, not lanes" "REPORT-BACK CONTRACT" "board_deleted:false" "NOTHING TO DO IS NOT A QUESTION"
+need "$C/scripts/fleet-ctl" "board_is_empty" "already_running"
 
 if [ "$fail" = 0 ]; then
   echo "herdr-parity: OK"
