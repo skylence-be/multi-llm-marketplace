@@ -20,6 +20,8 @@
 #   --kind grok    and no --effort            -> --effort medium
 # Asking for anything above that default REQUIRES --upgrade-reason; the reason
 # is filed on the lane todo as [MODEL: ...] / [EFFORT: ...] per L17.
+# An --advisor <m> in the agent args is likewise above the default (none) and
+# requires --upgrade-reason; it is filed on the lane todo as [ADVISOR: ...].
 #
 # A Claude lane worker also needs full-auto args, which are NOT applied for you:
 #   dispatch-worker --name impl-a --todo impl-a --cwd /abs/lane-tree \
@@ -94,6 +96,7 @@ done
 MODEL=$(arg_value --model "$EXTRA_ARGS")
 EFFORT=$(arg_value --effort "$EXTRA_ARGS")
 [ -n "$EFFORT" ] || EFFORT=$(arg_value --reasoning-effort "$EXTRA_ARGS")
+ADVISOR=$(arg_value --advisor "$EXTRA_ARGS")
 
 DEFAULTED=""
 case "$KIND" in
@@ -116,11 +119,13 @@ esac
 # Anything above the doctrine default is an explicit, filed act (L17).
 MODEL_UP=0
 EFFORT_UP=0
+ADVISOR_UP=0
 case "$MODEL" in ""|*sonnet*|*haiku*) ;; *) MODEL_UP=1 ;; esac
 case "$EFFORT" in ""|low|medium) ;; *) EFFORT_UP=1 ;; esac
-if [ "$MODEL_UP" -eq 1 ] || [ "$EFFORT_UP" -eq 1 ]; then
+[ -n "$ADVISOR" ] && ADVISOR_UP=1
+if [ "$MODEL_UP" -eq 1 ] || [ "$EFFORT_UP" -eq 1 ] || [ "$ADVISOR_UP" -eq 1 ]; then
   if [ -z "$UPGRADE_REASON" ]; then
-    echo "dispatch-worker: model=${MODEL:-default} effort=${EFFORT:-default} is above the doctrine default." >&2
+    echo "dispatch-worker: model=${MODEL:-default} effort=${EFFORT:-default} advisor=${ADVISOR:-none} is above the doctrine default." >&2
     echo "dispatch-worker: pass --upgrade-reason \"<why this lane needs it>\"; it is filed on the todo (L17)." >&2
     exit 2
   fi
@@ -129,6 +134,7 @@ fi
 MARKERS=""
 [ "$MODEL_UP" -eq 1 ] && MARKERS="[MODEL: $MODEL, $UPGRADE_REASON]"
 [ "$EFFORT_UP" -eq 1 ] && MARKERS="${MARKERS:+$MARKERS }[EFFORT: $EFFORT, $UPGRADE_REASON]"
+[ "$ADVISOR_UP" -eq 1 ] && MARKERS="${MARKERS:+$MARKERS }[ADVISOR: $ADVISOR, $UPGRADE_REASON]"
 
 # Plain text, never a leading slash: a send that STARTS with a slash command is
 # eaten by Claude's command palette and the task text is silently dropped.
@@ -266,7 +272,7 @@ if [ -n "$TODO" ] && [ -n "$BOARD" ]; then
   [ -n "$MARKERS" ] && { "$BOARD" comment "$TODO" "**$MARKERS** dispatched as $NAME (kind $KIND, pane $pane_id)" >/dev/null || true; }
 fi
 
-printf '{"agent":%s,"pane_id":%s,"kind":%s,"todo":%s,"state":%s,"model":%s,"effort":%s,"defaulted":%s,"upgrade":%s,"waker":%s,"submit":%s}\n' \
+printf '{"agent":%s,"pane_id":%s,"kind":%s,"todo":%s,"state":%s,"model":%s,"effort":%s,"advisor":%s,"defaulted":%s,"upgrade":%s,"waker":%s,"submit":%s}\n' \
   "$(printf '%s' "$NAME" | jq -Rs .)" \
   "$(printf '%s' "$pane_id" | jq -Rs .)" \
   "$(printf '%s' "$KIND" | jq -Rs .)" \
@@ -274,6 +280,7 @@ printf '{"agent":%s,"pane_id":%s,"kind":%s,"todo":%s,"state":%s,"model":%s,"effo
   "$(printf '%s' "$state" | jq -Rs .)" \
   "$(printf '%s' "$MODEL" | jq -Rs .)" \
   "$(printf '%s' "$EFFORT" | jq -Rs .)" \
+  "$(printf '%s' "$ADVISOR" | jq -Rs .)" \
   "$(printf '%s' "$DEFAULTED" | jq -Rs .)" \
   "$(printf '%s' "$MARKERS" | jq -Rs .)" \
   "$(printf '%s' "$WAKER" | jq -Rs .)" \

@@ -19,6 +19,13 @@ You implement; the orchestrator verifies and merges. Your PTY is a Herdr pane �
 
 Invoking it puts you under ALL of it, from session entry to your final [DONE]: non-negotiables, reporting, and execution bind equally. The breach never feels like disobedience; forward-motion bias hands you a local story ("the milestone comment fits in the final summary", "one quick cargo check beats waiting for the gate") and the step goes optional without a decision. Treat the story as the alarm: deviation has one legal route, the UPWARD VALVE under Reporting. The cost never lands on you: a skipped milestone comment is evidence that does not exist, an exited binary reads as a crash to the org-waker, one quick compile queues every other lane. The org moves at the speed of its least compliant worker.
 
+| Story | Reality |
+| --- | --- |
+| "Milestone comment fits in the final summary" | Scrollback dies with the pane; unreported = lost. |
+| "One quick cargo check" | One machine-wide slot; you queue the whole org. |
+| "Doorbell hardly matters, waker rings anyway" | Ring = pointer, doorbell = verdict request; both, in order. |
+| "Tests pass" | Not a claim; counts + command + SHA are. |
+
 ## Non-negotiables
 
 - Skyline tools for all file/search/command work; on outage retry once, then post [BLOCKER] and wait — silent fallback to built-ins is an incident.
@@ -55,6 +62,7 @@ Mark sparingly at lane end or on a hard-won gotcha: `kind=decision|fact` + `why=
 - Session entry smoke: `git branch --show-current` matches the brief; `git status --short` + `git log --oneline -1`. Default CWD is a skyline/skyrift **workspace** when the brief names one: never `git add -A` (untracked `.skyrift-workspace` + warm `target/`); stage paths explicitly. A fresh workspace lands on a detached HEAD, so check out the brief's branch first.
 - LOOP NESTING: when your runtime ships the skyline loop skills, invoke the matching one FIRST inside the work (feature-loop-skill builds, debug-loop-skill fixes, review-loop-skill reviews); the brief is the OUTER coordination contract, the loop the INNER build discipline, and the loop's FINAL attestation lands on your todo as a milestone comment. Absent: proceed, zero friction.
 - Same-branch co-workers are normal: pull --rebase before pushing; skyline stale-tag → re-read and retry. Additive commits only. One feature PR per shared branch.
+- On a BOUNCE (orchestrator pasted findings on your todo): fix ONLY the pasted findings, re-run the named covering checks, append fix evidence as a milestone comment. New discoveries are a comment, never silent scope growth — the bounce loop is bounded and creep burns a round.
 - Commit WIP at every milestone boundary (`wip:` prefix fine) — git is the real handover.
 - After mid-lane compaction: re-invoke this skill, then re-read your todo body + newest comments before continuing.
 - Verify artifacts, not exit codes. Name a slice's proving check before you build it.

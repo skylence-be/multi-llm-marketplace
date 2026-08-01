@@ -21,6 +21,7 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
   - `org-audit` is an on-demand cold review, never scheduled
   - `herdr` is the low-level control surface (pane, agent, workspace CLI)
   - `herdr-setup` is the one-shot playbook to bootstrap a fresh box from "herdr installed" to "org-ready" (claude only)
+  - `architect` is the operator-side planning contract: transcription-grade, blueprint-bound, SHA-pinned GitHub issues (haiku dry-read gated) that the orchestrator turns into lane briefs — never a dispatched org agent
 - **Scripts**:
   - `board` is the filesystem board (todos, comments, pads, blockers); `set-status` best-effort publishes the lane's status into the herdr sidebar pane (`pane report-metadata`), `ready` lists unblocked pending todos, `create --tags`/`list --tags` tag and filter todos, `query <text>` case-insensitively searches todo files, `list`/`ready`/`get` support `--json`, and every mutating command snapshots a best-effort silent git commit when git is available
   - `dispatch-worker` splits a pane (auto layout: first worker below the orchestrator, later workers rightward in rows of at most 2, a fresh row per 2; explicit `--direction` overrides), starts a named agent, sends the pointer prompt, and reports the post-send state; optional `--beat-note TEXT` is forwarded to waker registration so settle/block/death rings carry the orchestrator's beat script
@@ -32,6 +33,7 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
   - `org-stop-gate.sh` (Stop) blocks a marked session's FIRST stop with the anti-idle sweep
   - `org-conduct-refresh.sh` (SessionStart, matchers `startup|resume|compact`) primes the role-skill contract in fresh sessions and re-injects the re-read order after compaction
 - **templates/claude-md.md**: worker guidance to paste into `~/.claude/CLAUDE.md` on a machine that runs lane workers.
+- **templates/reviewer-brief.md**: the L10 reviewer-lane dispatch contract — two-stage verdict (spec compliance and artifact quality), severity-ranked findings, forced `READY:` verdict, review-package-as-file.
 
 ## Install
 
@@ -46,8 +48,9 @@ and the rest is one command:
 
 ```bash
 # inside Herdr, in a pane:
-orgclaude my-feature                 # creates the board if it does not exist yet
-orgclaude my-feature --model opus    # further args pass through to claude
+orgclaude my-feature                 # creates the board if missing; injects the doctrinal defaults: --model opusplan --advisor opus
+orgclaude my-feature --model sonnet  # explicit --model/--advisor win over the injected defaults
+ORGCLAUDE_ADVISOR= orgclaude my-feature   # empty ORGCLAUDE_ADVISOR / ORGCLAUDE_MODEL suppresses that injection
 orgclaude my-feature --resume        # resume the last session instead of a new one
 ```
 
@@ -60,7 +63,7 @@ orgclaude <org-name> [claude args ...]
 | Parameter | Required | Rules |
 |---|---|---|
 | `<org-name>` | yes, first argument | Letters, digits, `.` `_` `-` only. Rejected before anything touches disk: empty, leading `-`, any `/`, `.`, `..`, whitespace or other characters. Resolves to `~/.herdr-org/<name>`; a missing board is created, an invalid name creates nothing. |
-| everything after | no | Passed to `claude` verbatim. orgclaude owns no flags of its own, so any claude flag works: `--resume`, `--model opus`, `--permission-mode bypassPermissions`, … |
+| everything after | no | Passed to `claude` unchanged, plus two injected defaults: `--model opusplan --advisor opus` are prepended UNLESS the args already carry that flag (explicit wins), with `ORGCLAUDE_MODEL` / `ORGCLAUDE_ADVISOR` overriding a default and an EMPTY value suppressing the injection. Any claude flag works: `--resume`, `--permission-mode bypassPermissions`, … |
 
 Order matters: the first argument is always consumed as the org name, so
 `orgclaude --resume my-feature` is rejected with exit 2 rather than creating a
@@ -133,3 +136,4 @@ Doctrine (LAWS, compile monopoly, no-fusion, verify-before-accept, MCP-first lan
 - `ghost-probe.sh` on a pure Herdr box: use `live` then `probe`. `zero-touch` needs a source that strips a suggestion ghost's styling to an empty prompt line, which Solo provided and Herdr does not.
 - Prefer `${HERDR_BIN_PATH:-herdr}`; Herdr injects that variable inside managed panes.
 - Pair with `core-claude` for the baseline guidelines and judge-hook, and with `skyline-claude` for hash-guarded edits.
+- `tests/conduct/` pressure-tests the role skills' conduct clauses on a live model (superpowers-style RED/GREEN doctrine testing): `sh tests/conduct/run-conduct.sh` is BILLED; `--self-test` (stubbed, free) runs in CI; `--without-skill` captures baseline rationalizations to close in the skills' tables.

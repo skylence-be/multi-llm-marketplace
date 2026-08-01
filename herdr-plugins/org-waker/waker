@@ -186,6 +186,15 @@ classify_composer() {
     echo parked
   elif [ "$line" = "$QUEUED_HINT" ]; then
     echo queued
+  elif printf '%s' "$line" | grep -Eq '^\[Pasted text #[0-9]+\]( \[Pasted text #[0-9]+\])*$'; then
+    # Claude Code renders any paste past its length threshold as this
+    # placeholder, so a long wake line can NEVER match `parked` by text and
+    # fell through to foreign -> held forever, operator pressing Enter by
+    # hand (measured live 2026-08-01, three orchestrator panes at once).
+    # `pasted` is parked-equivalent ONLY where the paste is provably ours
+    # (post-send verify, sent-marked drain files) — never on the pre-send
+    # hold path, where a placeholder may be the operator's own draft.
+    echo pasted
   else
     echo foreign
   fi
@@ -217,7 +226,7 @@ recover_parked_submit() {
     tail=$($HERDR pane read "$1" --source visible --lines 25 --format text 2>/dev/null) || return 1
     case "$(classify_composer "$tail" "$2")" in
       clear|queued) return 0 ;;
-      parked) ;;
+      parked|pasted) ;;
       *) return 1 ;;
     esac
     $HERDR pane run "$1" "" >/dev/null 2>&1 || true
@@ -225,7 +234,7 @@ recover_parked_submit() {
     tail=$($HERDR pane read "$1" --source visible --lines 25 --format text 2>/dev/null) || return 1
     case "$(classify_composer "$tail" "$2")" in
       clear|queued) return 0 ;;
-      parked) tries=$((tries + 1)) ;;
+      parked|pasted) tries=$((tries + 1)) ;;
       *) return 1 ;;
     esac
   done
@@ -265,7 +274,10 @@ verify_submitted() {
       return 0
       ;;
     foreign) return 1 ;;
-    parked)
+    parked|pasted)
+      # parked: our exact text still on the line. pasted: the placeholder a
+      # long paste renders as — we verified the composer clear immediately
+      # before sending, so in THIS post-send window the placeholder is ours.
       recover_parked_submit "$pane" "$2"
       return $?
       ;;
@@ -284,6 +296,23 @@ hold_wake() {
   # Measured 2026-07-30, lane i331-runtime-facts: one done event, one
   # held:undelivered entry, 3+ actual deliveries, because every drain retry
   # re-pasted a prompt the target had already queued.
+  # COALESCE: a lane's newer settle wake supersedes its older UNSENT holds.
+  # The ring only says "go read the board", so N piled copies deliver later
+  # as a stale barrage (measured: dockerize-tests, five held:composer rings
+  # for one lane, drained as a burst). SENT files are never touched: their
+  # paste already reached the target and the file is the only memory that
+  # prevents a duplicate. Audit invariant: every removal logs one ring line.
+  for old in "$CFG"/pending/*.msg; do
+    [ -e "$old" ] || break
+    ob=${old##*/}; obase=${ob%.msg}
+    og=${obase##*-g}
+    ol=${obase#*-}; ol=${ol%-g"$og"}
+    [ "$ol" = "$(sane "$1")" ] || continue
+    [ "$(sed -n '3p' "$old" 2>/dev/null)" = "sent" ] && continue
+    [ "$og" -le "$2" ] 2>/dev/null || continue
+    log_ring "$1" "$og" "dropped:coalesced-g$2" "$(sed -n '2p' "$old" 2>/dev/null)"
+    rm -f "$old"
+  done
   f="$CFG/pending/$(epoch_ms)-$(sane "$1")-g$2.msg"
   printf '%s\n%s\n%s\n' "$3" "$4" "${6:-unsent}" > "$f" 2>/dev/null || true
   log_ring "$1" "$2" "held:$5" "$4"
@@ -410,7 +439,17 @@ do_drain() {
         pane=$($HERDR agent get "$target" 2>/dev/null | jq -r '.result.agent.pane_id // empty' 2>/dev/null)
         tail=""
         [ -n "$pane" ] && tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null)
-        if [ -n "$tail" ] && [ "$(classify_composer "$tail" "$line")" = "queued" ]; then
+        cls=""
+        [ -n "$tail" ] && cls=$(classify_composer "$tail" "$line")
+        if [ "$cls" = "queued" ]; then
+          log_ring "$lane" "$gen" "drain-delivered" "$line"
+          rm -f "$c"
+        elif [ "$cls" = "pasted" ] && [ -n "$pane" ] && recover_parked_submit "$pane" "$line"; then
+          # A placeholder on a SENT file is our own paste rendered as
+          # [Pasted text #N] (the composer was verified clear before we
+          # sent). Narrow fusion window: an operator paste landing after the
+          # failed verify would be submitted here — accepted over holding
+          # forever, which measured as the operator pressing Enter by hand.
           log_ring "$lane" "$gen" "drain-delivered" "$line"
           rm -f "$c"
         else
@@ -422,13 +461,24 @@ do_drain() {
       continue
     fi
     if composer_clear "$target"; then
-      if deliver "$target" "$line"; then
-        log_ring "$lane" "$gen" "drain-delivered" "$line"
-        rm -f "$c"
-      else
+      if ! send_prompt "$target" "$line"; then
         mv "$c" "${c%.claim}" 2>/dev/null || true
         # Target still unreachable: later entries would fail the same way, and
         # delivering out of order is worse than waiting (herdmates' break rule).
+        break
+      fi
+      if verify_submitted "$target" "$line"; then
+        log_ring "$lane" "$gen" "drain-delivered" "$line"
+        rm -f "$c"
+      else
+        # The paste already reached the target. Restoring this file UNSENT
+        # would re-arm the duplicate machine on the next drain (the #87
+        # class, reborn on the drain path: measured as N identical wakes
+        # queueing mid-turn and firing back-to-back). Rewrite as SENT so
+        # later drains only infer, Enter-recover, or accept the queued hint.
+        printf '%s\n%s\n%s\n' "$target" "$line" "sent" > "${c%.claim}" 2>/dev/null || true
+        rm -f "$c"
+        log_ring "$lane" "$gen" "held:unverified" "$line"
         break
       fi
     elif recover_own_text "$target" "$line"; then
