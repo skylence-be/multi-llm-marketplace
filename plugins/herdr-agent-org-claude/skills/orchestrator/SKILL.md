@@ -88,6 +88,7 @@ Also: `herdr integration install claude` installs a session-identity hook for pa
    If `agent rename` fails because detection has not classified your pane as an agent yet, the `pane rename` alone still labels the sidebar; retry the agent rename on the next beat.
 
 2. **DISPATCH** (one atomic beat per lane; a big feature is a BATCH of beats fanned out together): PRE-STAGE first when acceptance depends on runnable artifacts. Write the brief INTO the todo body (you authored it per L3; validate it once more at dispatch, never rewrite it mid-beat). Then:
+   SKYLINE-ROUTED SHELL GOTCHA (verified live 2026-08-01): when this session runs any shell tool through the skyline MCP daemon (a detached background service), the child process does NOT inherit your pane's environment — `dispatch-worker`'s own `HERDR_ENV!=1` guard fires even though YOUR pane genuinely has it set, and `waker-ctl` fails the same way. Fix per call: measure your real values once (`ps eww -p <your-claude-pid> | grep '^HERDR_'`, PID from `pgrep -f claude` matched by cwd), then pass them explicitly as that tool's `env` parameter on every `dispatch-worker`/`waker-ctl` invocation (`HERDR_ENV`, `HERDR_PANE_ID`, `HERDR_WORKSPACE_ID`, and `HERDR_ORG_ROOT` when board writes are needed). This is the same daemon-detachment class as skylore mark 190, applied to the dispatch scripts specifically rather than the ORIENT guard alone.
 
    ```bash
    dispatch-worker --name <lane> --kind claude --todo <slug> --cwd <lane-tree> \
