@@ -78,6 +78,8 @@ Also: `herdr integration install claude` installs a session-identity hook for pa
    waker-ctl drain      # deliver wakes held while no turn was running
    ```
 
+   Run the block above with the native Bash tool, never a skyline-routed shell call (`skyline_run`, `plugin:skyline-claude:skyline`'s `run`): that executes inside the skyline daemon's own detached process, which does not inherit your pane's environment, and reports `HERDR_ENV`/`HERDR_ORG_ROOT`/`PATH` unset even when your pane genuinely has them set. Measured live 2026-08-01: two of six freshly-launched orchestrator sessions ran this exact check through the routed tool, concluded "not Herdr-managed," and stopped — while the other four, launched the identical way, happened to recall the gotcha and self-corrected. Never trust the routed tool's answer here; if you must use one, measure first: `for p in $(pgrep -f claude); do ps eww -p $p | tr ' ' '\n' | grep -E '^HERDR_'; done`, matched to your pane by cwd (skylore mark 190).
+
    Then IDENTIFY YOURSELF (L18), before dispatching anything:
 
    ```bash
