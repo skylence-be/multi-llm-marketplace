@@ -42,45 +42,45 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
 /plugin install herdr-agent-org-claude@multi-llm-marketplace
 ```
 
-Then start a session bound to one org. `orgclaude` is on the plugin's `scripts/`
+Then start a session bound to one org. `conduct` is on the plugin's `scripts/`
 dir; put that dir on your `PATH` once (see [Setup](skills/herdr-setup/SKILL.md) S3)
 and the rest is one command:
 
 ```bash
 # inside Herdr, in a pane:
-orgclaude my-feature                 # creates the board if missing; injects the doctrinal defaults: --model opusplan --advisor opus
-orgclaude my-feature --model sonnet  # explicit --model/--advisor win over the injected defaults
-ORGCLAUDE_ADVISOR= orgclaude my-feature   # empty ORGCLAUDE_ADVISOR / ORGCLAUDE_MODEL suppresses that injection
-orgclaude my-feature --resume        # resume the last session instead of a new one
+conduct my-feature                 # creates the board if missing; injects the doctrinal defaults: --model opusplan --advisor opus
+conduct my-feature --model sonnet  # explicit --model/--advisor win over the injected defaults
+CONDUCT_ADVISOR= conduct my-feature   # empty CONDUCT_ADVISOR / CONDUCT_MODEL suppresses that injection
+conduct my-feature --resume        # resume the last session instead of a new one
 ```
 
-### orgclaude reference
+### conduct reference (formerly `orgclaude`; a deprecated shim with the old name forwards until the next minor)
 
 ```
-orgclaude <org-name> [claude args ...]
+conduct <org-name> [claude args ...]
 ```
 
 | Parameter | Required | Rules |
 |---|---|---|
 | `<org-name>` | yes, first argument | Letters, digits, `.` `_` `-` only. Rejected before anything touches disk: empty, leading `-`, any `/`, `.`, `..`, whitespace or other characters. Resolves to `~/.herdr-org/<name>`; a missing board is created, an invalid name creates nothing. |
-| everything after | no | Passed to `claude` unchanged, plus two injected defaults: `--model opusplan --advisor opus` are prepended UNLESS the args already carry that flag (explicit wins), with `ORGCLAUDE_MODEL` / `ORGCLAUDE_ADVISOR` overriding a default and an EMPTY value suppressing the injection. Any claude flag works: `--resume`, `--permission-mode bypassPermissions`, … |
+| everything after | no | Passed to `claude` unchanged, plus two injected defaults: `--model opusplan --advisor opus` are prepended UNLESS the args already carry that flag (explicit wins), with `CONDUCT_MODEL` / `CONDUCT_ADVISOR` overriding a default and an EMPTY value suppressing the injection. Any claude flag works: `--resume`, `--permission-mode bypassPermissions`, … |
 
 Order matters: the first argument is always consumed as the org name, so
-`orgclaude --resume my-feature` is rejected with exit 2 rather than creating a
+`conduct --resume my-feature` is rejected with exit 2 rather than creating a
 board named `--resume` (which is exactly what the unvalidated 1.4.0 did).
 
 Exit codes: `2` usage error or invalid name, `1` board creation failed, `127`
-claude not on PATH. Otherwise orgclaude `exec`s claude, so the exit code you see
+claude not on PATH. Otherwise conduct `exec`s claude, so the exit code you see
 is claude's own. Run with no arguments to print usage plus the existing orgs.
 
-`orgclaude` exports `HERDR_ORG_ROOT`, puts `scripts/` on `PATH`, creates the board
+`conduct` exports `HERDR_ORG_ROOT`, puts `scripts/` on `PATH`, creates the board
 when it is missing, and then `exec`s claude. It is a script rather than a shell
 function on purpose: those two variables only need to reach the CLAUDE PROCESS —
 claude forwards them to workers itself, and `dispatch-worker` reads them from its
 own env — so `exec` from a script is sufficient and nothing has to leak back into
 your interactive shell.
 
-The equivalent by hand, if you are not using `orgclaude`:
+The equivalent by hand, if you are not using `conduct`:
 
 ```bash
 export HERDR_ORG_ROOT="$HOME/.herdr-org/my-feature"

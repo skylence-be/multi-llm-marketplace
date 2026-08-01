@@ -14,7 +14,7 @@
 # reported instead (F1 — one orchestrator per repo, never a duplicate).
 #
 # spawn runs the full bootstrap sequence measured live 2026-08-01 across three
-# batches of 8 fresh orchestrators: workspace create, orgclaude launch, the
+# batches of 8 fresh orchestrators: workspace create, conduct launch, the
 # folder-trust dialog (confirmed automatically when Claude Code has not seen
 # this folder before), agent rename to orch-<org>, the orchestrator skill
 # invocation, and the slash-command-palette-parking recovery it needs (a send
@@ -128,7 +128,7 @@ case "$CMD" in
     PANE=$(printf '%s' "$ws_json" | jq -r '.result.root_pane.pane_id')
     WORKSPACE=$(printf '%s' "$ws_json" | jq -r '.result.workspace.workspace_id')
 
-    $HERDR pane run "$PANE" "orgclaude $ORG" >/dev/null 2>&1
+    $HERDR pane run "$PANE" "conduct $ORG" >/dev/null 2>&1
     sleep 2
 
     # Folder-trust dialog: only shown the first time Claude Code sees this

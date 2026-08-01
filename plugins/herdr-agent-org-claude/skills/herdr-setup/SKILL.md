@@ -125,12 +125,12 @@ ln -s <plugin-path>/awctx ~/.local/bin/awctx
 
 Exports made INSIDE a Claude session die with that shell call: each tool call starts a fresh shell from the profile. `HERDR_ORG_ROOT` and the scripts `PATH` must therefore reach the **claude process** itself, set before it starts, so it forwards them to workers.
 
-**Use `orgclaude`.** It does all of it and `exec`s claude:
+**Use `conduct`.** It does all of it and `exec`s claude:
 
 ```bash
 # inside Herdr, in the pane shell:
-orgclaude <org-name>                 # doctrinal launch built in: injects --model opusplan --advisor opus (explicit flags win; empty ORGCLAUDE_MODEL/ORGCLAUDE_ADVISOR suppresses)
-orgclaude <org-name> --model sonnet  # further args pass through to claude and override the injected defaults
+conduct <org-name>                 # doctrinal launch built in: injects --model opusplan --advisor opus (explicit flags win; empty CONDUCT_MODEL/CONDUCT_ADVISOR suppresses)
+conduct <org-name> --model sonnet  # further args pass through to claude and override the injected defaults
 ```
 
 Install it once by putting the plugin's `scripts/` dir on `PATH` from your shell rc. Resolve it by newest mtime so a plugin version bump needs no edit:
@@ -145,7 +145,7 @@ unset _horg
 
 That also puts `board`, `dispatch-worker`, `waker-ctl` and `build-slot` on `PATH` in the pane shell, so you can inspect a board without going through claude.
 
-**Do NOT reimplement `orgclaude` as a shell function that warns on a missing board and starts claude anyway.** That was the original form and it cost ~25 minutes on 2026-07-30: the warning went to stderr microseconds before a full-screen TUI took the terminal, so the operator rarely saw it and the agent never did. From inside, the org simply had no board and every call fell back to `~/.herdr-org/default`. A typo'd org name was indistinguishable from a new one. Create the board or refuse to start; do not warn and continue.
+**Do NOT reimplement `conduct` as a shell function that warns on a missing board and starts claude anyway.** That was the original form and it cost ~25 minutes on 2026-07-30: the warning went to stderr microseconds before a full-screen TUI took the terminal, so the operator rarely saw it and the agent never did. From inside, the org simply had no board and every call fell back to `~/.herdr-org/default`. A typo'd org name was indistinguishable from a new one. Create the board or refuse to start; do not warn and continue.
 
 The equivalent by hand:
 
@@ -160,7 +160,7 @@ claude
 ```bash
 board init /abs/path/to/org   # only this form can put the org somewhere else
 ```
-Every OTHER board subcommand (`get`, `list`, `comment`, `set-status`, ...) reads `HERDR_ORG_ROOT` correctly; only `init`'s own root resolution is special. `orgclaude` passes the absolute path for exactly this reason.
+Every OTHER board subcommand (`get`, `list`, `comment`, `set-status`, ...) reads `HERDR_ORG_ROOT` correctly; only `init`'s own root resolution is special. `conduct` passes the absolute path for exactly this reason.
 
 **ORIENT guard**, the first thing any orchestrator or worker session should check:
 ```bash
@@ -215,4 +215,4 @@ dispatch-worker --name probe --wake-target orchestrator \
    then close or reap the probe's pane and agent as usual.
 4. If a pending wake existed for the probe at unregister time, expect a new `dropped:unregistered` line in `rings.jsonl`. Confirm it is there, not silently swallowed.
 
-5. Conductor model probe (once per box, after S3): launch `orgclaude probe-org --model opusplan --advisor opus` in a scratch pane, have it enter plan mode, produce a two-line plan for a trivial task, and exit plan mode. Confirm three things: (a) it proceeds past plan exit WITHOUT a human approval — bypassPermissions un-enforces plan-mode blocks, but ExitPlanMode-unattended is undocumented, so if the pane parks `blocked` here the operator gates every planning beat and must decide whether that is acceptable; (b) the statusline shows Opus during the plan phase and Sonnet after exit; (c) any advisor consultation appears in the transcript (advisor-during-plan-mode is likewise undocumented). The docs are silent on (a) and (c); this probe is the box's answer. Then clean up: remove `~/.herdr-org/probe-org` and close the scratch pane.
+5. Conductor model probe (once per box, after S3): launch `conduct probe-org --model opusplan --advisor opus` in a scratch pane, have it enter plan mode, produce a two-line plan for a trivial task, and exit plan mode. Confirm three things: (a) it proceeds past plan exit WITHOUT a human approval — bypassPermissions un-enforces plan-mode blocks, but ExitPlanMode-unattended is undocumented, so if the pane parks `blocked` here the operator gates every planning beat and must decide whether that is acceptable; (b) the statusline shows Opus during the plan phase and Sonnet after exit; (c) any advisor consultation appears in the transcript (advisor-during-plan-mode is likewise undocumented). The docs are silent on (a) and (c); this probe is the box's answer. Then clean up: remove `~/.herdr-org/probe-org` and close the scratch pane.
