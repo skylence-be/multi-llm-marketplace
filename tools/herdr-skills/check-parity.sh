@@ -83,7 +83,8 @@ both orchestrator \
   "READY:" \
   "Rationalizations" \
   "[RING g<gen>]" \
-  "[DOORBELL]"
+  "[DOORBELL]" \
+  "NOTHING TO DO IS NOT A QUESTION"
 both herdr-worker \
   "contract, not a menu" \
   "STAY RESIDENT" \
