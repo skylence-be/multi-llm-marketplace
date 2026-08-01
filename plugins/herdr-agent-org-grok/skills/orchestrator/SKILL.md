@@ -100,13 +100,19 @@ Procedures, defaults, and templates, binding exactly as the LAWS are (L0): where
 
 5. Stop hook anti-idle: run the fingerprint sweep for real, then stop.
 
+### Bounce loop (bounded)
+
+A bounce re-enters the SAME lane with findings pasted verbatim, and the loop is bounded because past structure rounds do not converge. Rounds 1-3 same tier, each logged `[BOUNCE <r>/3]` on the todo. Round 4: fresh replacer one tier up (`--upgrade-reason "fix-loop escalation, round 4"`; L17 files it), todo trail as its only history. Still open after 4: STOP dispatching, adjudicate each finding on the todo — `[PARKED: <finding> — ruling: <why>]` when nothing downstream builds on it, `[BLOCKER]` to the operator (finding + fix history + colliding plan text) when load-bearing. Adjudicating before the cap is pre-judging; a silent discard at any point is a breach — every ruling is a board line. Minors never enter the loop: `[MINOR-DEFERRED: <one-liner>]` on the todo, pointed at the reviewer or gate beat.
+
 ### Workers
 
 - Runtime AUTO-DETECTED at dispatch: prefer kinds available on PATH (`herdr agent` lists kinds). Grok workers run at medium effort, which `dispatch-worker` appends for you when you pass none (L17). Upgrading is an explicit act: `--upgrade-reason "<why>"` plus `-- --effort high`, which the script refuses to skip and files as `[EFFORT: high, reason]` on the todo. Upgrade only when YOU judge multi-file design, ambiguous acceptance, cross-repo blast radius, or a prior wrong-approach bounce.
 - RUST-LANE ROUTING: Rust-heavy lanes default to a CLAUDE worker (skyline_diagnostics without compile slot); grok defaults to non-Rust or mechanical lanes. JUDGMENT: note routing in the brief.
+- TIER BY BRIEF (L17): the brief's detail level sets the worker tier. A TRANSCRIPTION-GRADE brief (architect-authored: complete code, exact paths, expected outputs) runs the cheapest tier that can type it (grok medium, claude haiku); a PROSE-SPEC brief needs judgment (grok high with filing, claude sonnet). Cheap tiers take 2-3x the turns on prose specs and lose the saving — never down-tier a judgment brief.
 - FAN OUT: default **one Herdr agent per lane, one lane tree per lane**. Independent lanes get own branch + PR + tree. Parallel is default; serialize only on real data/gate dependencies encoded as board blockers.
 - VERIFY-AFTER-SEND: after `agent prompt`, confirm lifecycle moves (`agent get` / short wait); stalled prompts need recovery.
 - If worker skills are missing on the spawned runtime, the brief INLINES herdr-worker non-negotiables, including the close-out doorbell carrying YOUR agent name.
+- BRIEF HYGIENE: a dispatch carries the task, its interfaces, and its constraints — never accumulated lane history. Pasted content stays resident in YOUR context for the session; oversized artifacts ride files or pads, path only in the brief.
 
 ### Brief template (todo body IS the brief)
 
@@ -123,13 +129,13 @@ Procedures, defaults, and templates, binding exactly as the LAWS are (L0): where
 5. ESCALATE: [BLOCKER]/[INCIDENT] with evidence path, incidents BEFORE recovery.
 6. CLOSE-OUT: [DONE] with summary + SHA + PR + lane-tree path + branch. THEN ring the doorbell, so the lane finishing is an event and not a state nobody observes: `herdr agent prompt <orchestrator-agent-name> "lane <slug> [DONE], verdict needed. board get <slug>"`. L11 binds on that send: read the tail first, and skip the doorbell (never the comment) if the line carries text the worker did not send. After the send, verify it landed: `herdr agent get orchestrator` for its pane, read the tail, and if YOUR doorbell text still sits unsubmitted on the composer line, send one `herdr pane run <orch-pane> ""`; any other text on the line means leave it, the board comment stands. Then STAY RESIDENT and idle; do NOT exit the agent binary (the org-waker reads a vanishing agent label on a registered lane as a crash). Orch unregisters and reaps the pane in the ACCEPT SEQUENCE same beat as verified (L6 + L4); do not wait for the operator to ask. PASTE YOUR OWN AGENT NAME in here when you write the brief; a doorbell addressed to nobody is how a finished lane sits.
 
-Commands in briefs are copy-paste-exact. Give acceptance criteria, never code. Scratch: `/tmp/<todo-slug>_<artifact>`.
+Commands in briefs are copy-paste-exact. Give acceptance criteria, never code YOU authored (L8); architect-authored TRANSCRIPTION-GRADE code embedded in the issue passes through the brief verbatim with its base SHA — a stale plan goes back to the architect, never patched inline. Scratch: `/tmp/<todo-slug>_<artifact>`.
 
 ### Verification & merge
 
 - Verify adversarially per L9; exit codes through pipes lie.
 - Skybox impact before non-trivial merges.
-- Reviewer is a Herdr agent (L2) handed brief + PR diff + evidence, read-only; findings bounce into a fresh dispatch against surviving worktree.
+- Reviewer is a Herdr agent (L2) handed brief + evidence + a REVIEW PACKAGE file (`git log`/`diff --stat`/`diff -U10` teed to `/tmp/<slug>_review.diff`), read-only; two-stage verdict (SPEC then QUALITY, severity-ranked, forced `READY:` line); never pre-judge findings for it ("do not flag X" is you sparing yourself a loop); its CANNOT-VERIFY items are yours to resolve before merge; findings bounce per the Bounce loop against the surviving worktree.
 - Shared feature branch lands as ONE PR when EVERY sibling lane verified green.
 - External CI: never short poll loops; arm one long fallback wait / operator watch.
 
@@ -147,6 +153,17 @@ Other Herdr sessions on the box run their own conductors; discover them at ANCHO
 - MUST-WRITE: shared resources (build-slot load, production daemons, release channels); cross-repo impact skybox names; machine-wide incidents (freeze, OOM, daemon outage) to ALL peers with the evidence path; overlap (read a peer's board before dispatching into a surface they plausibly own); L-fingerprint hits on a peer's board (CONDUCT-INCIDENT into their inbox, evidence pasted).
 - ANSWERING: peer items rank WITH worker wakes; reply into the SENDER's inbox; accepted cross-org work becomes a lane on YOUR board.
 - LIMITS: peers send requests, never orders. Deadlocks and shared-resource conflicts with no default go to the operator under Questions.
+
+### Rationalizations (observed)
+
+| Story | Reality |
+| --- | --- |
+| "The ring can double as the verdict" | Ring = pointer. Verify, verdict, ACCEPT SEQUENCE — one beat. |
+| "Keep the agent for the operator" | L4 has no inspection exception; the board carries the evidence. |
+| "One quick cargo check" | L7: one slot; you queue the whole org behind it. |
+| "Worker said tests pass" | Hypothesis until re-run THIS beat (L9). |
+| "One more round will converge" | Past round 3 it is structural: escalate the tier or adjudicate. |
+| "Drop the obviously-wrong finding" | Rulings are board lines; a silent discard is a breach. |
 
 ### Compaction
 

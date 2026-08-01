@@ -26,6 +26,13 @@ for s in orchestrator herdr-worker replacer org-audit herdr; do
 done
 [ "$fail" = 0 ] || { echo "herdr-parity: FAILED (missing files)"; exit 1; }
 
+# Shared-mechanism twins must stay byte-identical (lore mark 106): these three
+# are the same file in both plugins on purpose. dispatch-worker and board are
+# DELIBERATE forks (kind defaults, plugin-root lookup) and stay excluded.
+for f in scripts/build-slot scripts/ghost-probe.sh scripts/waker-ctl; do
+  cmp -s "$C/$f" "$G/$f" || err "twin scripts diverged: $f (must be byte-identical)"
+done
+
 # LAW parity: number + title, where the title is everything from "**L<n> "
 # to the first ".**" (the law body follows on the same line).
 laws() {
@@ -66,13 +73,22 @@ both orchestrator \
   "Peer orchestrators" \
   "test -n \"\${HERDR_ORG_ROOT" \
   "--wake-target" \
-  "feature-loop-skill"
+  "feature-loop-skill" \
+  "Bounce loop (bounded)" \
+  "[BOUNCE <r>/3]" \
+  "TIER BY BRIEF" \
+  "BRIEF HYGIENE" \
+  "TRANSCRIPTION-GRADE" \
+  "MINOR-DEFERRED" \
+  "READY:" \
+  "Rationalizations"
 both herdr-worker \
   "contract, not a menu" \
   "STAY RESIDENT" \
   "doorbell" \
   "pane run" \
-  "feature-loop-skill"
+  "feature-loop-skill" \
+  "fix ONLY the pasted findings"
 both replacer \
   "contract, not a menu"
 both org-audit \
@@ -85,6 +101,15 @@ both herdr \
 
 need "$C/hooks/hooks.json" "startup|resume"
 need "$G/hooks/hooks.json" "startup|resume"
+
+# Claude-only surfaces (native advisor + opusplan, architect, reviewer
+# template): grok has no advisor flag, so these bind the claude side alone —
+# promoting one into `both` means porting the mechanism first, not the prose.
+need "$C/skills/orchestrator/SKILL.md" "PLAN MODE" "--advisor opus"
+need "$C/skills/architect/SKILL.md" "TRANSCRIPTION-GRADE" "DRY-READ-CLEAN" "blueprint" "Base: <repo>@"
+need "$C/templates/reviewer-brief.md" "READY:" "CANNOT-VERIFY"
+need "$C/scripts/dispatch-worker" "ADVISOR_UP"
+need "$C/scripts/orgclaude" "opusplan"
 
 if [ "$fail" = 0 ]; then
   echo "herdr-parity: OK"

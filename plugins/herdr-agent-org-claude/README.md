@@ -136,3 +136,4 @@ Doctrine (LAWS, compile monopoly, no-fusion, verify-before-accept, MCP-first lan
 - `ghost-probe.sh` on a pure Herdr box: use `live` then `probe`. `zero-touch` needs a source that strips a suggestion ghost's styling to an empty prompt line, which Solo provided and Herdr does not.
 - Prefer `${HERDR_BIN_PATH:-herdr}`; Herdr injects that variable inside managed panes.
 - Pair with `core-claude` for the baseline guidelines and judge-hook, and with `skyline-claude` for hash-guarded edits.
+- `tests/conduct/` pressure-tests the role skills' conduct clauses on a live model (superpowers-style RED/GREEN doctrine testing): `sh tests/conduct/run-conduct.sh` is BILLED; `--self-test` (stubbed, free) runs in CI; `--without-skill` captures baseline rationalizations to close in the skills' tables.
