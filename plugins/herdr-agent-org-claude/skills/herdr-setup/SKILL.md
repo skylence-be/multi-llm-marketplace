@@ -51,14 +51,13 @@ herdr plugin log list --plugin skylence.org-waker
 ```
 and find that `log_id`'s entry; its `stdout` reports herdr/jq versions, registered lanes, pending wakes, and the last few `rings.jsonl` lines.
 
-Then the correctness gate, both suites, from the repo root (dev box with a checkout):
+Then the correctness gate, ALL suites, from the repo root (dev box with a checkout):
 ```bash
-sh herdr-plugins/org-waker/test/classify_composer.sh
-sh herdr-plugins/org-waker/test/parked_retry.sh
+for t in herdr-plugins/org-waker/test/*.sh; do sh "$t"; done
 ```
-Each prints its own `OK` line (`classify_composer.sh: OK`, `parked_retry.sh: OK`) at the end when every case passes. Anything else means stop before dispatching: the wake mechanism's classification or retry logic is broken, and lanes will hang silently instead of ringing the orchestrator.
+Each suite prints its own `<name>.sh: OK` line at the end when every case passes (six suites as of waker 0.3.0: classify_composer, parked_retry, sent_no_resend, coalesce_hold, drain_sent_preserve, pasted_placeholder). Anything else means stop before dispatching: the wake mechanism's classification, dedup, or retry logic is broken, and lanes will hang silently or ring stale bursts instead of waking the orchestrator cleanly.
 
-**Consumer box (no repo checkout):** you cannot run those two suites from a path that does not exist. Either clone `skylence-be/multi-llm-marketplace` long enough to run them from its root, or treat the doctor action above plus the S5 live probe as your gate. Do not invent a substitute shell check.
+**Consumer box (no repo checkout):** you cannot run those suites from a path that does not exist. Either clone `skylence-be/multi-llm-marketplace` long enough to run them from its root, or treat the doctor action above plus the S5 live probe as your gate. Do not invent a substitute shell check.
 
 ## S2.5 ActivityWatch context (aw-context) — optional
 
