@@ -54,6 +54,14 @@ NP="$(printf '\001')NOPROMPT"
 DRAIN_CAP=5
 STALE_CLAIM_SECS=300
 DRAIN_DEBOUNCE_SECS=2
+# Evidence-only, never control flow: recover_parked_submit sets this on every
+# give-up path when it was passed a target agent name, so a caller can log
+# WHY the recovery failed (cross-org field report 2026-08-01: an
+# unconfirmed hypothesis that a busy/working target has a narrower window to
+# accept the recovery Enter). Read immediately after the call that may set
+# it; reset to "" at the top of recover_parked_submit so no run ever reads a
+# stale value left by an earlier target in the same drain loop.
+RECOVER_FAIL_STATUS=""
 
 now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 epoch_ms() { printf '%s000' "$(date +%s)"; }
@@ -211,33 +219,44 @@ classify_composer() {
 # on the line is left alone and reported undelivered -- never empty-submit
 # text we did not send (fusion hazard).
 
-# recover_parked_submit PANE LINE -> 0 clear|queued after an empty submit
-# (or already clear|queued before Enter), 1 still parked after two attempts
-# or foreign at any re-check. Each attempt: re-read and require parked
-# immediately before pane run "" (abort without Enter on foreign; treat
-# clear|queued as already delivered), then Enter, settle (~1s), re-read.
-# Success only on clear|queued after settle — foreign is a hold, never a
-# silent delivered. Settle-before-recheck avoids the false-held race where
-# the Enter landed but the immediate re-read still saw the old parked text.
+# recover_parked_submit PANE LINE [TARGET] -> 0 clear|queued after an empty
+# submit (or already clear|queued before Enter), 1 still parked after two
+# attempts or foreign at any re-check. Each attempt: re-read and require
+# parked immediately before pane run "" (abort without Enter on foreign;
+# treat clear|queued as already delivered), then Enter, settle (~1s),
+# re-read. Success only on clear|queued after settle — foreign is a hold,
+# never a silent delivered. Settle-before-recheck avoids the false-held
+# race where the Enter landed but the immediate re-read still saw the old
+# parked text. TARGET is optional and evidence-only: when passed, every
+# return-1 path sets RECOVER_FAIL_STATUS to the target's agent_status at
+# the moment of give-up, for a caller to log; omitted, the function's
+# control flow is unchanged from before this parameter existed.
+recover_give_up() {
+  RECOVER_FAIL_STATUS=""
+  [ -n "${1:-}" ] && RECOVER_FAIL_STATUS=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.agent_status // empty' 2>/dev/null)
+  return 1
+}
 recover_parked_submit() {
+  RECOVER_FAIL_STATUS=""
   tries=0
   while [ "$tries" -lt 2 ]; do
     # Re-confirm parked immediately before each Enter (fusion / mutation).
-    tail=$($HERDR pane read "$1" --source visible --lines 25 --format text 2>/dev/null) || return 1
+    tail=$($HERDR pane read "$1" --source visible --lines 25 --format text 2>/dev/null) || { recover_give_up "${3:-}"; return 1; }
     case "$(classify_composer "$tail" "$2")" in
       clear|queued) return 0 ;;
       parked|pasted) ;;
-      *) return 1 ;;
+      *) recover_give_up "${3:-}"; return 1 ;;
     esac
     $HERDR pane run "$1" "" >/dev/null 2>&1 || true
     sleep 1
-    tail=$($HERDR pane read "$1" --source visible --lines 25 --format text 2>/dev/null) || return 1
+    tail=$($HERDR pane read "$1" --source visible --lines 25 --format text 2>/dev/null) || { recover_give_up "${3:-}"; return 1; }
     case "$(classify_composer "$tail" "$2")" in
       clear|queued) return 0 ;;
       parked|pasted) tries=$((tries + 1)) ;;
-      *) return 1 ;;
+      *) recover_give_up "${3:-}"; return 1 ;;
     esac
   done
+  recover_give_up "${3:-}"
   return 1
 }
 
@@ -245,11 +264,12 @@ recover_parked_submit() {
 # and empty-submit recovery submitted it (counts as delivery; do not re-prompt).
 # Foreign/changing/empty-unstable still return 1 so the caller holds.
 recover_own_text() {
+  RECOVER_FAIL_STATUS=""
   pane=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.pane_id // empty' 2>/dev/null)
   [ -n "$pane" ] || return 1
   tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null) || return 1
   [ "$(classify_composer "$tail" "$2")" = "parked" ] || return 1
-  recover_parked_submit "$pane" "$2"
+  recover_parked_submit "$pane" "$2" "$1"
 }
 
 verify_submitted() {
@@ -278,7 +298,7 @@ verify_submitted() {
       # parked: our exact text still on the line. pasted: the placeholder a
       # long paste renders as — we verified the composer clear immediately
       # before sending, so in THIS post-send window the placeholder is ours.
-      recover_parked_submit "$pane" "$2"
+      recover_parked_submit "$pane" "$2" "$1"
       return $?
       ;;
   esac
@@ -358,7 +378,7 @@ ring_or_hold() {
       log_ring "$1" "$2" "delivered" "$4"
       return 0
     fi
-    hold_wake "$1" "$2" "$3" "$4" "composer" "unsent"
+    hold_wake "$1" "$2" "$3" "$4" "composer:status=${RECOVER_FAIL_STATUS:-unknown}" "unsent"
     return 0
   fi
   if ! send_prompt "$3" "$4"; then
@@ -370,7 +390,7 @@ ring_or_hold() {
   else
     # The paste already happened; hold as SENT so drain only recovers or
     # infers, and never pastes a second copy.
-    hold_wake "$1" "$2" "$3" "$4" "unverified" "sent"
+    hold_wake "$1" "$2" "$3" "$4" "unverified:status=${RECOVER_FAIL_STATUS:-unknown}" "sent"
   fi
 }
 
@@ -444,7 +464,7 @@ do_drain() {
         if [ "$cls" = "queued" ]; then
           log_ring "$lane" "$gen" "drain-delivered" "$line"
           rm -f "$c"
-        elif [ "$cls" = "pasted" ] && [ -n "$pane" ] && recover_parked_submit "$pane" "$line"; then
+        elif [ "$cls" = "pasted" ] && [ -n "$pane" ] && recover_parked_submit "$pane" "$line" "$target"; then
           # A placeholder on a SENT file is our own paste rendered as
           # [Pasted text #N] (the composer was verified clear before we
           # sent). Narrow fusion window: an operator paste landing after the
@@ -478,7 +498,7 @@ do_drain() {
         # later drains only infer, Enter-recover, or accept the queued hint.
         printf '%s\n%s\n%s\n' "$target" "$line" "sent" > "${c%.claim}" 2>/dev/null || true
         rm -f "$c"
-        log_ring "$lane" "$gen" "held:unverified" "$line"
+        log_ring "$lane" "$gen" "held:unverified:status=${RECOVER_FAIL_STATUS:-unknown}" "$line"
         break
       fi
     elif recover_own_text "$target" "$line"; then

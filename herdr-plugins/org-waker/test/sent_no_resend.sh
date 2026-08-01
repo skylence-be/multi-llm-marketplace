@@ -133,10 +133,10 @@ last_outcome() {
 seed_reads agent_read "$CLEAR_TAIL" "$CLEAR_TAIL"     # composer_clear pre-send
 seed_reads pane_read "$FOREIGN_TAIL"                   # verify: foreign, 1 read
 ring_or_hold "stub-lane" "1" "orch" "$SENT"
-if [ "$(last_outcome)" = "held:unverified" ]; then
-  echo "ok A: outcome held:unverified"
+if [ "$(last_outcome)" = "held:unverified:status=unknown" ]; then
+  echo "ok A: outcome held:unverified:status=unknown"
 else
-  echo "FAIL A: outcome=$(last_outcome) want held:unverified"
+  echo "FAIL A: outcome=$(last_outcome) want held:unverified:status=unknown"
   failed=1
 fi
 if [ "$(prompts_count)" = "1" ]; then

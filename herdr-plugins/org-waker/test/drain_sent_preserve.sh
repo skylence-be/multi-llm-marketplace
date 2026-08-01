@@ -122,10 +122,10 @@ else
   echo "FAIL A: file missing or marker wrong ($msg) — drain restored UNSENT"
   failed=1
 fi
-if [ "$(last_outcome)" = "held:unverified" ]; then
-  echo "ok A: outcome held:unverified"
+if [ "$(last_outcome)" = "held:unverified:status=unknown" ]; then
+  echo "ok A: outcome held:unverified:status=unknown"
 else
-  echo "FAIL A: outcome=$(last_outcome) want held:unverified"
+  echo "FAIL A: outcome=$(last_outcome) want held:unverified:status=unknown"
   failed=1
 fi
 

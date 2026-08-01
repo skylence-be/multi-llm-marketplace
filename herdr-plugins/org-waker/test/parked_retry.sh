@@ -168,7 +168,7 @@ write_seq agent_read "$CLEAR_TAIL" "$CLEAR_TAIL"
 # verify parked; try0 pre+post parked; try1 pre+post parked (5 reads, 2 runs)
 write_seq pane_read "$PARKED_TAIL" "$PARKED_TAIL" "$PARKED_TAIL" "$PARKED_TAIL" "$PARKED_TAIL"
 ring_or_hold "stub-lane" "1" "orch" "$SENT"
-record "parked-both-submits" "held:unverified"
+record "parked-both-submits" "held:unverified:status=idle"
 runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
 if [ "$runs" -ne 2 ]; then
   echo "FAIL parked-both-submits: expected 2 pane runs, got $runs"
@@ -202,7 +202,7 @@ write_seq agent_read "$CLEAR_TAIL" "$CLEAR_TAIL"
 # verify parked; pre-Enter parked; Enter; post-settle foreign → fail hold
 write_seq pane_read "$PARKED_TAIL" "$PARKED_TAIL" "$FOREIGN_TAIL"
 ring_or_hold "stub-lane" "1" "orch" "$SENT"
-record "foreign-after-settle" "held:unverified"
+record "foreign-after-settle" "held:unverified:status=idle"
 runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
 if [ "$runs" -ne 1 ]; then
   echo "FAIL foreign-after-settle: expected exactly 1 pane run, got $runs"
@@ -216,7 +216,7 @@ write_seq agent_read "$PARKED_TAIL" "$PARKED_TAIL"
 # recover_own_text parked; recover pre-Enter foreign → abort without Enter
 write_seq pane_read "$PARKED_TAIL" "$FOREIGN_TAIL"
 ring_or_hold "stub-lane" "1" "orch" "$SENT"
-record "content-mutated-before-Enter" "held:composer"
+record "content-mutated-before-Enter" "held:composer:status=idle"
 runs=$(wc -l < "$ORG_WAKER_STUB_STATE/pane_runs" | tr -d ' ')
 if [ "$runs" -ne 0 ]; then
   echo "FAIL content-mutated-before-Enter: expected 0 pane runs, got $runs"
