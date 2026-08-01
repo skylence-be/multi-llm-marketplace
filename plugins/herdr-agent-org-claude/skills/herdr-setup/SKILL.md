@@ -130,8 +130,8 @@ Exports made INSIDE a Claude session die with that shell call: each tool call st
 
 ```bash
 # inside Herdr, in the pane shell:
-orgclaude <org-name> --model opusplan --advisor opus   # doctrinal conductor launch: Opus in plan mode, Sonnet conducting, Opus advisor at checkpoints
-orgclaude <org-name>                                   # bare: creates the board when missing; model falls to the box default
+orgclaude <org-name>                 # doctrinal launch built in: injects --model opusplan --advisor opus (explicit flags win; empty ORGCLAUDE_MODEL/ORGCLAUDE_ADVISOR suppresses)
+orgclaude <org-name> --model sonnet  # further args pass through to claude and override the injected defaults
 ```
 
 Install it once by putting the plugin's `scripts/` dir on `PATH` from your shell rc. Resolve it by newest mtime so a plugin version bump needs no edit:

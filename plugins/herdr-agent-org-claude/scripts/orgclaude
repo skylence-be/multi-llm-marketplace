@@ -9,9 +9,10 @@
 # because exec replaces this process and the child inherits it. Nothing needs to
 # leak back into the caller, so no function, no `source`, no dotfile logic.
 #
-#   orgclaude binary-skyline             conduct that org in this pane
-#   orgclaude xve-be --model opus        further args pass through to claude
+#   orgclaude binary-skyline             conduct that org (injects the doctrinal defaults: --model opusplan --advisor opus)
+#   orgclaude xve-be --model opus        explicit --model/--advisor win over the injected defaults
 #   orgclaude binary-skybox --resume     resume the last session instead of a new one
+#   ORGCLAUDE_ADVISOR= orgclaude x       empty ORGCLAUDE_ADVISOR / ORGCLAUDE_MODEL suppresses that injection
 #
 # A missing board is CREATED, not warned about. The older shell-function form
 # printed "no board yet (run: board init X)" to stderr and started claude anyway;
@@ -79,5 +80,22 @@ if ! command -v claude >/dev/null 2>&1; then
   echo "orgclaude: claude is not on PATH" >&2
   exit 127
 fi
+
+# Doctrinal conductor defaults (operator order 2026-08-01): a bare `orgclaude
+# <org>` launches `--model opusplan --advisor opus`, so the doctrine is the
+# zero-typing path (marketplace#32's lesson applied to the conductor itself).
+# An explicit --model/--advisor in the args wins; ORGCLAUDE_MODEL /
+# ORGCLAUDE_ADVISOR override a default, and setting one EMPTY suppresses that
+# injection entirely.
+want_model=${ORGCLAUDE_MODEL-opusplan}
+want_advisor=${ORGCLAUDE_ADVISOR-opus}
+for a in "$@"; do
+  case $a in
+    --model|--model=*) want_model="" ;;
+    --advisor|--advisor=*) want_advisor="" ;;
+  esac
+done
+if [ -n "$want_model" ]; then set -- --model "$want_model" "$@"; fi
+if [ -n "$want_advisor" ]; then set -- --advisor "$want_advisor" "$@"; fi
 
 exec claude "$@"

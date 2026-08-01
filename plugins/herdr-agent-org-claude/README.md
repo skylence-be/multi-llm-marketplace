@@ -48,9 +48,9 @@ and the rest is one command:
 
 ```bash
 # inside Herdr, in a pane:
-orgclaude my-feature                 # creates the board if it does not exist yet
-orgclaude my-feature --model opus    # further args pass through to claude
-orgclaude my-feature --model opusplan --advisor opus   # doctrinal conductor launch (Setup S3)
+orgclaude my-feature                 # creates the board if missing; injects the doctrinal defaults: --model opusplan --advisor opus
+orgclaude my-feature --model sonnet  # explicit --model/--advisor win over the injected defaults
+ORGCLAUDE_ADVISOR= orgclaude my-feature   # empty ORGCLAUDE_ADVISOR / ORGCLAUDE_MODEL suppresses that injection
 orgclaude my-feature --resume        # resume the last session instead of a new one
 ```
 
@@ -63,7 +63,7 @@ orgclaude <org-name> [claude args ...]
 | Parameter | Required | Rules |
 |---|---|---|
 | `<org-name>` | yes, first argument | Letters, digits, `.` `_` `-` only. Rejected before anything touches disk: empty, leading `-`, any `/`, `.`, `..`, whitespace or other characters. Resolves to `~/.herdr-org/<name>`; a missing board is created, an invalid name creates nothing. |
-| everything after | no | Passed to `claude` verbatim. orgclaude owns no flags of its own, so any claude flag works: `--resume`, `--model opus`, `--permission-mode bypassPermissions`, … |
+| everything after | no | Passed to `claude` unchanged, plus two injected defaults: `--model opusplan --advisor opus` are prepended UNLESS the args already carry that flag (explicit wins), with `ORGCLAUDE_MODEL` / `ORGCLAUDE_ADVISOR` overriding a default and an EMPTY value suppressing the injection. Any claude flag works: `--resume`, `--permission-mode bypassPermissions`, … |
 
 Order matters: the first argument is always consumed as the org name, so
 `orgclaude --resume my-feature` is rejected with exit 2 rather than creating a
