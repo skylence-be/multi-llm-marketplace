@@ -17,7 +17,7 @@ Repo paths resolve through the skybox registries (`list_repos` / repo registry) 
 
 ## Fleet board
 
-`orgclaude fleet-<plan-slug>` owns your own board root; one todo per child org, body carrying the mission slice verbatim plus the repo path and the child's agent/workspace ids as they materialize. Status mirrors the child lifecycle: `pending` (planned, not spawned) -> `in_progress` (spawned and missioned) -> `verified` (done-report verified) -> `complete` (retired). L15 binds: fleet state derives from YOUR board plus `herdr agent list` plus fleet-ctl output, never memory; child state derives from THEIR board (`HERDR_ORG_ROOT=<child-root> board list`), which you read and never write.
+`conduct fleet-<plan-slug>` owns your own board root; one todo per child org, body carrying the mission slice verbatim plus the repo path and the child's agent/workspace ids as they materialize. Status mirrors the child lifecycle: `pending` (planned, not spawned) -> `in_progress` (spawned and missioned) -> `verified` (done-report verified) -> `complete` (retired). L15 binds: fleet state derives from YOUR board plus `herdr agent list` plus fleet-ctl output, never memory; child state derives from THEIR board (`HERDR_ORG_ROOT=<child-root> board list`), which you read and never write.
 
 ## Spawn and mission
 
