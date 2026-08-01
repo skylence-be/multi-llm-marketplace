@@ -120,7 +120,7 @@ Also: `herdr integration install claude` installs a session-identity hook for pa
    5. `herdr agent list`: confirm the name is gone. Still listed means not done.
    6. Only then: the optional operator one-liner (merge decision, next mission). Lane tree and branch stay until L5 merge close-out.
 
-   A waker ring arrives as a prompt tagged `[RING g<gen>]`: `[RING g<gen>] lane <lane> -> <status>. board get <todo>` (crash-class variants say `PANE exited/closed` or `agent process GONE`). It is a RING like any other: board first, then frame. If the board shows the lane re-dispatched at a higher generation since, the ring is stale; drop it after the board read.
+   A waker ring arrives as a prompt tagged `[RING g<gen>]`: `[RING g<gen>] lane <lane> -> <status>. board get <todo>` (crash-class variants say `PANE exited/closed` or `agent process GONE`). It is a RING like any other: board first, then frame. If the board shows the lane re-dispatched at a higher generation since, the ring is stale; drop it after the board read. A SECOND, distinct staleness case (cross-org field report, 2026-08-01): a ring can arrive AFTER you already ran the full ACCEPT SEQUENCE for that exact lane at the SAME generation — the ring queues the instant the lane settles, and your own accept-and-unregister beat can complete before that queued ring is delivered. Benign, not a bug: any ring for a lane the board already shows verified or complete is stale regardless of generation; confirm with one board read and drop it, never re-run the accept sequence.
 
 5. The Stop hook runs the anti-idle fingerprint sweep on your first attempt to idle. Run it for real against live reads, then stop.
 
