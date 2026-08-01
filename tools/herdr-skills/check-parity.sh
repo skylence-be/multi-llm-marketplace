@@ -89,6 +89,7 @@ both herdr-worker \
   "STAY RESIDENT" \
   "[DOORBELL]" \
   "pane run" \
+  "doorbell unconfirmed after one recovery attempt" \
   "feature-loop-skill" \
   "fix ONLY the pasted findings"
 both replacer \
