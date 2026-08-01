@@ -94,7 +94,7 @@ export HERDR_BIN_PATH="$FAKE"
 # Source real waker (list is side-effect-free once CFG is set).
 . "$WAKER" list >/dev/null 2>&1
 
-SENT="[WAKE g1] lane stub-lane -> idle. board get stub-lane"
+SENT="[RING g1] lane stub-lane -> idle. board get stub-lane"
 FOREIGN="operator was typing something else"
 PC="$PROMPT_CHAR"
 PARKED_TAIL=$(printf 'scroll\n%s %s\n' "$PC" "$SENT")

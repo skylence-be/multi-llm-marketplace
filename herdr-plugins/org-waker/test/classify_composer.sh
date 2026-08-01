@@ -31,7 +31,7 @@ check() {
   fi
 }
 
-SENT="[WAKE g1] lane foo -> idle. board get foo"
+SENT="[RING g1] lane foo -> idle. board get foo"
 
 # exact-match: our own wake text still sits on the composer line, unsubmitted.
 check exact-match "$(printf 'some scrollback\n%s %s' "$PROMPT_CHAR" "$SENT")" "$SENT" parked

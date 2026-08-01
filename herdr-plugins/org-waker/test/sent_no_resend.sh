@@ -95,8 +95,8 @@ export HERDR_BIN_PATH="$FAKE"
 
 . "$WAKER" list >/dev/null 2>&1
 
-SENT="[WAKE g1] lane stub-lane -> done. board get stub-lane"
-FOREIGN="[WAKE g1] lane some-other-lane -> done. board get some-other-lane"
+SENT="[RING g1] lane stub-lane -> done. board get stub-lane"
+FOREIGN="[RING g1] lane some-other-lane -> done. board get some-other-lane"
 PC="$PROMPT_CHAR"
 CLEAR_TAIL=$(printf 'scroll\n%s \n' "$PC")
 FOREIGN_TAIL=$(printf 'scroll\n%s %s\n' "$PC" "$FOREIGN")

@@ -70,7 +70,7 @@ export HERDR_BIN_PATH="$FAKE"
 
 . "$WAKER" list >/dev/null 2>&1
 
-WAKE="[WAKE g1] lane stub-lane -> done. board get stub-lane"
+WAKE="[RING g1] lane stub-lane -> done. board get stub-lane"
 FOREIGN="some other text entirely"
 PC="$PROMPT_CHAR"
 CLEAR_TAIL=$(printf 'scroll\n%s \n' "$PC")

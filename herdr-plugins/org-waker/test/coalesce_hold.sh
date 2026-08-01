@@ -42,9 +42,9 @@ failed=0
 count_msgs() { ls "$PEND"/*.msg 2>/dev/null | wc -l | tr -d ' '; }
 
 # --- A: two unsent holds for one lane coalesce to the newest ---------------
-hold_wake "lane-a" "1" "orch" "[WAKE g1] lane lane-a -> done. board get lane-a" "composer" "unsent"
+hold_wake "lane-a" "1" "orch" "[RING g1] lane lane-a -> done. board get lane-a" "composer" "unsent"
 sleep 1   # distinct epoch-ms filename prefix
-hold_wake "lane-a" "1" "orch" "[WAKE g1] lane lane-a -> idle. board get lane-a" "composer" "unsent"
+hold_wake "lane-a" "1" "orch" "[RING g1] lane lane-a -> idle. board get lane-a" "composer" "unsent"
 if [ "$(count_msgs)" = "1" ]; then
   echo "ok A: one pending file after two holds"
 else
@@ -52,7 +52,7 @@ else
   failed=1
 fi
 survivor=$(ls "$PEND"/*.msg | head -1)
-if [ "$(sed -n '2p' "$survivor")" = "[WAKE g1] lane lane-a -> idle. board get lane-a" ]; then
+if [ "$(sed -n '2p' "$survivor")" = "[RING g1] lane lane-a -> idle. board get lane-a" ]; then
   echo "ok A: survivor is the NEWER wake"
 else
   echo "FAIL A: survivor text: $(sed -n '2p' "$survivor")"
@@ -66,8 +66,8 @@ else
 fi
 
 # --- B: a SENT file for the same lane survives -----------------------------
-printf '%s\n%s\n%s\n' orch "[WAKE g1] lane lane-a sent copy" sent > "$PEND/1000-lane-a-g1.msg"
-hold_wake "lane-a" "1" "orch" "[WAKE g1] lane lane-a -> done again" "composer" "unsent"
+printf '%s\n%s\n%s\n' orch "[RING g1] lane lane-a sent copy" sent > "$PEND/1000-lane-a-g1.msg"
+hold_wake "lane-a" "1" "orch" "[RING g1] lane lane-a -> done again" "composer" "unsent"
 if [ -f "$PEND/1000-lane-a-g1.msg" ]; then
   echo "ok B: sent file survived coalescing"
 else
@@ -76,9 +76,9 @@ else
 fi
 
 # --- C: other lanes and rev-<lane> never touched ---------------------------
-printf '%s\n%s\n' orch "[WAKE g1] lane rev-lane-a -> done" > "$PEND/1001-rev-lane-a-g1.msg"
-printf '%s\n%s\n' orch "[WAKE g1] lane other -> done" > "$PEND/1002-other-g1.msg"
-hold_wake "lane-a" "1" "orch" "[WAKE g1] lane lane-a -> done final" "composer" "unsent"
+printf '%s\n%s\n' orch "[RING g1] lane rev-lane-a -> done" > "$PEND/1001-rev-lane-a-g1.msg"
+printf '%s\n%s\n' orch "[RING g1] lane other -> done" > "$PEND/1002-other-g1.msg"
+hold_wake "lane-a" "1" "orch" "[RING g1] lane lane-a -> done final" "composer" "unsent"
 ok=1
 [ -f "$PEND/1001-rev-lane-a-g1.msg" ] || ok=0
 [ -f "$PEND/1002-other-g1.msg" ] || ok=0
