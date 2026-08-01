@@ -9,7 +9,7 @@ Your dispatch is usually a pointer: "you own todo `<slug>`" — the todo body is
 
 ```bash
 BOARD="${GROK_PLUGIN_ROOT:-.}/scripts/board"
-# or: board  (if on PATH / HERDR_ORG_ROOT set)
+# or: board  (if on PATH / HERDR_ORG_ROOT set) -- a bare script, NEVER a `herdr` subcommand: `herdr board ...` does not exist and its error is not evidence board is unreachable. `command -v board` before ever concluding it is unavailable (verified live 2026-08-01: a replacer guessed the herdr-subcommand form, got a real error, and skipped every board write for an otherwise fully-completed task).
 $BOARD get <slug>
 ```
 
