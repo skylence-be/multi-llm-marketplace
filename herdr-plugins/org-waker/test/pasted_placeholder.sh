@@ -146,10 +146,10 @@ fi
 seed_reads agent_read "$PASTED_TAIL" "$PASTED_TAIL"   # composer_clear: busy
 seed_reads pane_read "$PASTED_TAIL"                    # recover_own_text strict gate
 ring_or_hold "stub-lane" "1" "orch" "$WAKE"
-if [ "$(last_outcome)" = "held:composer" ]; then
+if [ "$(last_outcome)" = "held:composer:status=unknown" ]; then
   echo "ok C: pre-send placeholder still HELD (operator draft protected)"
 else
-  echo "FAIL C: outcome=$(last_outcome) want held:composer"
+  echo "FAIL C: outcome=$(last_outcome) want held:composer:status=unknown"
   failed=1
 fi
 [ "$(prompts_count)" = "1" ] && echo "ok C: no new prompt" || { echo "FAIL C: prompts=$(prompts_count) want 1"; failed=1; }
