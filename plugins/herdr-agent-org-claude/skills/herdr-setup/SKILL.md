@@ -130,8 +130,8 @@ Exports made INSIDE a Claude session die with that shell call: each tool call st
 
 ```bash
 # inside Herdr, in the pane shell:
-orgclaude <org-name>                 # creates the board when missing
-orgclaude <org-name> --model opus    # further args pass through to claude
+orgclaude <org-name> --model opusplan --advisor opus   # doctrinal conductor launch: Opus in plan mode, Sonnet conducting, Opus advisor at checkpoints
+orgclaude <org-name>                                   # bare: creates the board when missing; model falls to the box default
 ```
 
 Install it once by putting the plugin's `scripts/` dir on `PATH` from your shell rc. Resolve it by newest mtime so a plugin version bump needs no edit:
@@ -215,3 +215,5 @@ dispatch-worker --name probe --wake-target orchestrator \
    ```
    then close or reap the probe's pane and agent as usual.
 4. If a pending wake existed for the probe at unregister time, expect a new `dropped:unregistered` line in `rings.jsonl`. Confirm it is there, not silently swallowed.
+
+5. Conductor model probe (once per box, after S3): launch `orgclaude probe-org --model opusplan --advisor opus` in a scratch pane, have it enter plan mode, produce a two-line plan for a trivial task, and exit plan mode. Confirm three things: (a) it proceeds past plan exit WITHOUT a human approval — bypassPermissions un-enforces plan-mode blocks, but ExitPlanMode-unattended is undocumented, so if the pane parks `blocked` here the operator gates every planning beat and must decide whether that is acceptable; (b) the statusline shows Opus during the plan phase and Sonnet after exit; (c) any advisor consultation appears in the transcript (advisor-during-plan-mode is likewise undocumented). The docs are silent on (a) and (c); this probe is the box's answer. Then clean up: remove `~/.herdr-org/probe-org` and close the scratch pane.

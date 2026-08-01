@@ -21,6 +21,7 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
   - `org-audit` is an on-demand cold review, never scheduled
   - `herdr` is the low-level control surface (pane, agent, workspace CLI)
   - `herdr-setup` is the one-shot playbook to bootstrap a fresh box from "herdr installed" to "org-ready" (claude only)
+  - `architect` is the operator-side planning contract: transcription-grade, blueprint-bound, SHA-pinned GitHub issues (haiku dry-read gated) that the orchestrator turns into lane briefs — never a dispatched org agent
 - **Scripts**:
   - `board` is the filesystem board (todos, comments, pads, blockers); `set-status` best-effort publishes the lane's status into the herdr sidebar pane (`pane report-metadata`), `ready` lists unblocked pending todos, `create --tags`/`list --tags` tag and filter todos, `query <text>` case-insensitively searches todo files, `list`/`ready`/`get` support `--json`, and every mutating command snapshots a best-effort silent git commit when git is available
   - `dispatch-worker` splits a pane (auto layout: first worker below the orchestrator, later workers rightward in rows of at most 2, a fresh row per 2; explicit `--direction` overrides), starts a named agent, sends the pointer prompt, and reports the post-send state; optional `--beat-note TEXT` is forwarded to waker registration so settle/block/death rings carry the orchestrator's beat script
@@ -32,6 +33,7 @@ Herdr is the agent multiplexer: real terminal panes, semantic agent state (`work
   - `org-stop-gate.sh` (Stop) blocks a marked session's FIRST stop with the anti-idle sweep
   - `org-conduct-refresh.sh` (SessionStart, matchers `startup|resume|compact`) primes the role-skill contract in fresh sessions and re-injects the re-read order after compaction
 - **templates/claude-md.md**: worker guidance to paste into `~/.claude/CLAUDE.md` on a machine that runs lane workers.
+- **templates/reviewer-brief.md**: the L10 reviewer-lane dispatch contract — two-stage verdict (spec compliance and artifact quality), severity-ranked findings, forced `READY:` verdict, review-package-as-file.
 
 ## Install
 
@@ -48,6 +50,7 @@ and the rest is one command:
 # inside Herdr, in a pane:
 orgclaude my-feature                 # creates the board if it does not exist yet
 orgclaude my-feature --model opus    # further args pass through to claude
+orgclaude my-feature --model opusplan --advisor opus   # doctrinal conductor launch (Setup S3)
 orgclaude my-feature --resume        # resume the last session instead of a new one
 ```
 
