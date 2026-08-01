@@ -564,7 +564,7 @@ cmd_on_event() {
         if [ ! -f "$dm" ]; then
           touch "$dm" 2>/dev/null || true
           ring_or_hold "$lane" "$gen" "$target" \
-            "$(with_note "[WAKE g${gen}] lane ${lane}: agent process GONE (last status ${status:-unknown}). Crash-class: ${ptr}, consider a replacer." "$note")"
+            "$(with_note "[RING g${gen}] lane ${lane}: agent process GONE (last status ${status:-unknown}). Crash-class: ${ptr}, consider a replacer." "$note")"
         fi
       else
         ring=0
@@ -573,7 +573,7 @@ cmd_on_event() {
           idle|done) [ "$prev" = "working" ] && ring=1 ;;
         esac
         [ "$ring" -eq 1 ] && ring_or_hold "$lane" "$gen" "$target" \
-          "$(with_note "[WAKE g${gen}] lane ${lane} -> ${status}. ${ptr}" "$note")"
+          "$(with_note "[RING g${gen}] lane ${lane} -> ${status}. ${ptr}" "$note")"
       fi
       ;;
     pane_exited|pane_closed)
@@ -586,7 +586,7 @@ cmd_on_event() {
       reg_remove_lane "$lane"
       rm -f "$sp" "$dm" 2>/dev/null || true
       ring_or_hold "$lane" "$gen" "$target" \
-        "$(with_note "[WAKE g${gen}] lane ${lane} PANE ${ev#pane_}${code:+ (exit ${code})} while registered. Crash-class: ${ptr}, consider a replacer." "$note")"
+        "$(with_note "[RING g${gen}] lane ${lane} PANE ${ev#pane_}${code:+ (exit ${code})} while registered. Crash-class: ${ptr}, consider a replacer." "$note")"
       ;;
     *)
       log_ring "$lane" "$gen" "ignored-event:${ev:-none}" ""
@@ -700,7 +700,7 @@ cmd_startup() {
       reg_remove_lane "$lane"
       rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null || true
       ring_or_hold "$lane" "$gen" "$target" \
-        "$(with_note "[WAKE g${gen}] lane ${lane} PANE MISSING at startup (its death event was lost while the server was down). Crash-class: board get ${todo:-$lane}, consider a replacer." "$note")"
+        "$(with_note "[RING g${gen}] lane ${lane} PANE MISSING at startup (its death event was lost while the server was down). Crash-class: board get ${todo:-$lane}, consider a replacer." "$note")"
     done
   fi
   set -- "$CFG"/pending/*.msg

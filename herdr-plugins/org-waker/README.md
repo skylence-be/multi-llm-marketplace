@@ -32,10 +32,10 @@ herdr plugin action invoke doctor --plugin skylence.org-waker
 ## Wake line format
 
 ```
-[WAKE g<gen>] lane <lane> -> <status>. board get <todo>
-[WAKE g<gen>] lane <lane> -> <status>. board get <todo>. NOTE: <beat-note>
-[WAKE g<gen>] lane <lane> PANE exited (exit 1) while registered. Crash-class: board get <todo>, consider a replacer.
-[WAKE g<gen>] lane <lane>: agent process GONE (last status working). Crash-class: board get <todo>, consider a replacer.
+[RING g<gen>] lane <lane> -> <status>. board get <todo>
+[RING g<gen>] lane <lane> -> <status>. board get <todo>. NOTE: <beat-note>
+[RING g<gen>] lane <lane> PANE exited (exit 1) while registered. Crash-class: board get <todo>, consider a replacer.
+[RING g<gen>] lane <lane>: agent process GONE (last status working). Crash-class: board get <todo>, consider a replacer.
 ```
 
 The payload is a pointer, not content: the board comment trail remains the contract; the ring only makes it timely. `g<gen>` is the registration generation; a re-dispatched lane bumps it, and pending wakes from an older generation are dropped at drain instead of costing a turn. When the lane was registered with `--beat-note <text>`, every ring (settle, block, and crash-class) appends `. NOTE: <text>` so the orchestrator receives the beat script on the same line as the pointer — held wakes keep working unchanged because the note is baked into the ring line at composition time and pending files already store the full line.

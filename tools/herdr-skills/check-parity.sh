@@ -81,11 +81,13 @@ both orchestrator \
   "TRANSCRIPTION-GRADE" \
   "MINOR-DEFERRED" \
   "READY:" \
-  "Rationalizations"
+  "Rationalizations" \
+  "[RING g<gen>]" \
+  "[DOORBELL]"
 both herdr-worker \
   "contract, not a menu" \
   "STAY RESIDENT" \
-  "doorbell" \
+  "[DOORBELL]" \
   "pane run" \
   "feature-loop-skill" \
   "fix ONLY the pasted findings"
