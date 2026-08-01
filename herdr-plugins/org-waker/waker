@@ -62,6 +62,11 @@ DRAIN_DEBOUNCE_SECS=2
 # it; reset to "" at the top of recover_parked_submit so no run ever reads a
 # stale value left by an earlier target in the same drain loop.
 RECOVER_FAIL_STATUS=""
+# Target agent_status captured by send_prompt immediately BEFORE the paste;
+# verify_submitted's pure-clear branch needs it to know which lifecycle
+# corroboration applies (working target -> queued hint is the only proof;
+# settled target -> a started turn is the proof).
+PRE_SEND_STATUS=""
 
 now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 epoch_ms() { printf '%s000' "$(date +%s)"; }
@@ -281,12 +286,39 @@ verify_submitted() {
   tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null) || return 1
   case "$(classify_composer "$tail" "$2")" in
     clear)
-      # First clear may be pre-render emptiness. Trust only if a second
-      # read after another settle window is still clear.
+      # First clear may be pre-render emptiness. Re-read after another settle
+      # window; if still clear, corroborate against the target's LIFECYCLE
+      # before calling it delivered. Measured live 2026-08-01 (loadavg ~20,
+      # lane donchian-port): the paste rendered SLOWER than two 1s-spaced
+      # reads, both saw an empty composer, the outcome logged "delivered",
+      # the pending file was deleted, and the ring sat parked on the
+      # composer with no machinery left watching it -- a false positive is
+      # strictly worse than a false negative here, because a hold keeps the
+      # SENT-file reconciliation alive (drain infers or recovers later,
+      # never re-pastes) while "delivered" ends the story. Corroboration:
+      # a prompt really delivered to a BUSY target renders the queued hint
+      # (handled below), so pure-clear with pre-send status "working" proves
+      # nothing -> hold. A prompt really delivered to an idle/done target
+      # STARTS a turn, so post-verify status "working" is the proof; still
+      # idle with a clear composer means nothing observably happened ->
+      # hold. A fast target that finished its whole turn inside the window
+      # lands in the hold branch too, and the drain's clear+stable
+      # inference resolves it one beat later without a duplicate.
       sleep 1
       tail=$($HERDR pane read "$pane" --source visible --lines 25 --format text 2>/dev/null) || return 1
       [ "$(classify_composer "$tail" "$2")" = "clear" ] || return 1
-      return 0
+      case "${PRE_SEND_STATUS:-}" in
+        working)
+          RECOVER_FAIL_STATUS="working"
+          return 1
+          ;;
+      esac
+      post=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.agent_status // empty' 2>/dev/null)
+      if [ "$post" = "working" ]; then
+        return 0
+      fi
+      RECOVER_FAIL_STATUS="${post:-unknown}"
+      return 1
       ;;
     queued)
       # Rendered queued hint is already proof the prompt entered the mid-turn
@@ -346,6 +378,7 @@ send_prompt() {
   # verify_submitted's job, and a wait timeout on an accepted paste would
   # read as failure and re-arm the exact duplicate machine this split kills.
   tstatus=$($HERDR agent get "$1" 2>/dev/null | jq -r '.result.agent.agent_status // "unknown"' 2>/dev/null || echo unknown)
+  PRE_SEND_STATUS="$tstatus"
   case "$tstatus" in
     working|idle|done)
       $HERDR agent prompt "$1" "$2" >/dev/null 2>&1 || return 1
