@@ -391,14 +391,61 @@ send_prompt() {
   return 0
 }
 
+# --- runtime acknowledgment (receiver-side hook, 0.7.0) --------------------
+# The herdr-agent-org-claude plugin installs a UserPromptSubmit hook
+# (hooks/org-ack-submit.sh) in every Claude session on the box: the moment a
+# [RING g*] / [DOORBELL] prompt actually BECOMES A TURN in the receiving
+# session, the hook writes acks/<sha256(prompt)>.ack under this plugin's
+# config dir. That is ground truth from the runtime itself; every composer
+# heuristic below is the fallback for receivers without the hook (grok
+# targets, stale plugin caches, non-org sessions).
+ack_sha() {
+  if command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | cut -c1-32
+  else
+    printf '%s' "$1" | sha256sum | cut -c1-32
+  fi
+}
+
+# ack_wait LINE SECS -> 0 (ack consumed) when the receiving session's hook
+# confirmed the prompt became a turn; 1 on timeout. Consuming removes the
+# file so a later identical wake cannot match a stale ack.
+ack_wait() {
+  sha=$(ack_sha "$1")
+  [ -n "$sha" ] || return 1
+  f="$CFG/acks/$sha.ack"
+  n=0
+  lim=$(( ${2:-5} * 2 ))
+  while [ "$n" -lt "$lim" ]; do
+    if [ -e "$f" ]; then
+      rm -f "$f"
+      return 0
+    fi
+    sleep 0.5
+    n=$((n + 1))
+  done
+  [ -e "$f" ] && { rm -f "$f"; return 0; }
+  return 1
+}
+
+# confirm_delivery TARGET LINE -> 0 delivered (acked or verified), 1 not.
+# Ack first: it needs zero pane reads and cannot be raced by paste-render
+# latency. Only when no ack lands does the composer machinery run.
+confirm_delivery() {
+  if ack_wait "$2" 5; then
+    return 0
+  fi
+  verify_submitted "$1" "$2"
+}
+
 deliver() {
   # deliver TARGET LINE -> 0 delivered, 1 not (nothing sent OR unverified;
-  # callers that need the distinction use send_prompt + verify_submitted).
+  # callers that need the distinction use send_prompt + confirm_delivery).
   send_prompt "$1" "$2" || return 1
   # The prompt call alone does not prove the Enter actually submitted
-  # (skylore mark 90): verify the composer cleared before calling this
+  # (skylore mark 90): ack or composer verification before calling this
   # delivered.
-  verify_submitted "$1" "$2"
+  confirm_delivery "$1" "$2"
 }
 
 ring_or_hold() {
@@ -418,6 +465,10 @@ ring_or_hold() {
     hold_wake "$1" "$2" "$3" "$4" "unsendable" "unsent"
     return 0
   fi
+  if ack_wait "$4" 5; then
+    log_ring "$1" "$2" "delivered:acked" "$4"
+    return 0
+  fi
   if verify_submitted "$3" "$4"; then
     log_ring "$1" "$2" "delivered" "$4"
   else
@@ -435,6 +486,15 @@ sweep_stale_claims() {
     [ -e "$c" ] || break
     age=$(( now - $(mtime_of "$c") ))
     [ "$age" -ge "$STALE_CLAIM_SECS" ] && mv "$c" "${c%.claim}" 2>/dev/null || true
+  done
+  # Acks nobody consumed (receiver hook fired but the sender's wait had
+  # already timed out and the composer machinery resolved the wake) go
+  # stale after an hour; consuming machinery always rm's on match, so
+  # anything old is an orphan.
+  for a in "$CFG"/acks/*.ack; do
+    [ -e "$a" ] || break
+    age=$(( now - $(mtime_of "$a") ))
+    [ "$age" -ge 3600 ] && rm -f "$a" 2>/dev/null || true
   done
 }
 
@@ -479,10 +539,15 @@ do_drain() {
       # This wake's paste already reached the target once. NEVER re-prompt:
       # Claude Code queued that paste even though verification could not
       # confirm it, so a second prompt is a guaranteed duplicate. Legal moves
-      # only: infer submission from a clear+stable composer (a paste cannot
-      # leave the composer without submitting or queueing), Enter-recover a
-      # parked copy of our exact text, or accept the rendered queued hint.
-      if composer_clear "$target"; then
+      # only: a LATE ACK from the receiver hook (the paste's turn started
+      # after the sender's wait timed out), infer submission from a
+      # clear+stable composer (a paste cannot leave the composer without
+      # submitting or queueing), Enter-recover a parked copy of our exact
+      # text, or accept the rendered queued hint.
+      if ack_wait "$line" 0; then
+        log_ring "$lane" "$gen" "drain-delivered:acked" "$line"
+        rm -f "$c"
+      elif composer_clear "$target"; then
         log_ring "$lane" "$gen" "drain-delivered:inferred" "$line"
         rm -f "$c"
       elif recover_own_text "$target" "$line"; then
@@ -520,7 +585,7 @@ do_drain() {
         # delivering out of order is worse than waiting (herdmates' break rule).
         break
       fi
-      if verify_submitted "$target" "$line"; then
+      if confirm_delivery "$target" "$line"; then
         log_ring "$lane" "$gen" "drain-delivered" "$line"
         rm -f "$c"
       else
