@@ -103,7 +103,7 @@ both herdr \
   "ghost-probe" \
   "HERDR_ENV"
 
-need "$C/hooks/hooks.json" "startup|resume"
+need "$C/hooks/hooks.json" "UserPromptSubmit" "org-ack-submit" "startup|resume"
 need "$G/hooks/hooks.json" "startup|resume"
 
 # Claude-only surfaces (native advisor + opusplan, architect, reviewer
@@ -117,6 +117,8 @@ need "$C/scripts/conduct" "opusplan"
 need "$C/scripts/orgclaude" "DEPRECATED shim"
 need "$C/skills/fleet/SKILL.md" "ORGS, not lanes" "REPORT-BACK CONTRACT" "board_deleted:false" "NOTHING TO DO IS NOT A QUESTION"
 need "$C/scripts/fleet-ctl" "board_is_empty" "already_running"
+need "$C/scripts/doorbell" "runtime" "acks"
+need "$C/hooks/org-ack-submit.sh" "UserPromptSubmit" "acks"
 
 if [ "$fail" = 0 ]; then
   echo "herdr-parity: OK"
