@@ -42,7 +42,14 @@ case "${1:-}" in
     case "${2:-}" in
       get)
         # JSON shape matches real `herdr agent get` (pane_id + agent_status).
-        status=$(cat "$STATE/agent_status" 2>/dev/null || echo idle)
+        # Sequenced statuses (agent_status_0, _1, ...) let a scenario model a
+        # lifecycle transition (idle -> working when a prompt starts a turn);
+        # absent a sequence, the static agent_status file is the answer.
+        if [ -f "$STATE/agent_status_0" ]; then
+          status=$(next agent_status)
+        else
+          status=$(cat "$STATE/agent_status" 2>/dev/null || echo idle)
+        fi
         pane=$(cat "$STATE/pane_id" 2>/dev/null || echo stub-pane)
         jq -cn --arg p "$pane" --arg s "$status" \
           '{result:{agent:{pane_id:$p, agent_status:$s}}}'
@@ -275,9 +282,15 @@ fi
 reset_state
 : > "$HERDR_PLUGIN_CONFIG_DIR/log/rings.jsonl"
 printf 'orch\n%s\n' "$SENT" > "$HERDR_PLUGIN_CONFIG_DIR/pending/2000-stub-lane-g1.msg"
-# do_drain → composer_clear (2 agent reads) → deliver → verify clear (2 pane reads)
+# do_drain → composer_clear (2 agent reads) → deliver → verify clear (2 pane
+# reads) → lifecycle corroboration: the pure-clear branch now requires the
+# idle target to have STARTED a turn (post-verify status working) before
+# clear counts as delivered. Sequenced statuses model exactly that:
+# get#0 send_prompt pre-read = idle, get#1 verify pane resolve, get#2
+# post-verify corroboration = working.
 write_seq agent_read "$CLEAR_TAIL" "$CLEAR_TAIL" "$CLEAR_TAIL" "$CLEAR_TAIL"
 write_seq pane_read "$CLEAR_TAIL" "$CLEAR_TAIL"
+write_seq agent_status idle idle working working
 do_drain
 assert_count "drain-success" "drain-delivered" "1"
 if [ -e "$HERDR_PLUGIN_CONFIG_DIR/pending/2000-stub-lane-g1.msg" ] || \
