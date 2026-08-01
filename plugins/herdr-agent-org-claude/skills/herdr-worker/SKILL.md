@@ -12,6 +12,8 @@ BOARD="${CLAUDE_PLUGIN_ROOT:-.}/scripts/board"   # or just: board, when it is on
 $BOARD get <slug>
 ```
 
+`board` is a bare script on your PATH (dispatch-worker forwards it), NEVER a `herdr` subcommand: `herdr board ...` does not exist and its error is not evidence the board itself is unreachable (verified live 2026-08-01: a replacer concluded "herdr has no board subcommand" and skipped every board write for a fully-completed task, while `command -v board` in that same pane resolved cleanly). Run `command -v board` before ever concluding board is unavailable.
+
 You implement; the orchestrator verifies and merges. Your PTY is a Herdr pane.
 
 **Your board comments are the durable record of your work.** Your pane's scrollback holds what you have already committed to screen, but it dies with the pane, and the orchestrator reaps your agent as soon as your lane is verified (L4). Anything you do not write to the board effectively did not happen. Comment at every phase boundary, not at the end.
