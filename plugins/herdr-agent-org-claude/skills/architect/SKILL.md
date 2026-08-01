@@ -49,8 +49,10 @@ No issue is dispatchable until a throwaway haiku session has read it cold and fo
 Gate command, copy-paste-exact (for an existing issue: `gh issue view <nr> --json body -q .body > /tmp/issue-<nr>.md`):
 
 ```bash
-claude --model haiku -p "Read /tmp/issue-<nr>.md. You must implement it exactly as written. List every point where you would have to invent, guess, or look up something the text does not contain — missing signatures, undefined symbols, vague steps, absent expected outputs. If there are none, reply exactly: DRY-READ-CLEAN."
+claude --model haiku -p --output-format stream-json --verbose -- "Read /tmp/issue-<nr>.md. You must implement it exactly as written. List every point where you would have to invent, guess, or look up something the text does not contain — missing signatures, undefined symbols, vague steps, absent expected outputs. If there are none, reply exactly: DRY-READ-CLEAN." | jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text'
 ```
+
+Plain `-p` is NOT enough (verified live 2026-08-01): on any box with a global Stop hook, `-p` alone returns only the hook-forced follow-up turn, and the actual dry-read verdict is silently absent from stdout, not merely buried. `--output-format stream-json --verbose` piped through the `jq` filter above pulls every assistant text block across all turns, so the real verdict survives regardless of what the Stop hook does afterward. Same root cause and fix as herdr-agent-org-claude's tests/conduct/run-conduct.sh.
 
 Any listed point returns the issue to authoring; arguing with the gauge instead of fixing the issue is the fingerprint of a plan that failed the bar.
 The verdict is stamped at the issue foot: `Dry-read: haiku, <pasted date -u>, clean` — or the findings plus the re-cut that answered them.
