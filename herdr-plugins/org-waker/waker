@@ -152,16 +152,21 @@ toast() {
 # line exists in the frame. Grok's TUI draws the composer inside a box, so the
 # extracted line after the prompt char ends with U+2502 (light vertical); strip
 # that decoration (and re-trim) so an empty grok composer classifies clear.
+# NBSP (U+00A0) counts as whitespace: some Claude TUI builds render a
+# non-breaking space after the prompt char (measured live 2026-08-02, Fable 5
+# TUI), and a plain [ \t] trim leaves it attached, misclassifying an exact
+# parked copy as foreign.
 prompt_text() {
-  printf '%s\n' "$1" | awk -v p="$PROMPT_CHAR" -v np="$NP" '
+  printf '%s\n' "$1" | awk -v p="$PROMPT_CHAR" -v np="$NP" -v nb="$(printf '\302\240')" '
     { i = index($0, p); if (i) { found = 1; line = substr($0, i + length(p)) } }
     END {
       if (!found) { print np; exit }
-      gsub(/^[ \t]+/, "", line); gsub(/[ \t\r]+$/, "", line)
+      lead = "^[" nb " \t]+"; trail = "[" nb " \t\r]+$"
+      gsub(lead, "", line); gsub(trail, "", line)
       # U+2502 box-drawing light vertical — grok TUI composer border only.
       # Literal UTF-8 bytes (portable on macOS /usr/bin/awk; no gawk required).
       gsub(/│/, "", line)
-      gsub(/^[ \t]+/, "", line); gsub(/[ \t\r]+$/, "", line)
+      gsub(lead, "", line); gsub(trail, "", line)
       print line
     }
   '
