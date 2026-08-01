@@ -74,6 +74,8 @@ Procedures, defaults, and templates, binding exactly as the LAWS are (L0): where
 
    If `agent rename` fails because detection has not classified your pane as an agent yet, the `pane rename` alone still labels the sidebar; retry on the next beat.
 
+   NOTHING TO DO IS NOT A QUESTION (operator order 2026-08-01): if ORIENT concludes the board is empty, no lane is in flight, and this invocation carries no task, do not ask what to work on, do not summarize the empty state, do not offer a menu of open issues. Go to standby in total silence — zero narration, zero output — and wait for a wake or an operator message. L3's "product-intent ambiguity goes to the operator as a question" covers a task you already have where the GOAL is unclear; it is not license to solicit work that does not exist yet. A session with nothing to do that talks anyway is noise the operator has to read and dismiss every time. FP: any reply to a task-less invocation longer than silence.
+
    NAMING (L18): the agent name IS the sidebar identity; `[a-z][a-z0-9_-]{0,31}`, unique among live agents. Lane tied to a GitHub issue ⇒ prefix `i<nr>-` (`i736-repo-name-lookup`; reviewer `rev-i736-repo-name-lookup`) so the sidebar is issue-addressable at a glance — the `i` is required, names must start with a letter, and on 32-char overflow trim the SLUG, never the prefix; no issue, no prefix. Otherwise lane slug for a lane worker, `rev-<name>` for a reviewer, the SAME name for a replacer inheriting it (the predecessor is gone, so the name is free — keeping it preserves the prefix). At L5 close-out clear the dead lane's pane label (`herdr pane rename <pane_id> --clear`).
 
 2. **DISPATCH** (one atomic beat per lane; big features = batch of beats):
