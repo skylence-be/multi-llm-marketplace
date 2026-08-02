@@ -16,6 +16,7 @@
 #   board set-owner <slug> <agent-name|"">
 #   board set-blockers <slug> <slug,slug,...|"">
 #   board comment <slug> <text...>
+#   board comment <slug> --stdin   # body from stdin (like pad write)
 #   board query <text>
 #   board pad list
 #   board pad get <name>
@@ -473,7 +474,22 @@ cmd_comment() {
   slug=$1; shift
   p=$(todo_path "$slug")
   [ -f "$p" ] || { echo "board: no todo $slug" >&2; exit 1; }
-  text=$*
+  case "${1:-}" in
+    --stdin|-)
+      shift
+      [ "$#" -eq 0 ] || { echo "board: --stdin takes no further arguments" >&2; exit 2; }
+      text=$(cat)
+      ;;
+    -*)
+      # A swallowed flag once posted the literal string "--stdin" as a
+      # comment and silently dropped the piped body (skylore mark 305).
+      echo "board: unknown flag $1 for comment; text is positional, use --stdin to pipe a body" >&2
+      exit 2
+      ;;
+    *)
+      text=$*
+      ;;
+  esac
   [ -n "$text" ] || { echo "board: empty comment" >&2; exit 2; }
   ts=$(now_utc)
   printf '\n### %s\n\n%s\n' "$ts" "$text" >> "$p"
