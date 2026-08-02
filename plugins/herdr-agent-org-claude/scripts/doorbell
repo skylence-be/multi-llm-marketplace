@@ -42,6 +42,16 @@ ACKDIR="$ACKDIR/acks"
 ACK="$ACKDIR/$(sha_of "$TEXT").ack"
 rm -f "$ACK" 2>/dev/null || true
 
+# Ack consumed = the doorbell became a turn in the receiver (runtime ground
+# truth). Leave a marker so the waker suppresses the now-redundant settle
+# ring for this lane (org-waker 0.7.2). Lane slugs are [a-z0-9_-], so the
+# filename matches the waker's sane() output byte for byte.
+mark_doorbell() {
+  d="${ACKDIR%/acks}/state"
+  mkdir -p "$d" 2>/dev/null || true
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$d/doorbell--$SLUG" 2>/dev/null || true
+}
+
 pane_of() { $HERDR agent get "$TARGET" 2>/dev/null | jq -r '.result.agent.pane_id // empty' 2>/dev/null; }
 
 # The prompt char must be built with printf octal escapes: a `\x`-escaped
@@ -95,6 +105,7 @@ recover_parked() {
 pre=$(composer_line)
 if [ "$pre" = "$TEXT" ]; then
   if recover_parked 16; then
+    mark_doorbell
     emit delivered true
     exit 0
   fi
@@ -109,6 +120,7 @@ fi
 $HERDR agent prompt "$TARGET" "$TEXT" >/dev/null 2>&1 || { emit unconfirmed false; exit 1; }
 
 if wait_ack 16; then
+  mark_doorbell
   emit delivered true
   exit 0
 fi
@@ -116,6 +128,7 @@ fi
 # No ack: one sanctioned recovery when OUR exact text sits parked.
 now=$(composer_line)
 if [ "$now" = "$TEXT" ] && recover_parked 8; then
+  mark_doorbell
   emit delivered true
   exit 0
 fi

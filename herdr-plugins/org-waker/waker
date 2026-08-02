@@ -693,7 +693,32 @@ cmd_on_event() {
         ring=0
         case "$status" in
           blocked)   [ "$prev" != "blocked" ] && ring=1 ;;
-          idle|done) [ "$prev" = "working" ] && ring=1 ;;
+          idle|done)
+            if [ "$prev" = "working" ]; then
+              ring=1
+              # 0.7.2: a runtime-ACKed close-out doorbell already became a
+              # turn in the target session for THIS lane (the doorbell
+              # script leaves state/doorbell--<lane> only after consuming
+              # its ack). The settle ring would then arrive after the
+              # orchestrator's accept beat as a guaranteed-stale duplicate
+              # (measured 5/5 healthy lane completions, 2026-08-02).
+              # Consume the marker and stay silent. Crash and blocked
+              # paths never consult it, and a doorbell that missed its
+              # ack writes no marker, so the ring stays the safety net
+              # exactly when it is needed. Freshness bound: a marker
+              # older than an hour is an orphan, ring anyway.
+              db="$CFG/state/doorbell--$(sane "$lane")"
+              if [ -f "$db" ]; then
+                if [ $(( $(date +%s) - $(mtime_of "$db") )) -lt 3600 ]; then
+                  rm -f "$db" 2>/dev/null || true
+                  log_ring "$lane" "$gen" "suppressed:doorbell-acked" ""
+                  ring=0
+                else
+                  rm -f "$db" 2>/dev/null || true
+                fi
+              fi
+            fi
+            ;;
         esac
         [ "$ring" -eq 1 ] && ring_or_hold "$lane" "$gen" "$target" \
           "$(with_note "[RING g${gen}] lane ${lane} -> ${status}. ${ptr}" "$note")"
@@ -748,6 +773,7 @@ cmd_register() {
       && mv "$tmp" "$REGD/$(sane "$lane").row" || fail "cannot write registry row"
   fi
   rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null || true
+  rm -f "$CFG/state/doorbell--$(sane "$lane")" 2>/dev/null || true
   printf '{"registered":"%s","pane":"%s","target":"%s","gen":%s}\n' "$lane" "$pane" "$target" "$gen"
 }
 
@@ -763,6 +789,7 @@ cmd_unregister() {
   row=$(reg_row_by_lane "$lane")
   pane=$(printf '%s' "$row" | cut -f1)
   reg_remove_lane "$lane"
+  rm -f "$CFG/state/doorbell--$(sane "$lane")" 2>/dev/null || true
   [ -n "$pane" ] && rm -f "$CFG/state/status--$(sane "$pane")" "$CFG/state/dead--$(sane "$pane")" 2>/dev/null
   # Close-out purge of held wakes for this lane. Every permanent removal of a
   # pending .msg/.claim must write exactly one rings.jsonl line (audit
