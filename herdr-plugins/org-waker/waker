@@ -435,34 +435,47 @@ ack_wait() {
 
 # doorbell_evidence LANE TODO -> 0 when the lane's close-out doorbell
 # provably reached its target: either the doorbell script's marker
-# (state/doorbell--<lane>, written after a consumed ack or verified
+# (state/doorbell--<slug>, written after a consumed ack or verified
 # delivery, 0.7.2) or an UNCONSUMED ack file for the canonical doorbell
 # text (0.7.3). The second leg covers workers that hand-roll
 # `herdr agent prompt` with the canonical text because the doorbell
 # script was unreachable (routed shells lose the scripts PATH, measured
 # 2026-08-02: receiver hook wrote the ack at 12:21Z, nobody consumed it,
-# the settle ring at 12:22:36Z went out anyway). Both legs consume their
-# evidence and honor a 1h freshness bound; stale evidence is discarded
-# and the ring proceeds.
+# the settle ring at 12:22:36Z went out anyway).
+#
+# 0.7.4: every leg tries BOTH the registry lane name and the todo slug,
+# in both text positions. The doorbell script is invoked with the TODO
+# slug while registration carries the AGENT name; when an orchestrator
+# shortens the agent name (lane interval-normalize, todo
+# interval-normalize-consolidation, measured 2026-08-02 12:5xZ) every
+# single-name key misses and the stale ring returns. Both legs consume
+# their evidence and honor a 1h freshness bound; stale evidence is
+# discarded and the ring proceeds.
 doorbell_evidence() {
-  db="$CFG/state/doorbell--$(sane "$1")"
-  if [ -f "$db" ]; then
-    if [ $(( $(date +%s) - $(mtime_of "$db") )) -lt 3600 ]; then
-      rm -f "$db" 2>/dev/null || true
-      return 0
-    fi
-    rm -f "$db" 2>/dev/null || true
-  fi
-  for _slug in "$1" "${2:-$1}"; do
-    [ -n "$_slug" ] || continue
-    a="$CFG/acks/$(ack_sha "[DOORBELL] lane $1 [DONE], verdict needed. board get $_slug").ack"
-    if [ -e "$a" ]; then
-      if [ $(( $(date +%s) - $(mtime_of "$a") )) -lt 3600 ]; then
-        rm -f "$a" 2>/dev/null || true
+  for _n in "$1" "${2:-}"; do
+    [ -n "$_n" ] || continue
+    db="$CFG/state/doorbell--$(sane "$_n")"
+    if [ -f "$db" ]; then
+      if [ $(( $(date +%s) - $(mtime_of "$db") )) -lt 3600 ]; then
+        rm -f "$db" 2>/dev/null || true
         return 0
       fi
-      rm -f "$a" 2>/dev/null || true
+      rm -f "$db" 2>/dev/null || true
     fi
+  done
+  for _l in "$1" "${2:-}"; do
+    [ -n "$_l" ] || continue
+    for _s in "$1" "${2:-}"; do
+      [ -n "$_s" ] || continue
+      a="$CFG/acks/$(ack_sha "[DOORBELL] lane $_l [DONE], verdict needed. board get $_s").ack"
+      if [ -e "$a" ]; then
+        if [ $(( $(date +%s) - $(mtime_of "$a") )) -lt 3600 ]; then
+          rm -f "$a" 2>/dev/null || true
+          return 0
+        fi
+        rm -f "$a" 2>/dev/null || true
+      fi
+    done
   done
   return 1
 }

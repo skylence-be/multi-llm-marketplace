@@ -97,4 +97,33 @@ sup_after=$(grep -c 'suppressed:doorbell-acked' "$CFG/log/rings.jsonl" 2>/dev/nu
 if [ "$sup_after" -gt "$sup_before" ]; then ok ack-file-suppresses; else bad ack-file-suppresses; fi
 if [ ! -e "$CFG/acks/$SHA.ack" ]; then ok ack-consumed; else bad ack-consumed; fi
 
+
+# 6. 0.7.4 name/slug variants: agent name differs from todo slug; marker was
+#    written under the TODO slug (doorbell script arg) while registration
+#    carries the agent name. Both must suppress.
+sh "$WAKER" register --pane w2:p3 --lane short-name --todo short-name-full-slug --target orch >/dev/null
+fire2() {
+  HERDR_PLUGIN_EVENT="pane_agent_status_changed" \
+  HERDR_PLUGIN_EVENT_JSON="{\"data\":{\"pane_id\":\"w2:p3\",\"agent_status\":\"$1\",\"agent\":\"claude\"}}" \
+  sh "$WAKER" on-event >/dev/null 2>&1 || true
+}
+fire2 working
+touch "$CFG/state/doorbell--short-name-full-slug"
+sup_b=$(grep -c 'suppressed:doorbell-acked' "$CFG/log/rings.jsonl" 2>/dev/null || echo 0)
+fire2 done
+sup_a=$(grep -c 'suppressed:doorbell-acked' "$CFG/log/rings.jsonl" 2>/dev/null || echo 0)
+if [ "$sup_a" -gt "$sup_b" ]; then ok todo-slug-marker-suppresses; else bad todo-slug-marker-suppresses; fi
+# ack text carrying the TODO slug in the lane position must also match
+fire2 working
+if command -v shasum >/dev/null 2>&1; then
+  SHA2=$(printf '%s' "[DOORBELL] lane short-name-full-slug [DONE], verdict needed. board get short-name-full-slug" | shasum -a 256 | cut -c1-32)
+else
+  SHA2=$(printf '%s' "[DOORBELL] lane short-name-full-slug [DONE], verdict needed. board get short-name-full-slug" | sha256sum | cut -c1-32)
+fi
+touch "$CFG/acks/$SHA2.ack"
+sup_b=$(grep -c 'suppressed:doorbell-acked' "$CFG/log/rings.jsonl" 2>/dev/null || echo 0)
+fire2 idle
+sup_a=$(grep -c 'suppressed:doorbell-acked' "$CFG/log/rings.jsonl" 2>/dev/null || echo 0)
+if [ "$sup_a" -gt "$sup_b" ]; then ok todo-slug-ack-suppresses; else bad todo-slug-ack-suppresses; fi
+
 [ "$failed" -eq 0 ] && echo "doorbell_suppress: PASS" || { echo "doorbell_suppress: FAIL"; exit 1; }
