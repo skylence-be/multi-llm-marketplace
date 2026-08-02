@@ -433,6 +433,40 @@ ack_wait() {
   return 1
 }
 
+# doorbell_evidence LANE TODO -> 0 when the lane's close-out doorbell
+# provably reached its target: either the doorbell script's marker
+# (state/doorbell--<lane>, written after a consumed ack or verified
+# delivery, 0.7.2) or an UNCONSUMED ack file for the canonical doorbell
+# text (0.7.3). The second leg covers workers that hand-roll
+# `herdr agent prompt` with the canonical text because the doorbell
+# script was unreachable (routed shells lose the scripts PATH, measured
+# 2026-08-02: receiver hook wrote the ack at 12:21Z, nobody consumed it,
+# the settle ring at 12:22:36Z went out anyway). Both legs consume their
+# evidence and honor a 1h freshness bound; stale evidence is discarded
+# and the ring proceeds.
+doorbell_evidence() {
+  db="$CFG/state/doorbell--$(sane "$1")"
+  if [ -f "$db" ]; then
+    if [ $(( $(date +%s) - $(mtime_of "$db") )) -lt 3600 ]; then
+      rm -f "$db" 2>/dev/null || true
+      return 0
+    fi
+    rm -f "$db" 2>/dev/null || true
+  fi
+  for _slug in "$1" "${2:-$1}"; do
+    [ -n "$_slug" ] || continue
+    a="$CFG/acks/$(ack_sha "[DOORBELL] lane $1 [DONE], verdict needed. board get $_slug").ack"
+    if [ -e "$a" ]; then
+      if [ $(( $(date +%s) - $(mtime_of "$a") )) -lt 3600 ]; then
+        rm -f "$a" 2>/dev/null || true
+        return 0
+      fi
+      rm -f "$a" 2>/dev/null || true
+    fi
+  done
+  return 1
+}
+
 # confirm_delivery TARGET LINE -> 0 delivered (acked or verified), 1 not.
 # Ack first: it needs zero pane reads and cannot be raced by paste-render
 # latency. Only when no ack lands does the composer machinery run.
@@ -696,26 +730,17 @@ cmd_on_event() {
           idle|done)
             if [ "$prev" = "working" ]; then
               ring=1
-              # 0.7.2: a runtime-ACKed close-out doorbell already became a
-              # turn in the target session for THIS lane (the doorbell
-              # script leaves state/doorbell--<lane> only after consuming
-              # its ack). The settle ring would then arrive after the
-              # orchestrator's accept beat as a guaranteed-stale duplicate
-              # (measured 5/5 healthy lane completions, 2026-08-02).
-              # Consume the marker and stay silent. Crash and blocked
-              # paths never consult it, and a doorbell that missed its
-              # ack writes no marker, so the ring stays the safety net
-              # exactly when it is needed. Freshness bound: a marker
-              # older than an hour is an orphan, ring anyway.
-              db="$CFG/state/doorbell--$(sane "$lane")"
-              if [ -f "$db" ]; then
-                if [ $(( $(date +%s) - $(mtime_of "$db") )) -lt 3600 ]; then
-                  rm -f "$db" 2>/dev/null || true
-                  log_ring "$lane" "$gen" "suppressed:doorbell-acked" ""
-                  ring=0
-                else
-                  rm -f "$db" 2>/dev/null || true
-                fi
+              # A confirmed close-out doorbell already became a turn in the
+              # target session for THIS lane, so the settle ring would land
+              # after the orchestrator's accept beat as a guaranteed-stale
+              # duplicate (measured 5/5 healthy lane completions,
+              # 2026-08-02). Evidence legs live in doorbell_evidence():
+              # script marker (0.7.2) or unconsumed canonical-text ack
+              # (0.7.3). Crash and blocked paths never consult it; no
+              # evidence means the ring stays the safety net.
+              if doorbell_evidence "$lane" "$todo"; then
+                log_ring "$lane" "$gen" "suppressed:doorbell-acked" ""
+                ring=0
               fi
             fi
             ;;

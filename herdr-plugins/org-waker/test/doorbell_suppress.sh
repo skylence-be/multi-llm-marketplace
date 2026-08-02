@@ -79,4 +79,22 @@ count_after=$(grep -c 'held:' "$CFG/log/rings.jsonl" 2>/dev/null || echo 0)
 if [ "$count_after" -gt "$count_before" ]; then ok stale-marker-rings; else bad stale-marker-rings; fi
 if [ ! -e "$CFG/state/doorbell--t-lane" ]; then ok stale-marker-discarded; else bad stale-marker-discarded; fi
 
+
+# 5. unconsumed canonical-text ack (worker hand-rolled the prompt because the
+#    doorbell script was unreachable): suppressed, ack consumed (0.7.3 leg)
+sh "$WAKER" register --pane w1:p9 --lane t-lane --todo t-lane --target orch >/dev/null
+fire working
+if command -v shasum >/dev/null 2>&1; then
+  SHA=$(printf '%s' "[DOORBELL] lane t-lane [DONE], verdict needed. board get t-lane" | shasum -a 256 | cut -c1-32)
+else
+  SHA=$(printf '%s' "[DOORBELL] lane t-lane [DONE], verdict needed. board get t-lane" | sha256sum | cut -c1-32)
+fi
+mkdir -p "$CFG/acks"
+touch "$CFG/acks/$SHA.ack"
+sup_before=$(grep -c 'suppressed:doorbell-acked' "$CFG/log/rings.jsonl" 2>/dev/null || echo 0)
+fire done
+sup_after=$(grep -c 'suppressed:doorbell-acked' "$CFG/log/rings.jsonl" 2>/dev/null || echo 0)
+if [ "$sup_after" -gt "$sup_before" ]; then ok ack-file-suppresses; else bad ack-file-suppresses; fi
+if [ ! -e "$CFG/acks/$SHA.ack" ]; then ok ack-consumed; else bad ack-consumed; fi
+
 [ "$failed" -eq 0 ] && echo "doorbell_suppress: PASS" || { echo "doorbell_suppress: FAIL"; exit 1; }
