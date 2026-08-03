@@ -1,28 +1,81 @@
 #!/bin/sh
-# relay-ctl: start/stop/status for the org-relay MCP server. Idempotent start.
+# relay-ctl: start/stop/status/run/install-daemon for the org-relay MCP server.
+# start is idempotent; install-daemon puts it under launchd (KeepAlive) so it
+# survives crashes and reboots — the preferred deployment.
 set -u
 DIR=$(cd "$(dirname "$0")" && pwd)
 PORT="${ORG_RELAY_PORT:-7431}"
 BIN="$DIR/target/release/org-relay"
 [ -x "$BIN" ] || BIN="$DIR/target/debug/org-relay"
 PIDFILE="${TMPDIR:-/tmp}/org-relay.$PORT.pid"
+LABEL=com.skylence.org-relay
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+# ONE server serves the whole box, so the db is box-wide by default — this is
+# what makes cross-org (peer orchestrator) messages deliverable. Override with
+# ORG_RELAY_DB only when you genuinely want an isolated bus.
+BOX_DB="$HOME/.config/herdr/org-relay/relay.db"
 
 alive() { curl -s -m 2 "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q ok; }
+ensure_bin() {
+  if [ ! -x "$BIN" ]; then
+    echo "org-relay: no binary; building (release)..." >&2
+    (cd "$DIR" && cargo build --release >/dev/null 2>&1) || { echo "org-relay: build failed" >&2; exit 1; }
+    BIN="$DIR/target/release/org-relay"
+  fi
+}
 
 case "${1:-status}" in
+  run)
+    # Foreground exec for launchd: the supervised process IS the server.
+    ensure_bin
+    mkdir -p "$(dirname "${ORG_RELAY_DB:-$BOX_DB}")"
+    ORG_RELAY_DB="${ORG_RELAY_DB:-$BOX_DB}" exec "$BIN"
+    ;;
+  install-daemon)
+    ensure_bin
+    mkdir -p "$(dirname "$BOX_DB")" "$HOME/Library/LaunchAgents"
+    cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key><array>
+    <string>/bin/sh</string><string>$DIR/relay-ctl</string><string>run</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>ORG_RELAY_PORT</key><string>$PORT</string>
+    <key>ORG_RELAY_DB</key><string>$BOX_DB</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>${TMPDIR:-/tmp}/org-relay.$PORT.log</string>
+  <key>StandardErrorPath</key><string>${TMPDIR:-/tmp}/org-relay.$PORT.log</string>
+</dict></plist>
+EOF
+    # Hand the port over: stop any ad-hoc instance, then bootstrap.
+    "$0" stop >/dev/null 2>&1 || true
+    launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
+    launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load "$PLIST"
+    sleep 2
+    if alive; then echo "org-relay: daemonized under launchd ($LABEL), db=$BOX_DB"; else echo "org-relay: daemon failed; see ${TMPDIR:-/tmp}/org-relay.$PORT.log" >&2; exit 1; fi
+    ;;
   start)
     if alive; then echo "org-relay: already serving on :$PORT"; exit 0; fi
-    if [ ! -x "$BIN" ]; then
-      echo "org-relay: no binary; building (release)..." >&2
-      (cd "$DIR" && cargo build --release >/dev/null 2>&1) || { echo "org-relay: build failed" >&2; exit 1; }
-      BIN="$DIR/target/release/org-relay"
+    # Prefer the daemon when installed; kick it rather than forking an orphan.
+    if [ -f "$PLIST" ]; then
+      launchctl kickstart "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || true
+      sleep 2
+      alive && { echo "org-relay: started via launchd on :$PORT"; exit 0; }
     fi
-    nohup "$BIN" >>"${TMPDIR:-/tmp}/org-relay.$PORT.log" 2>&1 &
+    ensure_bin
+    mkdir -p "$(dirname "${ORG_RELAY_DB:-$BOX_DB}")"
+    ORG_RELAY_DB="${ORG_RELAY_DB:-$BOX_DB}" nohup "$BIN" >>"${TMPDIR:-/tmp}/org-relay.$PORT.log" 2>&1 &
     echo $! > "$PIDFILE"
     sleep 1
-    alive && echo "org-relay: started on :$PORT (pid $(cat "$PIDFILE"))" || { echo "org-relay: failed to start; see ${TMPDIR:-/tmp}/org-relay.$PORT.log" >&2; exit 1; }
+    alive && echo "org-relay: started on :$PORT (pid $(cat "$PIDFILE"); ad-hoc — prefer install-daemon)" || { echo "org-relay: failed to start; see ${TMPDIR:-/tmp}/org-relay.$PORT.log" >&2; exit 1; }
     ;;
   stop)
+    launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 && { echo "org-relay: daemon stopped ($LABEL)"; exit 0; }
     if [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null; then
       rm -f "$PIDFILE"; echo "org-relay: stopped"
     else
@@ -40,5 +93,5 @@ case "${1:-status}" in
       echo "org-relay: not running on :$PORT"; exit 1
     fi
     ;;
-  *) echo "usage: relay-ctl start|stop|status" >&2; exit 2 ;;
+  *) echo "usage: relay-ctl start|stop|status|run|install-daemon" >&2; exit 2 ;;
 esac
