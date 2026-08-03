@@ -1,0 +1,21 @@
+id = "skylence.org-relay"
+name = "Org Relay"
+version = "0.1.0"
+description = "Durable MCP message bus for the agent-org: SQLite queue + long-poll await over HTTP MCP. Replaces composer-paste doorbells and waker rings."
+min_herdr_version = "0.7.4"
+platforms = ["macos", "linux"]
+
+# Keep the relay resident: start it with the herdr session. relay-ctl start is
+# idempotent (exits 0 if the port already answers /health).
+[[startup]]
+command = ["sh", "relay-ctl", "start"]
+
+[[actions]]
+id = "status"
+title = "Org relay: queue status"
+command = ["sh", "relay-ctl", "status"]
+
+[[actions]]
+id = "stop"
+title = "Org relay: stop server"
+command = ["sh", "relay-ctl", "stop"]
