@@ -23,6 +23,7 @@ const PROTOCOL_DEFAULT: &str = "2025-06-18";
 const MAX_BODY: usize = 1_000_000;
 const AWAIT_POLL_MS: u64 = 500;
 const AWAIT_MAX_S: u64 = 3600;
+const AWAIT_DEFAULT_S: u64 = 50; // under the ~60s MCP client per-call ceiling
 
 fn now_iso() -> String {
     let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
@@ -165,10 +166,18 @@ fn call_tool(name: &str, args: &Value) -> Result<Value, String> {
         }
         "relay_await" => {
             let agent = req_str(args, "agent")?;
+            // Default sits UNDER the typical MCP client per-tool-call ceiling
+            // (~60s in Claude Code). The server honors any timeout_s exactly
+            // (verified: asked 90, held 90), but a client that gives up first
+            // turns a clean {timed_out:true} into a tool ERROR the caller has
+            // to handle. Returning cleanly under the cap and re-arming is the
+            // supported long-wait pattern. Measured 2026-08-03: an
+            // orchestrator asking 600 got client timeouts at ~70s, seven
+            // times, and had to hand-roll the re-arm loop.
             let timeout_s = args
                 .get("timeout_s")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(600)
+                .unwrap_or(AWAIT_DEFAULT_S)
                 .clamp(1, AWAIT_MAX_S);
             drop(conn); // fresh connection per poll; never hold one across the wait
             let deadline = Instant::now() + Duration::from_secs(timeout_s);
@@ -182,7 +191,9 @@ fn call_tool(name: &str, args: &Value) -> Result<Value, String> {
                     }));
                 }
                 if Instant::now() >= deadline {
-                    return Ok(json!({"agent": agent, "count": 0, "messages": [], "timed_out": true}));
+                    return Ok(json!({"agent": agent, "count": 0, "messages": [],
+                        "timed_out": true, "retry": true,
+                        "note": "no messages within timeout_s; call relay_await again to keep waiting (re-arming is the supported long-wait pattern)"}));
                 }
                 std::thread::sleep(Duration::from_millis(AWAIT_POLL_MS));
             }
@@ -245,10 +256,10 @@ fn tool_defs() -> Value {
          "outputSchema": {"type": "object", "properties": {
              "consumed": {"type": "integer"}, "of": {"type": "integer"}}}},
         {"name": "relay_await",
-         "description": "Block until a message arrives for agent (or timeout_s, default 600, max 3600), then return the unconsumed inbox. Event-driven waiting INSIDE a turn: no idle session, no composer, no ring.",
+         "description": "Block until a message arrives for agent, then return the unconsumed inbox. Event-driven waiting INSIDE a turn: no idle session, no composer, no ring. timeout_s default 50, max 3600 — the server honors it exactly, but most MCP clients abort a single tool call around 60s, so values above that surface as a CLIENT timeout error instead of a clean result. For longer waits, re-arm: a timed-out reply carries retry:true and costs one tool call per ~50s.",
          "inputSchema": {"type": "object", "required": ["agent"], "properties": {
              "agent": s("agent name"),
-             "timeout_s": {"type": "integer", "description": "1..3600, default 600"}}},
+             "timeout_s": {"type": "integer", "description": "1..3600, default 50; keep at or under ~55 unless the client is known to allow longer tool calls"}}},
          "outputSchema": inbox_out},
         {"name": "relay_status",
          "description": "Unconsumed message counts per recipient, plus the db path.",
