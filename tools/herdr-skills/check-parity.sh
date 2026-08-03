@@ -65,14 +65,16 @@ both() {
 
 both orchestrator \
   "CONTRACT, NOT A MENU" \
-  "RING PLUS DOORBELL" \
-  "waker-ctl unregister" \
+  "RELAY DOORBELL AS EVENT" \
+  "relay_await" \
+  "relay_send" \
+  "relay_consume" \
+  "Consume ONLY after acting" \
   "STAY RESIDENT" \
   "ACCEPT SEQUENCE" \
   "binding exactly as the LAWS" \
   "Peer orchestrators" \
   "test -n \"\${HERDR_ORG_ROOT" \
-  "--wake-target" \
   "feature-loop-skill" \
   "Bounce loop (bounded)" \
   "[BOUNCE <r>/3]" \
@@ -83,23 +85,19 @@ both orchestrator \
   "READY:" \
   "Rationalizations" \
   "[RING g<gen>]" \
-  "[DOORBELL]" \
   "NOTHING TO DO IS NOT A QUESTION" \
   "SAME-CALL RULE" \
   "ACCEPT-PENDING" \
   "NO WILDCARD BULK ACTIONS" \
-  "OWN-COMPOSER CHECK" \
   "RULINGS CITE THEIR SOURCE LINE" \
   "reason too much"
 both herdr-worker \
   "contract, not a menu" \
   "STAY RESIDENT" \
-  "[DOORBELL]" \
-  "pane run" \
-  "doorbell unconfirmed after one recovery attempt" \
+  "relay_send" \
+  "relay_await" \
+  "relay unavailable at close-out" \
   "BODIES GO THROUGH A FILE" \
-  "L11 SKIP IS NOT SILENT" \
-  "NOT ON PATH IS NOT PERMISSION TO SKIP IT" \
   "feature-loop-skill" \
   "fix ONLY the pasted findings"
 both replacer \
