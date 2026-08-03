@@ -92,6 +92,8 @@ both orchestrator \
   "RULINGS CITE THEIR SOURCE LINE" \
   "TRIAGE FIRST, LOAD LATE" \
   "TRIAGE BLOCK" \
+  "AWAIT CEILING" \
+  "Re-measure any pre-dispatch estimate" \
   "reason too much"
 both herdr-worker \
   "contract, not a menu" \
