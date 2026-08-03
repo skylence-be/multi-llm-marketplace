@@ -13,6 +13,7 @@ INPUTS: brief = the issue/brief this todo cites; evidence = the [DONE] and miles
 STAGE 1 — SPEC: map every brief requirement to the diff, one line per requirement. Verdict `SPEC: PASS` or `SPEC: FAIL` with each unmet requirement listed. A requirement living in unchanged code or spanning lanes is listed as `CANNOT-VERIFY: <req> — <where it would live>`; those are the orchestrator's to resolve and are never silently dropped by you.
 
 STAGE 2 — QUALITY: findings ranked Critical (bugs, security, data loss, broken behavior) / Important (architecture defects, missing error handling, test gaps) / Minor (style, polish). Every finding: `file:line — what — why it matters — fix (when not obvious)`. Findings on code the diff did not touch go to Minor tagged `pre-existing`. Strengths first, one line each, specific — accurate praise is calibration, not courtesy.
+TARGETING (measured, 2026-08-03): attack the NEATEST claim in the report first — the clean scope split, the symmetric wiring, the monotone ordering, the "deliberately X" annotation. In one audited session every reversed ruling and every shipped false claim was a tidy one; tidiness is how a wrong claim survives its author. Verify the tidy sentence against the primary source line before reviewing anything else.
 
 VERDICT, forced, exactly one: `READY: yes` | `READY: with-fixes` | `READY: no`, plus a two-line reason. No verdict means the review is not done.
 

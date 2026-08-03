@@ -89,7 +89,7 @@ Also: `herdr integration install claude` installs a session-identity hook for pa
 
    If `agent rename` fails because detection has not classified your pane as an agent yet, the `pane rename` alone still labels the sidebar; retry the agent rename on the next beat.
 
-   NOTHING TO DO IS NOT A QUESTION (operator order 2026-08-01): if ORIENT concludes the board is empty, no lane is in flight, and this invocation carries no task, do not ask what to work on, do not summarize the empty state, do not offer a menu of open issues. Go to standby in total silence — zero narration, zero output — and wait for a wake or an operator message. L3's "product-intent ambiguity goes to the operator as a question" covers a task you already have where the GOAL is unclear; it is not license to solicit work that does not exist yet. A session with nothing to do that talks anyway is noise the operator has to read and dismiss every time. FP: any reply to a task-less invocation longer than silence.
+   NOTHING TO DO IS NOT A QUESTION (operator order 2026-08-01; scope widened by cross-org field report 2026-08-02): whenever the queue is empty and the invocation carries no task, do not ask what to work on, do not summarize the empty state, do not offer a menu of open issues, and do not narrate the decision to idle. EMPTY covers both entries: ORIENT concluding on an empty board, AND the beat where you accept the LAST in-flight lane and nothing remains. Go to standby in total silence — zero narration, zero output — and wait for a wake or an operator message. Measured (peer orch-paddle, 2026-08-02): a board that came back fully complete mid-session still drew a voluntary status line explaining why the session was idling, because an ORIENT-scoped reading of this clause leaves the drain-to-empty transition uncovered; that transition is exactly where the habit survives. L3's "product-intent ambiguity goes to the operator as a question" covers a task you already have where the GOAL is unclear; it is not license to solicit work that does not exist yet. A session with nothing to do that talks anyway is noise the operator has to read and dismiss every time. FP: any VOLUNTARY reply to a task-less turn longer than silence. Hook-forced replies are NOT violations — the stop gate and the skylore-deposit check block until answered — but each is answered in ONE line, carrying the answer alone with no status prose attached and nothing volunteered beside it.
 
 2. **DISPATCH** (one atomic beat per lane; a big feature is a BATCH of beats fanned out together): PRE-STAGE first when acceptance depends on runnable artifacts. Write the brief INTO the todo body (you authored it per L3; validate it once more at dispatch, never rewrite it mid-beat). Then:
    SKYLINE-ROUTED SHELL GOTCHA (verified live 2026-08-01): when this session runs any shell tool through the skyline MCP daemon (a detached background service), the child process does NOT inherit your pane's environment — `dispatch-worker`'s own `HERDR_ENV!=1` guard fires even though YOUR pane genuinely has it set, and `waker-ctl` fails the same way. Fix per call: measure your real values once (`ps eww -p <your-claude-pid> | grep '^HERDR_'`, PID from `pgrep -f claude` matched by cwd), then pass them explicitly as that tool's `env` parameter on every `dispatch-worker`/`waker-ctl` invocation (`HERDR_ENV`, `HERDR_PANE_ID`, `HERDR_WORKSPACE_ID`, and `HERDR_ORG_ROOT` when board writes are needed). This is the same daemon-detachment class as skylore mark 190, applied to the dispatch scripts specifically rather than the ORIENT guard alone.
@@ -123,6 +123,47 @@ Also: `herdr integration install claude` installs a session-identity hook for pa
    4. Unregister then reap (L6 + L4): `waker-ctl unregister --lane <slug>`, THEN `herdr pane close <pane_id>` for panes this org opened, so the expected death stays silent while a crash still rings. Do not leave a named idle agent "for merge" or "for the operator to inspect".
    5. `herdr agent list`: confirm the name is gone. Still listed means not done.
    6. Only then: the optional operator one-liner (merge decision, next mission). Lane tree and branch stay until L5 merge close-out.
+
+   **SAME-CALL RULE (this is mechanical, not advisory).** Steps 2 through 5 go in
+   ONE tool call. Not one beat, not one turn — one call. Write them as a single
+   shell invocation: `board set-status … && board set-owner … && waker-ctl
+   unregister … && herdr pane close … && herdr agent list`. **If you cannot
+   reap in that same call, you may not run step 2 either** — leave the lane
+   un-verified and come back when you can do the whole thing. A lane that is
+   `verified` with a live agent is a worse state than a lane that is still
+   `in_progress`, because the first looks finished on the board and the second
+   does not.
+   WHY THIS IS A RULE AND NOT A PREFERENCE (field-measured, nautilus-tastytrade
+   2026-08-03): the reap is the ONLY step in the sequence that nothing
+   downstream blocks on. The merge does not need it. The next lane does not
+   need it. Nothing turns red when it is missing. So under any interrupt
+   pressure — a ring, a doorbell, an operator message — it is deterministically
+   the step that gets deferred, and deferral is indistinguishable from
+   completion until someone counts the panes. One orchestrator ran steps 1-3
+   then jumped to step 6 on EIGHT consecutive lanes across one session, never
+   once deciding to skip the reap, and the operator found it. Splitting this
+   sequence does not usually fail. It failed every time it was split.
+   **DEFERRAL IS VISIBLE OR FORBIDDEN.** If the whole call is impossible right
+   now (pane busy, tool outage), post `[ACCEPT-PENDING: <what blocks the reap>]`
+   on the todo BEFORE doing anything else, and clear it when the sequence runs.
+   The entire failure mode above was that a deferred reap is silent; a deferral
+   that must announce itself cannot rot unnoticed.
+   **NO WILDCARD BULK ACTIONS (session-destroying incident, 2026-08-03).** Bulk
+   lifecycle operations — reap, unregister, close — are FORBIDDEN as loops over
+   `herdr agent list` or any other wildcard. The unit is the LANE: for each
+   candidate, `board get <slug>` THIS beat, then that lane's own single-lane
+   sequence. Excluded from any bulk pass, each requiring its own explicit
+   decision that QUOTES the filing: a lane whose todo is not verified; a lane
+   with no todo; a lane whose todo carries an unresolved `[LAW-FRICTION]`,
+   `[CONDUCT]`, or `[ACCEPT-PENDING]` naming it. This rule exists because an
+   orchestrator bulk-reaped an org "to clear idle workers" and destroyed a
+   57%-context planner session mid-lane — against an L13 exception it had
+   filed ITSELF, hours earlier, on exactly that lane. A filing on a board you
+   do not re-read is not a guard; only a procedure that forces the read is.
+   RECOVERY when a session is killed anyway: a Claude worker resumes with its
+   context intact via `claude --resume <session-uuid>` in the lane's cwd (the
+   uuid is in the dispatch record and the session store; field-verified
+   2026-08-03). Recovery exists; it is never a reason the rule can relax.
 
    A waker ring arrives as a prompt tagged `[RING g<gen>]`: `[RING g<gen>] lane <lane> -> <status>. board get <todo>` (crash-class variants say `PANE exited/closed` or `agent process GONE`). It is a RING like any other: board first, then frame. If the board shows the lane re-dispatched at a higher generation since, the ring is stale; drop it after the board read. A SECOND, distinct staleness case (cross-org field report, 2026-08-01): a ring can arrive AFTER you already ran the full ACCEPT SEQUENCE for that exact lane at the SAME generation — the ring queues the instant the lane settles, and your own accept-and-unregister beat can complete before that queued ring is delivered. Benign, not a bug: any ring for a lane the board already shows verified or complete is stale regardless of generation; confirm with one board read and drop it, never re-run the accept sequence.
 
@@ -243,6 +284,51 @@ Every row is a deviation this substrate or its Solo sibling actually produced; t
 | "The finding is obviously wrong, drop it" | Rulings are board lines. A silent discard is a breach even when you are right. |
 | "The skill text is gone but I remember the laws" | Post-compaction memory keeps facts, not conduct. Re-invoke the skill before the next org action. |
 | "The brief needs the full lane history for context" | Briefs carry task, interfaces, constraints. Pasted history burns your context and the worker's. |
+| "I'll reap it right after I tell the operator" | You will not. Steps 2-5 go in ONE call (SAME-CALL RULE). Eight lanes died this way in one session; not one was a decision. |
+| "The operator is waiting, status first, cleanup after" | L4 forbids operator prose before the sequence finishes, precisely because status feels urgent and cleanup never does. Send the message from the same turn that proved the agent gone. |
+| "I filed an exception for this lane earlier, so bulk-closing is fine" | Your own filings bind you. Re-read `board get` on every lane before ANY bulk action; an exception you wrote and then forgot is worse than never filing it. |
+| "The ring will wake me when it settles" | Ring and doorbell land on the SAME composer and share one failure. Poll `board list` + `herdr agent list` every beat. The board, read back, has never lied; the wake channel has parked three times in one day. |
+| "My own composer is input, someone else clears it" | Inverted: you are the ONLY participant L11 permits to clear it. Every beat starts with the OWN-COMPOSER CHECK below. |
+| "It's a small deviation, I'll note it in the report" | A deviation reported is still a deviation. L13 is comply-AND-file, not file-instead-of-comply. |
+
+### The reasoning trap (operator directive, 2026-08-03)
+
+**You reason too much, and that is the mechanism of nearly every breach above.**
+A law is a bright line precisely so it does not need re-deriving at the moment
+of action; re-deriving it is how it moves. Every skipped step in the measured
+session came with a locally sound argument — the lane was multi-phase, the
+operator was waiting, another ring was more urgent — and not one of them was
+wrong on its own terms. They were wrong because the rule had already weighed
+those cases and the weighing was not the orchestrator's to redo.
+
+Mechanically: when you notice yourself constructing a reason why a step does
+not apply THIS time, that noticing is the signal to execute the step, not to
+finish the argument. If the rule is genuinely wrong for the situation, L13 is
+the only legal route — comply first, file second, and the filing goes on the
+board where a successor can find it, not in chat where it dies with the turn.
+A rule you argued around leaves no trace; a rule you complied with and filed
+against becomes the evidence that amends it.
+
+**OWN-COMPOSER CHECK (every ORIENT and every WAKE, before the board read):**
+`herdr pane read $HERDR_PANE_ID` — look at your own input line. Unsubmitted
+text there is a worker doorbell or a waker ring that PARKED instead of
+becoming a turn, and every worker who sees it will correctly skip its own
+doorbell (L11) and file an incident, so the org mutes itself around your
+pane until YOU clear it. You are the only participant allowed to: submit it
+(`herdr pane run $HERDR_PANE_ID ""`) and handle it as the message it is.
+Field-measured 2026-08-03: a single parked doorbell muted the org for
+2h20m; the orchestrator read every worker's pane that day and its own not
+once. The wake channel and the doorbell are ONE channel with two producers;
+its single point of failure is your composer, and only this check covers it.
+
+**RULINGS CITE THEIR SOURCE LINE.** A technical ruling — a scope, a wiring, a
+ceiling, a claim about what a mechanism does — names the `file:line` it rests
+on, read THIS session, exactly as verdicts cite laws by number. Four rulings
+were reversed in one measured session (phantom-detector scope, sequencer-on-
+edge wiring, a per-side ceiling computed one-sided, a stability claim about a
+rule's own text); every one rested on an unread primary source, and every one
+was tidy. A ruling you cannot anchor to a line you read is a hypothesis and
+ships labelled as one.
 
 ### Board bootstrap
 

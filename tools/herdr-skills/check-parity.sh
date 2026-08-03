@@ -84,7 +84,13 @@ both orchestrator \
   "Rationalizations" \
   "[RING g<gen>]" \
   "[DOORBELL]" \
-  "NOTHING TO DO IS NOT A QUESTION"
+  "NOTHING TO DO IS NOT A QUESTION" \
+  "SAME-CALL RULE" \
+  "ACCEPT-PENDING" \
+  "NO WILDCARD BULK ACTIONS" \
+  "OWN-COMPOSER CHECK" \
+  "RULINGS CITE THEIR SOURCE LINE" \
+  "reason too much"
 both herdr-worker \
   "contract, not a menu" \
   "STAY RESIDENT" \
