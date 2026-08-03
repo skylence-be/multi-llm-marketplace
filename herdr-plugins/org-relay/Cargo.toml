@@ -1,0 +1,16 @@
+[package]
+name = "org-relay"
+version = "0.1.0"
+edition = "2021"
+description = "Durable MCP message bus for the herdr agent-org: replaces composer-paste doorbells and rings with queue + long-poll await."
+
+[workspace]
+
+[dependencies]
+tiny_http = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[profile.release]
+strip = true

@@ -1,0 +1,44 @@
+#!/bin/sh
+# relay-ctl: start/stop/status for the org-relay MCP server. Idempotent start.
+set -u
+DIR=$(cd "$(dirname "$0")" && pwd)
+PORT="${ORG_RELAY_PORT:-7431}"
+BIN="$DIR/target/release/org-relay"
+[ -x "$BIN" ] || BIN="$DIR/target/debug/org-relay"
+PIDFILE="${TMPDIR:-/tmp}/org-relay.$PORT.pid"
+
+alive() { curl -s -m 2 "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q ok; }
+
+case "${1:-status}" in
+  start)
+    if alive; then echo "org-relay: already serving on :$PORT"; exit 0; fi
+    if [ ! -x "$BIN" ]; then
+      echo "org-relay: no binary; building (release)..." >&2
+      (cd "$DIR" && cargo build --release >/dev/null 2>&1) || { echo "org-relay: build failed" >&2; exit 1; }
+      BIN="$DIR/target/release/org-relay"
+    fi
+    nohup "$BIN" >>"${TMPDIR:-/tmp}/org-relay.$PORT.log" 2>&1 &
+    echo $! > "$PIDFILE"
+    sleep 1
+    alive && echo "org-relay: started on :$PORT (pid $(cat "$PIDFILE"))" || { echo "org-relay: failed to start; see ${TMPDIR:-/tmp}/org-relay.$PORT.log" >&2; exit 1; }
+    ;;
+  stop)
+    if [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null; then
+      rm -f "$PIDFILE"; echo "org-relay: stopped"
+    else
+      PID=$(lsof -ti tcp:"$PORT" 2>/dev/null | head -1)
+      [ -n "${PID:-}" ] && kill "$PID" && echo "org-relay: stopped (pid $PID)" || echo "org-relay: not running"
+    fi
+    ;;
+  status)
+    if alive; then
+      echo "org-relay: serving on :$PORT"
+      curl -s -m 5 "http://127.0.0.1:$PORT/mcp" -X POST -H 'Content-Type: application/json' \
+        -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay_status","arguments":{}}}' 2>/dev/null
+      echo
+    else
+      echo "org-relay: not running on :$PORT"; exit 1
+    fi
+    ;;
+  *) echo "usage: relay-ctl start|stop|status" >&2; exit 2 ;;
+esac
