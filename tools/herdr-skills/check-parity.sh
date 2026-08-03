@@ -91,6 +91,9 @@ both herdr-worker \
   "[DOORBELL]" \
   "pane run" \
   "doorbell unconfirmed after one recovery attempt" \
+  "BODIES GO THROUGH A FILE" \
+  "L11 SKIP IS NOT SILENT" \
+  "NOT ON PATH IS NOT PERMISSION TO SKIP IT" \
   "feature-loop-skill" \
   "fix ONLY the pasted findings"
 both replacer \
