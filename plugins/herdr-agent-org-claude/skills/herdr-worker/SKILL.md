@@ -52,8 +52,16 @@ Mark sparingly, at lane end or on a hard-won gotcha: `kind=decision|fact` plus `
 - Milestone comments on YOUR todo at every phase boundary:
 
   ```bash
+  # one-line status: positional is fine
   $BOARD comment <slug> "**[PHASE 2 DONE]** 26 passed, 0 failed; command=cargo test -p foo; sha=6fa3b0e; path=/tmp/<slug>_testlog"
+
+  # ANYTHING LONGER, or containing a backtick, $, or ! : write the body to a
+  # file and pipe it. Never interpolate a long body into a shell string.
+  cat /tmp/<slug>_comment.md | $BOARD comment <slug> --stdin
+  $BOARD get <slug> | tail -40        # read back; confirm it landed INTACT
   ```
+
+  BODIES GO THROUGH A FILE, NOT A SHELL STRING (measured twice in one session, 2026-08-03, both times by the author of this clause): a body passed positionally inside double quotes is SHELL-INTERPOLATED before board ever sees it, so a backticked path runs as command substitution and its output replaces it — the comment posts, exit 0, "commented <slug>" prints, and the sentence silently lost its subject. `$(...)`, `!`, and unescaped `$VAR` fail the same way. `--stdin` (scripts/board `cmd_comment`) takes the body verbatim with no interpolation. Related trap: `board comment <slug> "@/tmp/file"` posts the literal 13-character string, never the file's content — only a pipe into `--stdin` reads a file. VERIFY BY READ-BACK, and do it BEFORE reporting the comment as posted: the failure mode here is silent content loss on a successful-looking write, so an unread post is an unverified one.
 
   Bold marker (`**[PHASE 2 DONE]**`, `**[BLOCKER]**`, `**[INCIDENT]**`) plus verification-ready facts: exact command, count, commit SHA, artifact path. "Tests pass" is not a claim; "26 passed, 0 failed, commit 6fa3b0e" is. The orchestrator re-runs your claims, so hand it the re-run.
 - Split evidence into passed / failed / not-run in every milestone and in the final summary. Never report a phase DONE while a not-run check hides a gap.
