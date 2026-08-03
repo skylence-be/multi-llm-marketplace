@@ -1,6 +1,6 @@
 ---
 name: herdr-setup
-description: 'One-shot playbook to bootstrap a fresh macOS box from "herdr installed" to "org-ready": preflight, org-waker wiring, optional ActivityWatch context (aw-context install + category sync), board bootstrap, ecosystem plugin picks, and an end-to-end verification checklist. Invoke when the operator says "set up herdr for the org".'
+description: 'One-shot playbook to bootstrap a fresh macOS box from "herdr installed" to "org-ready": preflight, org-relay message-bus wiring (daemon + claude MCP connection), legacy org-waker wiring, optional ActivityWatch context (aw-context install + category sync), board bootstrap, ecosystem plugin picks, and an end-to-end verification checklist. Invoke when the operator says "set up herdr for the org".'
 ---
 
 # Herdr org bootstrap (one-shot)
@@ -25,7 +25,40 @@ command -v gh && gh --version
 ```
 `jq` is required by `dispatch-worker` (parses Herdr JSON for pane splits, agent status, and the summary payload) and by the org-waker plugin script itself (`herdr-plugins/org-waker/waker`, plus its test suites). `board` and `waker-ctl` do not call jq. `gh` opens and inspects PRs (workers open, never merge; L14). Either missing: install it (`brew install jq gh` on macOS) before continuing; nothing downstream degrades gracefully without them.
 
-## S2 Org-waker wiring
+## S2 Org-relay wiring (the message bus — do this FIRST of the two)
+
+The org-relay is the org's message path (relay doctrine, 2026-08-03): a durable
+SQLite queue + long-poll MCP server on `127.0.0.1:7431`, supervised by launchd.
+The waker in S2b remains only as legacy/crash tooling for pre-relay lanes.
+
+Pick ONE, matching the box:
+
+**Dev box** (repo checked out): `herdr plugin link <abs-path-to-repo>/herdr-plugins/org-relay`
+**Consumer box:** `herdr plugin install skylence-be/multi-llm-marketplace/herdr-plugins/org-relay --yes`
+
+Then daemonize and wire the client, from the installed plugin dir (`herdr plugin list` prints it; `relay-ctl` needs `cargo` on PATH for the first build):
+
+```bash
+sh <plugin-dir>/relay-ctl install-daemon   # launchd: RunAtLoad + KeepAlive, box-wide db
+claude mcp add --scope user --transport http relay http://127.0.0.1:7431/mcp
+```
+
+Verify all four, in order — each proves a different layer:
+
+```bash
+launchctl print gui/$(id -u)/com.skylence.org-relay | head -3   # supervised, not an orphan
+curl -s http://127.0.0.1:7431/health                            # server answers: ok
+claude mcp list | grep relay                                    # client handshake: ✔ Connected
+sh <plugin-dir>/relay-ctl status                                # relay_status shows the box-wide db path
+```
+
+KeepAlive proof (once per box, worth the 10 seconds): `kill -9 $(lsof -ti tcp:7431)`,
+wait ~4s, re-run the health curl. A daemon comes back; an orphan does not.
+The db is box-wide (`~/.config/herdr/org-relay/relay.db`) BY DESIGN — one
+server serves every org on the box, which is what makes peer-orchestrator
+relay messages deliverable; do not point it at a per-org path.
+
+## S2b Org-waker wiring (legacy: crash-net for pre-relay lanes only)
 
 Pick ONE, matching the box:
 
@@ -195,7 +228,15 @@ Install syntax for any of the above: `herdr plugin install <owner>/<repo>` (`--r
 
 ## S5 Verification checklist (end-to-end)
 
-Prove the wake path actually works before calling the box org-ready. Dispatch a throwaway probe with `--wake-target` and an explicit `--prompt` (do not pass `--todo` for a nonexistent slug: the default pointer asks for `board get <slug>`, board side-effects fail, and the probe dead-ends):
+Prove the RELAY path first — it is the org's message bus:
+```bash
+curl -s -X POST http://127.0.0.1:7431/mcp -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay_send","arguments":{"sender":"probe","to":"orchestrator","kind":"other","body":"SETUP_PROBE"}}}'
+# then from any claude session with the relay wired: relay_inbox(agent=orchestrator)
+# must list SETUP_PROBE; relay_consume it. Send -> inbox -> consume round-trip = bus OK.
+```
+
+Then, ONLY if this box still runs pre-relay lanes, prove the legacy wake path. Dispatch a throwaway probe with `--wake-target` and an explicit `--prompt` (do not pass `--todo` for a nonexistent slug: the default pointer asks for `board get <slug>`, board side-effects fail, and the probe dead-ends):
 ```bash
 dispatch-worker --name probe --wake-target orchestrator \
   --prompt $'Reply with the single word PROBE_OK, then idle. Do not edit files.' \
