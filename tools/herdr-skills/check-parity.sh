@@ -90,6 +90,8 @@ both orchestrator \
   "ACCEPT-PENDING" \
   "NO WILDCARD BULK ACTIONS" \
   "RULINGS CITE THEIR SOURCE LINE" \
+  "TRIAGE FIRST, LOAD LATE" \
+  "TRIAGE BLOCK" \
   "reason too much"
 both herdr-worker \
   "contract, not a menu" \
