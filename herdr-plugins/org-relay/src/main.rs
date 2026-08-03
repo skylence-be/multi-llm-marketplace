@@ -208,6 +208,18 @@ fn call_tool(name: &str, args: &Value) -> Result<Value, String> {
 
 fn tool_defs() -> Value {
     let s = |d: &str| json!({"type": "string", "description": d});
+    // outputSchema (SEP-2106) mirrors what call_tool actually returns per
+    // tool; results also arrive as structuredContent so consumers never
+    // string-parse the text block.
+    let msg_schema = json!({"type": "object", "properties": {
+        "id": {"type": "integer"}, "ts": {"type": "string"},
+        "sender": {"type": "string"}, "recipient": {"type": "string"},
+        "lane": {"type": ["string", "null"]}, "kind": {"type": "string"},
+        "body": {"type": "string"}, "consumed_at": {"type": ["string", "null"]}}});
+    let inbox_out = json!({"type": "object", "properties": {
+        "agent": {"type": "string"}, "count": {"type": "integer"},
+        "messages": {"type": "array", "items": msg_schema},
+        "timed_out": {"type": "boolean"}, "note": {"type": "string"}}});
     json!([
         {"name": "relay_send",
          "description": "Queue a durable message for another org agent (replaces doorbell/ring). Delivery = the recipient's next relay_await or relay_inbox; nothing is typed into anyone's composer.",
@@ -216,29 +228,50 @@ fn tool_defs() -> Value {
              "to": s("recipient agent name (e.g. orchestrator)"),
              "lane": s("optional lane/todo slug for context"),
              "kind": s("doorbell | ring | blocker | incident | peer | operator | other"),
-             "body": s("the message; stored verbatim, no shell interpolation hazards")}}},
+             "body": s("the message; stored verbatim, no shell interpolation hazards")}},
+         "outputSchema": {"type": "object", "properties": {
+             "id": {"type": "integer"}, "queued_for": {"type": "string"}}}},
         {"name": "relay_inbox",
          "description": "List messages queued for an agent (unconsumed only unless include_consumed).",
          "inputSchema": {"type": "object", "required": ["agent"], "properties": {
              "agent": s("agent name"),
-             "include_consumed": {"type": "boolean", "description": "default false"}}}},
+             "include_consumed": {"type": "boolean", "description": "default false"}}},
+         "outputSchema": inbox_out},
         {"name": "relay_consume",
          "description": "Mark handled message ids consumed. Explicit on purpose: a crash between reading and acting loses nothing.",
          "inputSchema": {"type": "object", "required": ["agent", "ids"], "properties": {
              "agent": s("agent name"),
-             "ids": {"type": "array", "items": {"type": "integer"}, "description": "message ids from inbox/await"}}}},
+             "ids": {"type": "array", "items": {"type": "integer"}, "description": "message ids from inbox/await"}}},
+         "outputSchema": {"type": "object", "properties": {
+             "consumed": {"type": "integer"}, "of": {"type": "integer"}}}},
         {"name": "relay_await",
          "description": "Block until a message arrives for agent (or timeout_s, default 600, max 3600), then return the unconsumed inbox. Event-driven waiting INSIDE a turn: no idle session, no composer, no ring.",
          "inputSchema": {"type": "object", "required": ["agent"], "properties": {
              "agent": s("agent name"),
-             "timeout_s": {"type": "integer", "description": "1..3600, default 600"}}}},
+             "timeout_s": {"type": "integer", "description": "1..3600, default 600"}}},
+         "outputSchema": inbox_out},
         {"name": "relay_status",
          "description": "Unconsumed message counts per recipient, plus the db path.",
-         "inputSchema": {"type": "object", "properties": {}}}
+         "inputSchema": {"type": "object", "properties": {}},
+         "outputSchema": {"type": "object", "properties": {
+             "db": {"type": "string"},
+             "queues": {"type": "array", "items": {"type": "object", "properties": {
+                 "recipient": {"type": "string"}, "unconsumed": {"type": "integer"}}}}}}}
     ])
 }
 
-fn rpc_result(id: &Value, result: Value) -> Value {
+fn server_info() -> Value {
+    json!({"name": "org-relay", "version": env!("CARGO_PKG_VERSION")})
+}
+
+/// Wrap a result body per 2026-07-28: required resultType plus serverInfo in
+/// _meta. Harmless extras for classic-handshake clients.
+fn rpc_result(id: &Value, mut result: Value) -> Value {
+    if let Some(obj) = result.as_object_mut() {
+        obj.entry("resultType").or_insert(json!("complete"));
+        obj.entry("_meta")
+            .or_insert(json!({"io.modelcontextprotocol/serverInfo": server_info()}));
+    }
     json!({"jsonrpc": "2.0", "id": id, "result": result})
 }
 
@@ -263,17 +296,37 @@ fn handle_rpc(msg: &Value) -> Option<Value> {
             rpc_result(&id, json!({
                 "protocolVersion": requested,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "org-relay", "version": env!("CARGO_PKG_VERSION")}
+                "serverInfo": server_info()
             }))
         }
+        // 2026-07-28: servers MUST implement server/discover (stateless
+        // version selection / capability probe; SEP-2575).
+        "server/discover" => rpc_result(&id, json!({
+            "protocolVersions": ["2026-07-28", "2025-06-18", "2025-03-26"],
+            "capabilities": {"tools": {}},
+            "serverInfo": server_info()
+        })),
+        // Kept for pre-2026 clients; removed from the new core but harmless.
         "ping" => rpc_result(&id, json!({})),
-        "tools/list" => rpc_result(&id, json!({"tools": tool_defs()})),
+        // CacheableResult (SEP-2549): the tool set is static for a server
+        // build, so advertise a long freshness hint; private — this is a
+        // loopback bus, shared caches have no business with it. Order is
+        // deterministic (a literal array) per the prompt-cache guidance.
+        "tools/list" => rpc_result(&id, json!({
+            "tools": tool_defs(),
+            "ttlMs": 3_600_000,
+            "cacheScope": "private"
+        })),
         "tools/call" => {
             let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
             match call_tool(name, &args) {
+                // structuredContent (SEP-2106): the JSON payload itself, so
+                // agent consumers stop string-parsing the text block. Text
+                // stays for clients that only render content.
                 Ok(v) => rpc_result(&id, json!({
                     "content": [{"type": "text", "text": v.to_string()}],
+                    "structuredContent": v,
                     "isError": false
                 })),
                 Err(e) => rpc_result(&id, json!({
@@ -324,6 +377,13 @@ fn main() {
             }
             match method.as_str() {
                 "POST" => {
+                    // SEP-2243 routing header, captured before the body read
+                    // consumes the request.
+                    let hdr_method: Option<String> = request
+                        .headers()
+                        .iter()
+                        .find(|h| h.field.equiv("Mcp-Method"))
+                        .map(|h| h.value.as_str().to_string());
                     let mut body = String::new();
                     let mut req = request;
                     {
@@ -339,6 +399,16 @@ fn main() {
                             return respond(req, 200, out.to_string(), "application/json");
                         }
                     };
+                    // When the routing header is present it must agree with
+                    // the body; -32020 = HeaderMismatchError (2026-07-28).
+                    if let Some(hm) = hdr_method.as_deref() {
+                        let bm = parsed.get("method").and_then(|m| m.as_str()).unwrap_or("");
+                        if !hm.is_empty() && !bm.is_empty() && hm != bm {
+                            let id = parsed.get("id").cloned().unwrap_or(Value::Null);
+                            let out = rpc_error(&id, -32020, &format!("Mcp-Method header {hm:?} does not match body method {bm:?}"));
+                            return respond(req, 200, out.to_string(), "application/json");
+                        }
+                    }
                     match handle_rpc(&parsed) {
                         Some(out) => respond(req, 200, out.to_string(), "application/json"),
                         None => respond(req, 202, String::new(), "application/json"),
