@@ -40,8 +40,19 @@ Then daemonize and wire the client, from the installed plugin dir (`herdr plugin
 
 ```bash
 sh <plugin-dir>/relay-ctl install-daemon   # launchd: RunAtLoad + KeepAlive, box-wide db
-claude mcp add --scope user --transport http relay http://127.0.0.1:7431/mcp
 ```
+
+The CLIENT connection needs no manual step on a box running the
+herdr-agent-org-claude Claude plugin: the plugin ships `.mcp.json`
+(`relay -> http://127.0.0.1:7431/mcp`, same one-file pattern as
+skyline-claude), so every session surfaces the tools as
+`plugin:herdr-agent-org-claude:relay` automatically after a plugin
+reload. Manual wiring is ONLY for a box using the relay without that
+plugin: `claude mcp add --scope user --transport http relay
+http://127.0.0.1:7431/mcp` — and if a box has both, remove the
+user-scope duplicate (`claude mcp remove relay`) so the tool list
+carries one copy. Grok workers wire it through their own runtime's MCP
+config (no `.mcp.json` convention on the grok twins).
 
 Verify all four, in order — each proves a different layer:
 
