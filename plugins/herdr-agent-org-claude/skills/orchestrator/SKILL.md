@@ -64,23 +64,27 @@ Also: `herdr integration install claude` installs a session-identity hook for pa
 
 ### The loop (event-driven, zero cadence timers)
 
-1. **ORIENT** (first beat of any fresh or resumed session, before board work): open the skyline guide and the skybox guide and run one `date -u` in a single batched turn, so no later call bounces off a closed gate mid-flight. Then ANCHOR: if this skill's literal text is not in context (post-compaction, post-resume), re-invoke it first. Then one unscoped `skyline_lore_recall` (task words plus environment and preferences). Then:
+1. **ORIENT — TRIAGE FIRST, LOAD LATE.** The first beat answers exactly one question: *is there work?* Everything else is preparation for work and is paid for ONLY once the answer is yes. Run the TRIAGE BLOCK below as ONE batched call. If it comes back empty — no todo needing action, no live agent, no relay message, and no task in the invocation — go straight to standby per NOTHING TO DO IS NOT A QUESTION: skip the guides, skip skybox, skip `lore_recall`, skip the advisor, do not identify yourself, write nothing. A fresh org on an empty board is a ~15-second beat, not a five-minute one.
+   MEASURED, and the reason this clause exists (2026-08-03, fresh `orch-todo-app` on an empty board): a full guides-plus-lore-plus-skybox-plus-advisor ORIENT ran **5m13s / 12.2k tokens / ~$2** to establish that nothing needed doing. Every one of those loads was preparation for work that did not exist. Preparation is not free and it is not neutral: it is the single most repeated beat in the org.
+   **PAY-AS-YOU-GO, when triage says there IS work** — load only what the beat actually needs, at the moment it needs it: the skyline guide before your first edit-class call; the skybox guide before your first `impact`; `skyline_lore_recall` (unscoped, task words) before re-deriving any "why is it this way / did we already decide X" question, which a standby beat never asks; the advisor before committing to an APPROACH, never to confirm an empty board. ANCHOR still comes first when this skill's literal text is not in context (post-compaction, post-resume): re-invoke it before anything else, because conduct is what compaction drops.
+   IDENTIFY YOURSELF (L18) as soon as triage says work exists — and if a prior beat already named you (`herdr agent list` shows your name), that is done; do not re-run it.
+
+   **TRIAGE BLOCK** (one batched call; `--env` passthrough per the routed-shell gotcha below):
 
    ```bash
    test "${HERDR_ENV:-}" = 1
    test -n "${HERDR_ORG_ROOT:-}"   # exported in the PANE SHELL before claude started; unset means STOP and run Board bootstrap, never improvise
-   board list
-   herdr agent list
-   herdr pane list --workspace "$HERDR_WORKSPACE_ID"
-   herdr session list
-   board pad get inbox
-   relay-ctl status 2>/dev/null || true   # org-relay up? (herdr [[startup]] keeps it; start if down)
-   # transition only: waker-ctl list / drain if the org-waker is still registered on old lanes
+   board list                      # the decisive read: any lane needing action?
+   herdr agent list                # live agents = lanes in flight
    ```
+
+   Plus ONE `relay_inbox(agent=<your-agent-name>)` MCP call for queued messages. That is the whole triage: four cheap reads and one tool call.
+   Empty ⇒ standby, silently, now.
+   Non-empty ⇒ THEN widen as the beat requires: `date -u`, `board pad get inbox`, `herdr pane list`, `herdr session list` (peers), `relay-ctl status` when the relay looks down, and the transitional `waker-ctl list` / `drain` only while pre-relay lanes still exist.
 
    The block above is a plain env check, and plain env checks are unreliable regardless of which tool runs them: a skyline-routed shell call (`skyline_run`, `plugin:skyline-claude:skyline`'s `run`) executes inside the skyline daemon's own detached process and reports `HERDR_ENV`/`HERDR_ORG_ROOT`/`PATH` unset even when your pane genuinely has them set, and on a box where a hook forces every shell call through that routed path (skyline-enforce or similar), the native Bash tool is not an escape hatch — it is blocked outright, so "just use Bash instead" is not always available. The canonical check sidesteps this entirely and works through ANY tool, native or routed, hook-forced or not: `ps eww -p <pid>` reads the TARGET pid's own kernel-level environment block, not the calling shell's — so it is correct no matter what executed the `ps` command itself. Always run: `for p in $(pgrep -f claude); do ps eww -p $p | tr ' ' '\n' | grep -E '^HERDR_'; done`, matched to your pane by cwd against `herdr agent list` (skylore mark 190). Treat a bare `test "${HERDR_ENV:-}" = 1` result as evidence only when you know it ran outside any daemon-routed shell; otherwise the ps-eww reading is the one to trust. Measured live 2026-08-01: two of six freshly-launched orchestrator sessions ran the bare check through a routed tool, concluded "not Herdr-managed," and stopped; a later batch on a hook-enforced box saw the same tension and correctly refused to trust the routed answer, but paused instead of falling back to ps-eww — the fallback must be the default move, not a last resort someone has to think of.
 
-   Then IDENTIFY YOURSELF (L18), before dispatching anything:
+   IDENTIFY YOURSELF (L18) once triage says work exists, before dispatching anything (skip entirely on a standby beat — an unnamed pane that dispatches nothing misleads nobody):
 
    ```bash
    herdr agent rename "$HERDR_PANE_ID" orchestrator   # orch-<feature> when peers share the box

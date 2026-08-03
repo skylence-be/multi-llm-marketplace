@@ -1,6 +1,6 @@
 {
   "name": "herdr-agent-org-claude",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Skylence agent-org on the Herdr substrate, for Claude Code. Seven role skills (orchestrator, herdr-worker, replacer, org-audit, architect, fleet, herdr control surface) + a filesystem board CLI, so no Solo MCP is needed: workers are real Herdr panes started with `herdr agent start`, steered with `herdr agent prompt`, and coordinated over the org-relay MCP bus (durable queue + in-turn relay_await; herdr-plugins/org-relay in this repo, connection shipped via the plugin .mcp.json) with one-shot `herdr agent wait` as fallback and the org-waker demoted to legacy crash-net. The fleet skill scales the same model one level up: an orchestrator of orchestrators that spawns per-repo orgs from an execution plan (scripts/fleet-ctl), missions them, and retires them with empty-board-only cleanup. Three session-discipline hooks (compaction conduct refresh, anti-idle fingerprint sweep, stop-gate) keep long sessions honest.",
   "author": {
     "name": "Skylence",

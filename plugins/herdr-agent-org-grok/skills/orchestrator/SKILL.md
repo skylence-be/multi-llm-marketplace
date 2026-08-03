@@ -50,22 +50,23 @@ Procedures, defaults, and templates, binding exactly as the LAWS are (L0): where
 
 ### The loop
 
-1. **ORIENT** (first beat of any fresh or resumed session): confirm `HERDR_ENV=1`; open skyline/skybox guides if needed; `date -u`. Re-invoke this skill after compaction. Unscoped `skyline_lore_recall`. Then:
+1. **ORIENT — TRIAGE FIRST, LOAD LATE.** First beat answers ONE question: *is there work?* Everything else is preparation for work, paid for only once the answer is yes. Run the TRIAGE BLOCK as ONE batched call; empty (no todo needing action, no live agent, no relay message, no task in the invocation) ⇒ standby per NOTHING TO DO IS NOT A QUESTION: skip guides, skip skybox, skip `lore_recall`, skip the advisor, skip self-identification, write nothing. Empty board = ~15-second beat.
+   MEASURED (2026-08-03, fresh orchestrator, empty board): the old guides+lore+skybox+advisor-first ORIENT burned **5m13s / 12.2k tokens / ~$2** to conclude nothing needed doing. It is the most repeated beat in the org; preparation is neither free nor neutral.
+   **PAY-AS-YOU-GO when there IS work:** skyline guide before your first edit-class call; skybox guide before your first `impact`; unscoped `skyline_lore_recall` before re-deriving any "why is it this way / did we decide X" question (a standby beat never asks one); advisor before committing to an APPROACH, never to confirm an empty board. ANCHOR still first when this skill's text is not in context (post-compaction/resume) — conduct is what compaction drops.
+
+   **TRIAGE BLOCK** (one batched call, `--env` passthrough per the routed-shell gotcha below):
 
    ```bash
    test "${HERDR_ENV:-}" = 1 && test -n "${HERDR_ORG_ROOT:-}"   # both exported in the pane shell BEFORE grok started; unset ORG_ROOT means STOP and bootstrap
-   board list
-   herdr agent list
-   herdr pane list --workspace "$HERDR_WORKSPACE_ID"
-   herdr session list   # peer orgs live next door; see Peer orchestrators
-   board pad get inbox
-   relay-ctl status 2>/dev/null || true   # org-relay up? herdr [[startup]] keeps it
-   # transition only: waker-ctl list / drain while old lanes stay waker-registered
+   board list                                                   # decisive: any lane needing action?
+   herdr agent list                                             # live agents = lanes in flight
    ```
+
+   Plus ONE `relay_inbox(agent=<your-agent-name>)`. Empty ⇒ standby, silently, now. Non-empty ⇒ widen as the beat needs: `date -u`, `board pad get inbox`, `herdr pane list`, `herdr session list` (peers), `relay-ctl status` if the relay looks down, transitional `waker-ctl list`/`drain` only while pre-relay lanes exist.
 
    The block above is a plain env check, and plain env checks are unreliable regardless of which tool runs them: a skyline-routed shell call (`skyline_run`, `plugin:skyline-claude:skyline`'s `run`) executes inside the skyline daemon's own detached process and reports `HERDR_ENV`/`HERDR_ORG_ROOT`/`PATH` unset even when your pane genuinely has them set, and on a box where a hook forces every shell call through that routed path (skyline-enforce or similar), the native shell tool is not an escape hatch — it is blocked outright, so "just use the native tool instead" is not always available. The canonical check sidesteps this entirely and works through ANY tool, native or routed, hook-forced or not: `ps eww -p <pid>` reads the TARGET pid's own kernel-level environment block, not the calling shell's — so it is correct no matter what executed the `ps` command itself. Always run: `for p in $(pgrep -f grok); do ps eww -p $p | tr ' ' '\n' | grep -E '^HERDR_'; done`, matched to your pane by cwd against `herdr agent list` (skylore mark 190). Treat a bare `test "${HERDR_ENV:-}" = 1` result as evidence only when you know it ran outside any daemon-routed shell; otherwise the ps-eww reading is the one to trust. Measured live 2026-08-01: two of six freshly-launched orchestrator sessions ran the bare check through a routed tool, concluded "not Herdr-managed," and stopped; a later batch on a hook-enforced box saw the same tension and correctly refused to trust the routed answer, but paused instead of falling back to ps-eww — the fallback must be the default move, not a last resort someone has to think of.
 
-   Then IDENTIFY YOURSELF (L18), before dispatching anything:
+   IDENTIFY YOURSELF (L18) once triage says work exists, before dispatching (skip on a standby beat; already-named per `agent list` = done, do not re-run):
 
    ```bash
    herdr agent rename "$HERDR_PANE_ID" orchestrator   # orch-<feature> when peers share the box
