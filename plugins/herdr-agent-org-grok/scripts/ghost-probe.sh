@@ -22,10 +22,17 @@
 #       Step 1, no interaction, and only meaningful when the raw source strips a
 #       ghost's styling to an empty prompt line (Solo does; Herdr does not).
 #       Verdicts: EMPTY | GHOST | TYPED | AMBIGUOUS.
-#   probe --before FILE --after FILE
-#       Deterministic. before/after are rendered tails around sending ONE space:
-#       a ghost VANISHES instantly, real typing is RETAINED. Probe ONCE, never
-#       in a loop. Verdicts: GHOST | TYPED | AMBIGUOUS.
+#   probe --before FILE --after FILE [--sent]
+#       Deterministic ONLY when a probe space was actually delivered between
+#       the two tails: a ghost VANISHES instantly, real typing is RETAINED
+#       (trailing whitespace is trimmed, so retained reads as unchanged).
+#       --sent is the caller's attestation that the space really went in via
+#       a verb this build exposes (marketplace#88: some herdr builds have no
+#       pane send-text/send-key; `herdr agent send-keys <target> space` where
+#       supported, verified once per box on a scratch pane). WITHOUT --sent an
+#       unchanged line is indistinguishable from "no probe ever happened" and
+#       classifies UNCLASSIFIED, never TYPED. Probe ONCE, never in a loop.
+#       Verdicts: GHOST | TYPED | AMBIGUOUS | UNCLASSIFIED.
 #   live --t0 FILE --t1 FILE
 #       Guard: two rendered tails moments apart. A prompt line that changed
 #       between them is LIVE typing: do not probe, do not send.
@@ -40,7 +47,8 @@
 #
 # Exit codes: 0 = safe to send (EMPTY, GHOST, STABLE)
 #             1 = DO NOT SEND (TYPED, LIVE), route to the durable channel
-#             2 = AMBIGUOUS or usage error, gather better tails, do not send
+#             2 = AMBIGUOUS, UNCLASSIFIED, or usage error: gather better tails
+#                 (or deliver a real probe and pass --sent), do not send
 set -u
 
 PROMPT="❯"
@@ -65,12 +73,13 @@ prompt_text() {
 
 [ "$#" -ge 1 ] || usage
 cmd=$1; shift
-A=""; B=""
+A=""; B=""; SENT=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --rendered|--before|--t0) A=$2; shift 2 ;;
     --raw|--after|--t1)       B=$2; shift 2 ;;
     --prompt-char)            PROMPT=$2; shift 2 ;;
+    --sent)                   SENT=1; shift ;;
     -h|--help)                usage ;;
     *) echo "ghost-probe: unknown argument $1" >&2; exit 2 ;;
   esac
@@ -94,7 +103,11 @@ case "$cmd" in
     [ -z "$a" ] && { echo AMBIGUOUS; exit 2; }
     [ -z "$b" ] && { echo GHOST; exit 0; }
     case "$b" in
-      "$a"*) echo TYPED; exit 1 ;;
+      "$a"*)
+        if [ "$SENT" -eq 1 ]; then echo TYPED; exit 1; fi
+        echo "ghost-probe: before/after prompt lines are identical and --sent was not given: with no delivered probe this is an artifact of two plain reads, not evidence of typing (marketplace#88)" >&2
+        echo UNCLASSIFIED; exit 2
+        ;;
     esac
     echo AMBIGUOUS; exit 2
     ;;

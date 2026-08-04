@@ -47,7 +47,14 @@ META="$ROOT/meta"
 
 need_root() {
   if [ ! -d "$TODOS" ]; then
-    echo "board: no board at $ROOT (run: board init)" >&2
+    if [ -z "${HERDR_ORG_ROOT:-}" ] && [ "$ROOT" = "${HOME}/.herdr-org/default" ]; then
+      echo "board: HERDR_ORG_ROOT is UNSET and the fallback $ROOT does not exist." >&2
+      echo "board: almost always a missing env in THIS pane, not an uninitialized org (marketplace#125)." >&2
+      echo "board: find your org:  ls ~/.herdr-org/   or   grep -rl '<todo-slug>' ~/.herdr-org/*/todos/" >&2
+      echo "board: then export HERDR_ORG_ROOT=~/.herdr-org/<org> (pane shell, before the agent starts) or pass it per call." >&2
+    else
+      echo "board: no board at $ROOT (run: board init)" >&2
+    fi
     exit 1
   fi
 }

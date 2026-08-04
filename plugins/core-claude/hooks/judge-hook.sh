@@ -11,6 +11,10 @@
 #   class=deny     → exit 2 with reason on stdout (Claude Code blocks the call)
 #   class=allow    → exit 0 (allowlist patterns that override later rules)
 #   class=escalate → spawn `claude -p` with judge_prompt; LLM returns ALLOW/BLOCK
+#   class=gated    → run a deterministic FACT probe (argv array, ~5s timeout);
+#                    allow only when its output satisfies allow_when; every
+#                    non-answer (error, timeout, empty capture, unknown
+#                    allow_when) DENIES — gated rules fail closed (#47)
 #
 # SKYLINE-AWARE TOOL NORMALIZATION: rules keyed on the classic tool names also
 # bind their skyline MCP equivalents, so routing through skyline cannot bypass
@@ -587,7 +591,7 @@ RULES_MTIME=$(stat -f %m "$BASE_RULES" 2>/dev/null || stat -c %Y "$BASE_RULES" 2
 # The overlay is hashed into the key, so editing ~/.claude/judge-rules.json
 # invalidates the cache exactly like touching the shipped file does.
 OVERLAY_SIG=$(printf '%s' "$OVERLAY_JSON" | cksum 2>/dev/null | awk '{print $1 "-" $2}')
-HDR="v3 $RULES_MTIME $OVERLAY_SIG $BASE_RULES"
+HDR="v4 $RULES_MTIME $OVERLAY_SIG $BASE_RULES"
 RULES_TSV=""
 if [ -f "$CACHE_FILE" ] && [ "$(head -n 1 "$CACHE_FILE" 2>/dev/null)" = "$HDR" ]; then
   RULES_TSV=$(tail -n +2 "$CACHE_FILE" 2>/dev/null)
@@ -614,9 +618,11 @@ if [ -z "$RULES_TSV" ]; then
                  or ($dis | index($r._category)) != null) | not)
         | if ($r.id != null and ($ovr | has($r.id))) then $r + $ovr[$r.id] else $r end ] as $kept
     | (($ov.rules // []) + $kept)[]
-    | [(.tool // "*"), (.class // "allow"),
+    | [(.id // ""), (.tool // "*"), (.class // "allow"),
       ((.pattern // "") | @base64), ((.reason // "") | @base64),
-      ((.judge_prompt // "") | @base64), (.match // "raw")] | join("|")' \
+      ((.judge_prompt // "") | @base64), (.match // "raw"),
+      ((.probe // []) | tojson | @base64), (.allow_when // ""),
+      ((.deny_reason // "") | @base64)] | join("|")' \
     "$BASE_RULES" 2>/dev/null) || exit 0
   [ -n "$RULES_TSV" ] || exit 0
   { printf '%s\n' "$HDR"; printf '%s\n' "$RULES_TSV"; } > "$CACHE_FILE.tmp.$$" 2>/dev/null \
@@ -624,7 +630,7 @@ if [ -z "$RULES_TSV" ]; then
 fi
 
 # Evaluate in declaration order; first match wins.
-while IFS='|' read -r R_TOOL R_CLASS R_PAT_B64 R_REASON_B64 R_PROMPT_B64 R_MATCH; do
+while IFS='|' read -r R_ID R_TOOL R_CLASS R_PAT_B64 R_REASON_B64 R_PROMPT_B64 R_MATCH R_PROBE_B64 R_ALLOW_WHEN R_DENYREASON_B64; do
   [ -n "$R_TOOL" ] || continue
   if [ "$R_TOOL" != "*" ] && [ "$R_TOOL" != "$RAW_TOOL" ] && [ "$R_TOOL" != "$CLASS_TOOL" ]; then
     continue
@@ -680,6 +686,85 @@ while IFS='|' read -r R_TOOL R_CLASS R_PAT_B64 R_REASON_B64 R_PROMPT_B64 R_MATCH
       ;;
     allow)
       exit 0
+      ;;
+    gated)
+      # FACT PROBE (#47): escalate to a fact, never a second LLM. Fail CLOSED
+      # on every non-answer: misconfigured probe, empty referenced capture,
+      # spawn failure, timeout, unknown allow_when, unsatisfied output. Probes
+      # are argv arrays executed directly (list-form open, no shell), and $N
+      # substitutes into ARGUMENTS only, never the program name, so the rules
+      # file cannot be turned into command injection.
+      R_DENY=$(b64d "$R_DENYREASON_B64"); [ -n "$R_DENY" ] || R_DENY="gated rule denied"
+      PROBE_JSON=$(b64d "$R_PROBE_B64")
+      gate_deny() { echo "judge-hook: gated '${R_ID:-?}' denied: $1" >&2; exit 2; }
+      printf '%s' "$PROBE_JSON" | jq -e 'type=="array" and length>0 and all(.[]; type=="string")' >/dev/null 2>&1 \
+        || gate_deny "probe is not a non-empty argv array of strings (misconfigured rule fails closed)"
+      case "$(printf '%s' "$PROBE_JSON" | jq -r '.[0]')" in
+        *'$'[1-9]*) gate_deny "probe program name may not carry a \$N substitution" ;;
+      esac
+      # Captured groups from this rule's own pattern over the matched text.
+      CAPS=$(printf '%s' "$MATCH_TEXT" | perl -e '
+        my $re = $ARGV[0]; my $t = do { local $/; <STDIN> };
+        if ($t =~ /$re/) { print join("\x1f", map { defined $_ ? $_ : "" } ($1,$2,$3,$4,$5,$6,$7,$8,$9)); }
+      ' "$R_PATTERN" 2>/dev/null) || CAPS=""
+      CAPS_JSON=$(printf '%s' "$CAPS" | jq -Rs 'split("\u001f") + ["","","","","","","","",""] | .[0:9]' 2>/dev/null) || CAPS_JSON='["","","","","","","","",""]'
+      MISSING=$(printf '%s' "$PROBE_JSON" | jq -r --argjson caps "$CAPS_JSON" '
+        [ .[1:][] | scan("\\$[1-9]") ] | unique | map(.[1:] | tonumber)
+        | map(select($caps[. - 1] == "")) | length' 2>/dev/null) || MISSING=1
+      [ "$MISSING" = "0" ] || gate_deny "$R_DENY (a \$N the probe references captured nothing; refusing to probe blind)"
+      SUBSTITUTED=$(printf '%s' "$PROBE_JSON" | jq -c --argjson caps "$CAPS_JSON" '
+        def subst: reduce range(9; 0; -1) as $i (.; gsub("\\$\($i)"; $caps[$i-1]));
+        [.[0]] + (.[1:] | map(subst))' 2>/dev/null) || gate_deny "probe substitution failed"
+      R_DENY_SUB=$(printf '%s' "$R_DENY" | jq -Rr --argjson caps "$CAPS_JSON" '
+        reduce range(9; 0; -1) as $i (.; gsub("\\$\($i)"; $caps[$i-1]))' 2>/dev/null) || R_DENY_SUB="$R_DENY"
+      # Short hard timeout, and NOT the LLM timeout: a slow probe denies
+      # rather than hanging the tool call. perl alarms because macOS lacks
+      # GNU timeout; exit 124 = timeout, 125 = spawn failure.
+      PROBE_TIMEOUT="${JUDGE_PROBE_TIMEOUT:-5}"
+      PROBE_OUT=$(printf '%s' "$SUBSTITUTED" | jq -r '.[] | @base64' 2>/dev/null | perl -e '
+        use MIME::Base64 ();
+        my @argv = map { chomp; MIME::Base64::decode_base64($_) } <STDIN>;
+        $SIG{ALRM} = sub { exit 124 };
+        alarm $ARGV[0];
+        open(my $fh, "-|", @argv) or exit 125;
+        local $/; my $out = <$fh>; close($fh);
+        print $out;
+        exit(($? >> 8) & 0xff);
+      ' "$PROBE_TIMEOUT" 2>/dev/null)
+      PROBE_RC=$?
+      PROBE_TRIM=$(printf '%s' "$PROBE_OUT" | tr -d '[:space:]')
+      GATE_OK=0
+      GATE_NOTE=""
+      if [ "$PROBE_RC" -eq 124 ]; then
+        GATE_NOTE="probe timed out after ${PROBE_TIMEOUT}s"
+      elif [ "$PROBE_RC" -eq 125 ]; then
+        GATE_NOTE="probe failed to spawn"
+      else
+        case "$R_ALLOW_WHEN" in
+          nonzero)
+            if printf '%s' "$PROBE_TRIM" | grep -qE '^[0-9]+$' && [ "$PROBE_TRIM" -gt 0 ]; then GATE_OK=1; fi ;;
+          zero)
+            [ "$PROBE_TRIM" = "0" ] && GATE_OK=1 ;;
+          exit0)
+            [ "$PROBE_RC" -eq 0 ] && GATE_OK=1 ;;
+          nonempty)
+            [ -n "$PROBE_TRIM" ] && GATE_OK=1 ;;
+          *)
+            GATE_NOTE="unknown allow_when '${R_ALLOW_WHEN}'" ;;
+        esac
+        [ -n "$GATE_NOTE" ] || GATE_NOTE="rc=$PROBE_RC out=$(printf '%.60s' "$PROBE_TRIM")"
+      fi
+      # The hook writes the audit line, not the model: rule, probe argv,
+      # output, verdict. Accountability the judge cannot shade.
+      AUDIT_FILE="${JUDGE_AUDIT_FILE:-$HOME/.claude/judge-audit.jsonl}"
+      jq -nc --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg rule "${R_ID:-}" --arg tool "$RAW_TOOL" \
+        --argjson probe "$SUBSTITUTED" --arg rc "$PROBE_RC" \
+        --arg out "$(printf '%.200s' "$PROBE_OUT")" \
+        --arg verdict "$([ "$GATE_OK" -eq 1 ] && echo allow || echo deny)" --arg note "$GATE_NOTE" \
+        '{ts:$ts,rule:$rule,tool:$tool,probe:$probe,probe_rc:($rc|tonumber),probe_out:$out,verdict:$verdict,note:$note}' \
+        >> "$AUDIT_FILE" 2>/dev/null || true
+      [ "$GATE_OK" -eq 1 ] && exit 0
+      gate_deny "$R_DENY_SUB ($GATE_NOTE)"
       ;;
     escalate)
       R_PROMPT=$(b64d "$R_PROMPT_B64")
