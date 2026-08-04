@@ -93,6 +93,9 @@ both orchestrator \
   "TRIAGE FIRST, LOAD LATE" \
   "TRIAGE BLOCK" \
   "AWAIT CEILING" \
+  "THE NUDGE NET" \
+  "[RELAY-NUDGE]" \
+  "TURN-ENTRY BACKLOG CHECK" \
   "Re-measure any pre-dispatch estimate" \
   "reason too much"
 both herdr-worker \
@@ -101,6 +104,8 @@ both herdr-worker \
   "relay_send" \
   "relay_await" \
   "relay unavailable at close-out" \
+  "[RELAY-NUDGE]" \
+  "durable ENQUEUE" \
   "BODIES GO THROUGH A FILE" \
   "feature-loop-skill" \
   "fix ONLY the pasted findings"
