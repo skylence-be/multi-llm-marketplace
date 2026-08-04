@@ -1,7 +1,7 @@
 id = "skylence.org-relay"
 name = "Org Relay"
-version = "0.1.0"
-description = "Durable MCP message bus for the agent-org: SQLite queue + long-poll await over HTTP MCP. Replaces composer-paste doorbells and waker rings."
+version = "1.0.0"
+description = "Durable MCP message bus for the agent-org: SQLite queue + task-backed relay_await (MCP tasks / SEP-2663, harness auto-backgrounding for clients without it) over rmcp streamable HTTP, guide-gated messaging tools, nudge watchdog as last-resort net. Replaces composer-paste doorbells, waker rings, and the in-turn 50s re-arm loop."
 min_herdr_version = "0.7.4"
 platforms = ["macos", "linux"]
 

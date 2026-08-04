@@ -93,6 +93,8 @@ both orchestrator \
   "TRIAGE FIRST, LOAD LATE" \
   "TRIAGE BLOCK" \
   "AWAIT CEILING" \
+  "TASK-BACKED AWAIT" \
+  "guide-gate:" \
   "THE NUDGE NET" \
   "[RELAY-NUDGE]" \
   "TURN-ENTRY BACKLOG CHECK" \
@@ -103,6 +105,7 @@ both herdr-worker \
   "STAY RESIDENT" \
   "relay_send" \
   "relay_await" \
+  "guide-gate:" \
   "relay unavailable at close-out" \
   "[RELAY-NUDGE]" \
   "durable ENQUEUE" \

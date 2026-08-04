@@ -242,12 +242,16 @@ Install syntax for any of the above: `herdr plugin install <owner>/<repo>` (`--r
 
 ## S5 Verification checklist (end-to-end)
 
-Prove the RELAY path first — it is the org's message bus:
+Prove the RELAY path first — it is the org's message bus (1.0 speaks rmcp
+streamable HTTP with per-session handshakes, so a bare stateless curl to /mcp
+no longer works; use the plain mirrors and an in-session tool call):
 ```bash
-curl -s -X POST http://127.0.0.1:7431/mcp -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay_send","arguments":{"sender":"probe","to":"orchestrator","kind":"other","body":"SETUP_PROBE"}}}'
-# then from any claude session with the relay wired: relay_inbox(agent=orchestrator)
-# must list SETUP_PROBE; relay_consume it. Send -> inbox -> consume round-trip = bus OK.
+curl -s http://127.0.0.1:7431/health    # "ok" = daemon up
+curl -s http://127.0.0.1:7431/status    # queues + awaiting + nudge state, no handshake needed
+# from any claude session with the relay wired: relay_guide() once to open the
+# guide gate, then relay_send(sender=probe, to=orchestrator, kind=other,
+# body=SETUP_PROBE); relay_inbox(agent=orchestrator) must list SETUP_PROBE;
+# relay_consume it. Send -> inbox -> consume round-trip = bus OK.
 ```
 
 Then, ONLY if this box still runs pre-relay lanes, prove the legacy wake path. Dispatch a throwaway probe with `--wake-target` and an explicit `--prompt` (do not pass `--todo` for a nonexistent slug: the default pointer asks for `board get <slug>`, board side-effects fail, and the probe dead-ends):

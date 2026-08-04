@@ -92,8 +92,10 @@ EOF
   status)
     if alive; then
       echo "org-relay: serving on :$PORT"
-      curl -s -m 5 "http://127.0.0.1:$PORT/mcp" -X POST -H 'Content-Type: application/json' \
-        -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay_status","arguments":{}}}' 2>/dev/null
+      # 1.0: rmcp streamable HTTP needs an MCP handshake per session, so the
+      # CLI reads the plain GET /status mirror instead (same payload as the
+      # relay_status tool, never guide-gated).
+      curl -s -m 5 "http://127.0.0.1:$PORT/status" 2>/dev/null
       echo
     else
       echo "org-relay: not running on :$PORT"; exit 1
