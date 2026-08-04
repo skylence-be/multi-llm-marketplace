@@ -88,6 +88,14 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$NAME" ] || { echo "dispatch-worker: --name required" >&2; exit 2; }
+# herdr rejects an invalid agent name immediately with a clear error; catching
+# it before the pane split saves the 10-try retry loop that turned this
+# deterministic input error into a generic failure (marketplace#128).
+if [ "${#NAME}" -gt 32 ] || ! printf '%s' "$NAME" | LC_ALL=C grep -qE '^[a-z][a-z0-9_-]*$'; then
+  echo "dispatch-worker: invalid --name '$NAME' (${#NAME} chars): agent names match ^[a-z][a-z0-9_-]{0,31}$ (1-32 chars)." >&2
+  echo "dispatch-worker: too long? trim the SLUG and keep any i<issue-nr>- prefix (the issue number is what must survive, L18)." >&2
+  exit 2
+fi
 [ "${HERDR_ENV:-}" = "1" ] || {
   echo "dispatch-worker: HERDR_ENV!=1, run inside a Herdr-managed pane" >&2
   exit 1
@@ -189,7 +197,17 @@ if [ -n "$CWD" ]; then
 elif [ -n "${PWD:-}" ]; then
   set -- "$@" --cwd "$PWD"
 fi
-[ -n "${HERDR_ORG_ROOT:-}" ] && set -- "$@" --env "HERDR_ORG_ROOT=$HERDR_ORG_ROOT"
+# The worker's board writes silently fall back to ~/.herdr-org/default when
+# this is missing, which reads downstream as "board unavailable" and loses
+# milestones (marketplace#125): fail at spawn time instead. Skyline-routed
+# shells drop the pane env; measure yours once (ps eww -p <claude-pid> |
+# grep '^HERDR_') and pass it via the tool call's env parameter.
+if [ -n "${HERDR_ORG_ROOT:-}" ]; then
+  set -- "$@" --env "HERDR_ORG_ROOT=$HERDR_ORG_ROOT"
+else
+  echo "dispatch-worker: HERDR_ORG_ROOT is not set in this process; refusing to spawn a worker whose board writes would land in ~/.herdr-org/default (marketplace#125)." >&2
+  exit 1
+fi
 set -- "$@" --env "PATH=$PATH"
 split_json=$($HERDR "$@")
 pane_id=$(printf '%s\n' "$split_json" | jq -r '.result.pane.pane_id // empty')
@@ -203,15 +221,26 @@ pane_id=$(printf '%s\n' "$split_json" | jq -r '.result.pane.pane_id // empty')
 # (agent_pane_busy: "not an available shell"; hit live 2026-07-28). Retry with
 # a short backoff instead of racing the shell prompt.
 tries=0
-until { if [ -n "$EXTRA_ARGS" ]; then
-          # shellcheck disable=SC2086
-          $HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- $EXTRA_ARGS >/dev/null 2>&1
-        else
-          $HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" >/dev/null 2>&1
-        fi; }; do
+while :; do
+  if [ -n "$EXTRA_ARGS" ]; then
+    # shellcheck disable=SC2086
+    start_out=$($HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- $EXTRA_ARGS 2>&1) && break
+  else
+    start_out=$($HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" 2>&1) && break
+  fi
+  # Only the fresh-pane readiness race is worth retrying; every other failure
+  # is deterministic, and retrying it 10x buries the real error herdr already
+  # reported cleanly (marketplace#128).
+  case "$start_out" in
+    *agent_pane_busy*|*"not an available shell"*) ;;
+    *)
+      echo "dispatch-worker: agent start failed on pane $pane_id: $start_out" >&2
+      exit 1
+      ;;
+  esac
   tries=$((tries + 1))
   if [ "$tries" -ge 10 ]; then
-    echo "dispatch-worker: agent start failed after $tries tries on pane $pane_id" >&2
+    echo "dispatch-worker: agent start failed after $tries tries on pane $pane_id: $start_out" >&2
     exit 1
   fi
   sleep 1
