@@ -83,9 +83,13 @@ HERDR="${HERDR_BIN_PATH:-herdr}"
 command -v jq >/dev/null 2>&1 || { echo jq-missing; exit 0; }
 command -v "$HERDR" >/dev/null 2>&1 || { echo herdr-missing; exit 0; }
 
-read_tail() { "$HERDR" agent read "$NAME" --source visible --lines 25 --format text 2>/dev/null; }
 agent_status() { "$HERDR" agent get "$NAME" 2>/dev/null | jq -r '.result.agent.agent_status // empty' 2>/dev/null; }
-
+# recent-unwrapped, NOT visible: the visible source hard-wraps the composer at
+# pane width, so a nudge longer than one visual line reads back as only its
+# first fragment, exact-match fails, and our own parked text classifies
+# foreign — held forever instead of recovered (measured live 2026-08-04 on the
+# very first production nudge: outcome held-foreign with our text parked).
+read_tail() { "$HERDR" agent read "$NAME" --source recent-unwrapped --lines 40 --format text 2>/dev/null; }
 row=$("$HERDR" agent list 2>/dev/null | jq -r --arg n "$NAME" '.result.agents[]? | select(.name==$n) | .pane_id + " " + .agent_status' 2>/dev/null | head -1)
 [ -n "$row" ] || { echo no-agent; exit 0; }
 PANE=${row%% *}
