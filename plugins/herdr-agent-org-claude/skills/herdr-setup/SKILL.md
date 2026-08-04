@@ -40,6 +40,9 @@ Then daemonize and wire the client, from the installed plugin dir (`herdr plugin
 
 ```bash
 sh <plugin-dir>/relay-ctl install-daemon   # launchd: RunAtLoad + KeepAlive, box-wide db
+# 0.5.0+: ALWAYS re-run install-daemon after upgrading the plugin — it bakes
+# PATH + HERDR_BIN_PATH into the plist, which the nudge watchdog's herdr
+# calls need (launchd's default PATH cannot find herdr).
 ```
 
 The CLIENT connection needs no manual step on a box running the

@@ -34,6 +34,10 @@ case "${1:-status}" in
   install-daemon)
     ensure_bin
     mkdir -p "$(dirname "$BOX_DB")" "$HOME/Library/LaunchAgents"
+    # The nudge watchdog shells out to herdr (via nudge-deliver), and launchd's
+    # default PATH does not contain the herdr install dir: bake the resolving
+    # PATH and an explicit HERDR_BIN_PATH into the plist at install time.
+    HERDR_RESOLVED=$(command -v "${HERDR_BIN_PATH:-herdr}" 2>/dev/null || echo herdr)
     cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -45,6 +49,8 @@ case "${1:-status}" in
   <key>EnvironmentVariables</key><dict>
     <key>ORG_RELAY_PORT</key><string>$PORT</string>
     <key>ORG_RELAY_DB</key><string>$BOX_DB</string>
+    <key>PATH</key><string>$PATH</string>
+    <key>HERDR_BIN_PATH</key><string>$HERDR_RESOLVED</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

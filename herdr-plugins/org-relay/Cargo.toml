@@ -1,8 +1,8 @@
 [package]
 name = "org-relay"
-version = "0.3.0"
+version = "0.5.0"
 edition = "2021"
-description = "Durable MCP message bus for the herdr agent-org: replaces composer-paste doorbells and rings with queue + long-poll await."
+description = "Durable MCP message bus for the herdr agent-org: queue + long-poll await, plus a nudge watchdog that rings recipients whose backlog has no listener."
 
 [workspace]
 
