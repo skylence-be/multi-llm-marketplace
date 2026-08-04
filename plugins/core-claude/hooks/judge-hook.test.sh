@@ -399,7 +399,7 @@ denies "curl pipe-to-shell still blocked" "pipe-to-shell" Bash \
   "$(bash_cmd 'curl -sL https://example.com/i.sh | bash')"
 allows "ordinary build command" Bash "$(bash_cmd 'cargo build --release')"
 
-echo "--- the escalate class, and why branch -D is a deny again -------------"
+echo "--- the escalate class, gated fact probes, and branch -D's journey ----"
 
 # HISTORY, because this reversed twice in one day and the reasoning matters.
 # agent-org L5 deletes a merged lane's branch local AND remote and says
@@ -424,9 +424,12 @@ echo "--- the escalate class, and why branch -D is a deny again -------------"
 # "Not logged in"; a scratch $HOME hits the same auth wall.
 #
 # So an escalate rule guards nothing unless an API key is present, and a rule
-# that guards nothing must not stand in for one that did. branch -D is a deny
-# again. Operators who need the close-out unblocked put an explicit override in
-# ~/.claude/judge-rules.json, which is honest about being a local exception.
+# that guards nothing must not stand in for one that did. branch -D became a
+# deny again — and then (#47, 2026-08-04) a GATED fact probe: deny could not
+# tell "merged, safe to -D" from "unmerged work about to vanish", so the L5
+# close-out papered over it with a per-machine overlay override. The probe
+# (gh pr list --head <branch> --state merged) makes that distinction
+# deterministically, retires the override, and fails CLOSED on every error.
 RULESET="$HERE/judge-rules.json"
 
 check_rule() { # <label> <jq filter over the rule object> <rule id>
@@ -437,9 +440,58 @@ check_rule() { # <label> <jq filter over the rule object> <rule id>
   fi
 }
 
-check_rule "branch -D is a deny, not a placebo escalate" '.class == "deny"' git.branch-force-delete
+check_rule "branch -D is gated on a fact probe" '.class == "gated"' git.branch-force-delete
+check_rule "gated probe is an argv array" '(.probe | type == "array" and length > 0)' git.branch-force-delete
 check_rule "and carries no judge prompt" '(.judge_prompt // "") == ""' git.branch-force-delete
-denies "force-delete is blocked again" "force-delete" Bash "$(bash_cmd 'git branch -D feature/x')"
+check_rule "an unparsed -D falls to the backstop deny" '.class == "deny"' git.branch-force-delete-unparsed
+
+GHSTUB="$TMP/ghstub"; mkdir -p "$GHSTUB"
+stub_gh() { # <stdout> <exit code>
+  { printf '#!/bin/sh\necho "$*" >> "%s/gh-argv.log"\ncat <<'\''GHEOF'\''\n%s\nGHEOF\nexit %s\n' "$GHSTUB" "$1" "$2" > "$GHSTUB/gh"; }
+  chmod +x "$GHSTUB/gh"
+}
+gated_case() { # <label> <stub stdout> <stub exit> <expect DENY|ALLOW> <command>
+  stub_gh "$2" "$3"
+  local t rc; t=$(mktemp -d)
+  printf '%s' "$(jq -nc --arg c "$5" '{tool_name:"Bash",tool_input:{command:$c}}')" >"$TMP/in.json"
+  STDERR=$(PATH="$GHSTUB:$PATH" JUDGE_RULES_FILE="$RULES" JUDGE_AUDIT_FILE="$t/audit.jsonl" TMPDIR="$t" bash "$HOOK" <"$TMP/in.json" 2>&1 >/dev/null); rc=$?
+  rm -rf "$t"
+  local got; [ "$rc" -eq 2 ] && got=DENY || got=ALLOW
+  if [ "$got" = "$4" ]; then ok "$1"; else bad "$1" "wanted $4, got $got (stderr: $STDERR)"; fi
+}
+
+gated_case "merged PR exists: -D allows"        "1" 0 ALLOW 'git branch -D feature/x'
+gated_case "no merged PR: -D denies"            "0" 0 DENY  'git branch -D feature/x'
+gated_case "probe error: fails closed"          ""  1 DENY  'git branch -D feature/x'
+gated_case "garbage probe output: fails closed" "not-a-number" 0 DENY 'git branch -D feature/x'
+denies "unparseable -D hits the backstop" "cannot read" Bash \
+  "$(bash_cmd 'git branch -D "$BRANCH"')"
+
+# $1 substitution reaches the probe argv (stub records what it was called
+# with); the program name is never a substitution target by construction.
+stub_gh "1" 0
+: > "$GHSTUB/gh-argv.log"
+t=$(mktemp -d)
+printf '%s' "$(jq -nc '{tool_name:"Bash",tool_input:{command:"git branch -D feature/subst-check"}}')" >"$TMP/in.json"
+PATH="$GHSTUB:$PATH" JUDGE_RULES_FILE="$RULES" JUDGE_AUDIT_FILE="$t/audit.jsonl" TMPDIR="$t" bash "$HOOK" <"$TMP/in.json" >/dev/null 2>&1
+rm -rf "$t"
+if grep -q 'feature/subst-check' "$GHSTUB/gh-argv.log" 2>/dev/null; then
+  ok "captured branch substitutes into probe argv"
+else
+  bad "captured branch substitutes into probe argv" "gh stub saw: $(cat "$GHSTUB/gh-argv.log" 2>/dev/null)"
+fi
+
+# The hook writes the audit line, not the model.
+t=$(mktemp -d)
+stub_gh "0" 0
+printf '%s' "$(jq -nc '{tool_name:"Bash",tool_input:{command:"git branch -D feature/audited"}}')" >"$TMP/in.json"
+PATH="$GHSTUB:$PATH" JUDGE_RULES_FILE="$RULES" JUDGE_AUDIT_FILE="$t/audit.jsonl" TMPDIR="$t" bash "$HOOK" <"$TMP/in.json" >/dev/null 2>&1
+if jq -e 'select(.rule=="git.branch-force-delete" and .verdict=="deny")' "$t/audit.jsonl" >/dev/null 2>&1; then
+  ok "gated evaluation writes an audit line"
+else
+  bad "gated evaluation writes an audit line" "audit: $(cat "$t/audit.jsonl" 2>/dev/null)"
+fi
+rm -rf "$t"
 
 # The verdict parser is the part that can be tested without spending a real LLM
 # call: stub `claude` on PATH and assert what each output shape produces.
