@@ -55,14 +55,27 @@ prompt_text() {
 }
 
 # classify TAIL TEXT -> none|clear|ours|queued|pasted|foreign
+# OURS is exact-match OR tag-prefix: the TUI draws the composer with its own
+# soft wraps at render time (every read source returns the FIRST visual
+# fragment as the prompt line — recent-unwrapped only unwraps scrollback, not
+# the live composer), so a parked nudge longer than one visual line can never
+# exact-match. A prompt line beginning with the [RELAY-NUDGE] tag can only be
+# a nudge, and recovering a nudge is safe by construction: content-free and
+# idempotent, so an empty submit costs at most one relay_inbox no-op even if
+# it were somehow not this recipient's copy. Anything else stays foreign.
 classify() {
   line=$(prompt_text "$1")
   if [ "$line" = "$NP" ]; then echo none
   elif [ -z "$line" ]; then echo clear
   elif [ "$line" = "$2" ]; then echo ours
-  elif [ "$line" = "$QUEUED_HINT" ]; then echo queued
-  elif printf '%s' "$line" | grep -Eq '^\[Pasted text #[0-9]+\]( \[Pasted text #[0-9]+\])*$'; then echo pasted
-  else echo foreign
+  else
+    case "$line" in
+      "[RELAY-NUDGE]"*) echo ours; return ;;
+    esac
+    if [ "$line" = "$QUEUED_HINT" ]; then echo queued
+    elif printf '%s' "$line" | grep -Eq '^\[Pasted text #[0-9]+\]( \[Pasted text #[0-9]+\])*$'; then echo pasted
+    else echo foreign
+    fi
   fi
 }
 
@@ -84,11 +97,10 @@ command -v jq >/dev/null 2>&1 || { echo jq-missing; exit 0; }
 command -v "$HERDR" >/dev/null 2>&1 || { echo herdr-missing; exit 0; }
 
 agent_status() { "$HERDR" agent get "$NAME" 2>/dev/null | jq -r '.result.agent.agent_status // empty' 2>/dev/null; }
-# recent-unwrapped, NOT visible: the visible source hard-wraps the composer at
-# pane width, so a nudge longer than one visual line reads back as only its
-# first fragment, exact-match fails, and our own parked text classifies
-# foreign — held forever instead of recovered (measured live 2026-08-04 on the
-# very first production nudge: outcome held-foreign with our text parked).
+# recent-unwrapped so scrollback lines come back logical; note the COMPOSER is
+# TUI-rendered and soft-wraps regardless of source (measured live 2026-08-04,
+# twice) — the tag-prefix branch in classify is what makes a wrapped parked
+# nudge recognizable, not the read source.
 read_tail() { "$HERDR" agent read "$NAME" --source recent-unwrapped --lines 40 --format text 2>/dev/null; }
 row=$("$HERDR" agent list 2>/dev/null | jq -r --arg n "$NAME" '.result.agents[]? | select(.name==$n) | .pane_id + " " + .agent_status' 2>/dev/null | head -1)
 [ -n "$row" ] || { echo no-agent; exit 0; }

@@ -30,6 +30,11 @@ check foreign "transcript
 ❯ fix the login bug please"
 check clear "transcript
 ❯ │"
+# Wrapped composer: the TUI soft-wraps at pane width, so only the FIRST visual
+# fragment reaches prompt_text — the [RELAY-NUDGE] tag prefix must classify it
+# ours (measured live 2026-08-04: exact-match called it foreign, held forever).
+check ours "transcript
+❯ [RELAY-NUDGE] unconsumed relay messages are queued for you. Run"
 if [ "$fail" = 0 ]; then
   echo "nudge-deliver classify: OK"
 else
