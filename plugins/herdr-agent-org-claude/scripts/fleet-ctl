@@ -128,7 +128,14 @@ case "$CMD" in
     PANE=$(printf '%s' "$ws_json" | jq -r '.result.root_pane.pane_id')
     WORKSPACE=$(printf '%s' "$ws_json" | jq -r '.result.workspace.workspace_id')
 
-    $HERDR pane run "$PANE" "conduct $ORG" >/dev/null 2>&1
+    # LAUNCH-ARG BOOT (2026-08-05): conduct execs `claude "$@"`, and a
+    # positional `claude "prompt"` auto-submits as the first message
+    # (documented CLI behavior) — so the role pointer rides the launch and
+    # never touches the composer. The old path typed a slash command into
+    # the palette and empty-submitted it; it parked live twice on 2026-08-05.
+    # SessionStart's ORG CONDUCT PRIME reinforces the skill-first order.
+    POINTER="You are this org's conductor. Invoke the herdr-agent-org-claude:orchestrator skill FIRST, before any org action - it is your role contract - then run ORIENT."
+    $HERDR pane run "$PANE" "conduct $ORG \"$POINTER\"" >/dev/null 2>&1
     sleep 2
 
     # Folder-trust dialog: only shown the first time Claude Code sees this
@@ -140,13 +147,6 @@ case "$CMD" in
     fi
 
     $HERDR agent rename "$PANE" "$NAME" >/dev/null 2>&1 || true
-
-    # Slash-command-palette-parking: the send lands as typed text under the
-    # command palette and needs a second, separate submit to actually invoke
-    # it (measured live 2026-08-01, every fresh session, both plugin twins).
-    $HERDR pane run "$PANE" '/herdr-agent-org-claude:orchestrator' >/dev/null 2>&1
-    sleep 1
-    $HERDR pane run "$PANE" '' >/dev/null 2>&1
 
     # Wait for ORIENT to settle. Target the name, fall back to the pane id
     # when the earlier rename lost the race with agent detection.

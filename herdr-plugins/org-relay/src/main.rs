@@ -51,7 +51,25 @@ fn build_router() -> axum::Router {
         .unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"));
         ([(axum::http::header::CONTENT_TYPE, "application/json")], body)
     }
-    let session_manager = Arc::new(LocalSessionManager::default());
+    // SESSION KEEP-ALIVE (field-measured 2026-08-05, todo-app org debrief):
+    // rmcp's default kills a session after 300s of bus inactivity, which is
+    // NORMAL for an org agent between beats — every kill forced a client
+    // re-initialize and re-armed the per-session guide gate (one relay_guide
+    // round trip per flap, several per session). Org sessions live all day:
+    // default 12h, ORG_RELAY_SESSION_KEEP_ALIVE_S overrides, 0 disables the
+    // reaper entirely (fine on loopback; the reaper exists for proxied
+    // half-dead TCP, which localhost does not produce).
+    let keep_alive_s = std::env::var("ORG_RELAY_SESSION_KEEP_ALIVE_S")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(43_200);
+    let mut sm = LocalSessionManager::default();
+    sm.session_config.keep_alive = if keep_alive_s == 0 {
+        None
+    } else {
+        Some(std::time::Duration::from_secs(keep_alive_s))
+    };
+    let session_manager = Arc::new(sm);
     let service: StreamableHttpService<server::RelayServer, LocalSessionManager> =
         StreamableHttpService::new(
             || Ok(server::RelayServer::new()),
