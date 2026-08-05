@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 
 use crate::queue::{
-    age_ms_since, awaiter_active, log_event, open_db, NUDGE_COOLDOWN_S, NUDGE_GRACE_S,
-    NUDGE_NOAGENT_COOLDOWN_S, NUDGE_POLL_S,
+    age_ms_since, awaiter_active, log_event, open_db, set_live_agents, NUDGE_COOLDOWN_S,
+    NUDGE_GRACE_S, NUDGE_NOAGENT_COOLDOWN_S, NUDGE_POLL_S,
 };
 
 pub fn nudge_enabled() -> bool {
@@ -42,6 +42,25 @@ pub fn nudge_helper() -> Option<std::path::PathBuf> {
 /// Canonical nudge text. COUNT-FREE on purpose: deterministic per recipient,
 /// so nudge-deliver can exact-match its own parked copy and recover it with an
 /// empty submit; short enough that the '[Pasted text #N]' placeholder class
+
+/// Live herdr agent names, one subprocess per watchdog tick. None when herdr
+/// is missing or errors — the caller treats that as "cannot disprove
+/// coverage" and leaves suppression intact.
+fn live_agent_names() -> Option<std::collections::HashSet<String>> {
+    let herdr = std::env::var("HERDR_BIN_PATH").unwrap_or_else(|_| "herdr".into());
+    let out = std::process::Command::new(herdr).args(["agent", "list"]).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    Some(
+        v["result"]["agents"]
+            .as_array()?
+            .iter()
+            .filter_map(|a| a["name"].as_str().map(str::to_string))
+            .collect(),
+    )
+}
 /// from the waker era cannot appear.
 pub fn nudge_text(agent: &str) -> String {
     format!("[RELAY-NUDGE] unconsumed relay messages are queued for you. Run relay_inbox(agent=\"{agent}\"), act on them, then relay_consume the handled ids.")
@@ -101,6 +120,13 @@ fn nudge_tick(helper: &std::path::Path, last: &mut HashMap<String, (Instant, Str
         .collect();
     drop(stmt);
     drop(conn);
+    // GHOST-BUSTER (measured 2026-08-05): a hold whose client died keeps its
+    // name registered until timeout, and neither disconnects nor failed sends
+    // are observable from inside the handler. Publish herdr's live-agent view
+    // each tick; awaiter_active (and every other coverage view) then filters
+    // holds whose agent is provably gone. Herdr unreachable ⇒ snapshot
+    // cleared ⇒ coverage trusted as-is (fail-quiet, never nudge-spam).
+    set_live_agents(live_agent_names());
     for (recipient, unconsumed, oldest_ts, last_consume) in rows {
         let oldest_age_s = oldest_ts.as_deref().and_then(age_ms_since).map(|ms| ms / 1000).unwrap_or(0);
         let consume_age_s = last_consume.as_deref().and_then(age_ms_since).map(|ms| ms / 1000);
