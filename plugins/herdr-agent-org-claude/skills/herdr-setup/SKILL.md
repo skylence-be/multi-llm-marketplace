@@ -39,11 +39,18 @@ Pick ONE, matching the box:
 Then daemonize and wire the client, from the installed plugin dir (`herdr plugin list` prints it; `relay-ctl` needs `cargo` on PATH for the first build):
 
 ```bash
-sh <plugin-dir>/relay-ctl install-daemon   # launchd: RunAtLoad + KeepAlive, box-wide db
-# 0.5.0+: ALWAYS re-run install-daemon after upgrading the plugin — it bakes
-# PATH + HERDR_BIN_PATH into the plist, which the nudge watchdog's herdr
-# calls need (launchd's default PATH cannot find herdr).
+sh <plugin-dir>/relay-ctl install-daemon
 ```
+What that does as of 1.3: builds if needed, REFUSES a binary from a dirty
+git tree (a consumer-box plugin snapshot has no .git and installs with an
+"unknown provenance" warning instead), copies the binary to a versioned slot
+under `~/.local/libexec/org-relay/`, repoints the `current` symlink that
+launchd execs (repo churn can never touch the running daemon), restarts the
+daemon, and verifies the SERVED sha equals the installed one — reverting the
+symlink if not. `relay-ctl rollback` repoints to the previous slot. ALWAYS
+re-run install-daemon after upgrading the plugin — the plist bakes PATH,
+HERDR_BIN_PATH, and the nudge-helper path, which launchd cannot resolve
+itself.
 
 The CLIENT connection needs no manual step on a box running the
 herdr-agent-org-claude Claude plugin: the plugin ships `.mcp.json`
@@ -61,9 +68,10 @@ Verify all four, in order — each proves a different layer:
 
 ```bash
 launchctl print gui/$(id -u)/com.skylence.org-relay | head -3   # supervised, not an orphan
-curl -s http://127.0.0.1:7431/health                            # server answers: ok
+curl -s http://127.0.0.1:7431/health | jq .                     # status ok + build attestation
+curl -s http://127.0.0.1:7431/health | jq -r .build.sha         # the daemon says WHAT it is
 claude mcp list | grep relay                                    # client handshake: ✔ Connected
-sh <plugin-dir>/relay-ctl status                                # relay_status shows the box-wide db path
+sh <plugin-dir>/relay-ctl status                                # relay_status + build, box-wide db path
 ```
 
 KeepAlive proof (once per box, worth the 10 seconds): `kill -9 $(lsof -ti tcp:7431)`,
@@ -180,6 +188,11 @@ conduct <org-name>                 # doctrinal launch built in: injects --model 
 conduct <org-name> --model sonnet  # further args pass through to claude and override the injected defaults
 ```
 
+`conduct` also exports `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` (default 1800000ms)
+into the claude process so a held relay_await is never idle-aborted before
+the harness backgrounds it (L6/TASK-BACKED AWAIT); an existing export wins.
+Hand-rolled bootstraps must export it themselves (the block below does).
+
 Install it once by putting the plugin's `scripts/` dir on `PATH` from your shell rc. Resolve it by newest mtime so a plugin version bump needs no edit:
 
 ```zsh
@@ -199,6 +212,7 @@ The equivalent by hand:
 ```bash
 export HERDR_ORG_ROOT="$HOME/.herdr-org/<org-name>"
 export PATH="<plugin-root>/scripts:$PATH"   # board, dispatch-worker, waker-ctl
+export CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=1800000   # ms; held relay_await must outlive the pre-background window (L6)
 board init "$HERDR_ORG_ROOT"
 claude
 ```
