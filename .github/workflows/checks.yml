@@ -39,6 +39,10 @@ jobs:
         run: cargo test --manifest-path herdr-plugins/org-relay/Cargo.toml
       - name: nudge-deliver classify suite
         run: sh herdr-plugins/org-relay/test/nudge_deliver_classify.sh
+      - name: concurrency smoke (parallel awaits, fan-out, burst, consume race)
+        run: |
+          cargo build --manifest-path herdr-plugins/org-relay/Cargo.toml
+          sh herdr-plugins/org-relay/test/concurrency_smoke.sh
 
   # macOS on purpose. The judge-hook suite is only ever verified on the platform
   # it ships to, and it leans on BSD/GNU fallbacks (stat -f vs -c, base64 -D vs
