@@ -344,6 +344,7 @@ Exports made INSIDE a Claude session do not persist: each shell call starts fres
 ```bash
 export HERDR_ORG_ROOT="$HOME/.herdr-org/<feature>"
 export PATH="<plugin-root>/scripts:$PATH"   # board, dispatch-worker, waker-ctl
+export CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=1800000   # ms; a held relay_await must never idle-abort before the harness backgrounds it (L6)
 board init <feature>
 claude
 ```
