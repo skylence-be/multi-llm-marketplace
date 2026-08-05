@@ -31,11 +31,30 @@ use rmcp::transport::streamable_http_server::{
 };
 use std::sync::Arc;
 
+/// Build provenance, baked by build.rs. The daemon attests WHAT it is;
+/// nobody infers provenance from tree state again.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const GIT_SHA: &str = env!("ORG_RELAY_GIT_SHA");
+pub const GIT_DIRTY: &str = env!("ORG_RELAY_GIT_DIRTY");
+pub const BUILT_AT: &str = env!("ORG_RELAY_BUILT_AT");
+
+fn build_info() -> serde_json::Value {
+    serde_json::json!({
+        "version": VERSION, "sha": GIT_SHA, "dirty": GIT_DIRTY == "dirty",
+        "built_at": BUILT_AT,
+    })
+}
+
 fn build_router() -> axum::Router {
     use axum::routing::get;
 
-    async fn health() -> &'static str {
-        "ok"
+    // JSON with status:"ok" so relay-ctl's `grep -q ok` liveness probe keeps
+    // matching while the payload self-attests version + sha.
+    async fn health() -> impl axum::response::IntoResponse {
+        (
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            serde_json::json!({"status": "ok", "build": build_info()}).to_string(),
+        )
     }
 
     // Plain-HTTP mirror of the relay_status tool for CLI and hook consumers
@@ -43,9 +62,12 @@ fn build_router() -> axum::Router {
     // guide gate — the same never-gated diagnostics the tool exposes.
     async fn status() -> impl axum::response::IntoResponse {
         let body = tokio::task::spawn_blocking(|| {
-            queue::op_sync("relay_status", &serde_json::json!({}))
-                .unwrap_or_else(|e| serde_json::json!({"error": e}))
-                .to_string()
+            let mut v = queue::op_sync("relay_status", &serde_json::json!({}))
+                .unwrap_or_else(|e| serde_json::json!({"error": e}));
+            if let Some(o) = v.as_object_mut() {
+                o.insert("build".into(), build_info());
+            }
+            v.to_string()
         })
         .await
         .unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"));
@@ -105,6 +127,11 @@ async fn shutdown_signal() {
 
 #[tokio::main]
 async fn main() {
+    // Self-attestation for installers and humans: `org-relay --version`.
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("org-relay {VERSION} {GIT_SHA} {GIT_DIRTY} {BUILT_AT}");
+        return;
+    }
     let port = std::env::var("ORG_RELAY_PORT").ok().and_then(|p| p.parse::<u16>().ok()).unwrap_or(7431);
     if let Err(e) = queue::open_db() {
         eprintln!("org-relay: cannot open {}: {e}", queue::db_path());
