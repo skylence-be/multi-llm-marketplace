@@ -58,10 +58,14 @@ case "${1:-status}" in
   <key>StandardErrorPath</key><string>${TMPDIR:-/tmp}/org-relay.$PORT.log</string>
 </dict></plist>
 EOF
-    # Hand the port over: stop any ad-hoc instance, then bootstrap.
+    # Hand the port over: stop any ad-hoc instance, then bootstrap. A bootout
+    # can still be settling when the bootstrap lands (observed: "Load failed:
+    # 5: Input/output error" with a clean plist), so retry once after a pause.
     "$0" stop >/dev/null 2>&1 || true
     launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
-    launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load "$PLIST"
+    launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null \
+      || { sleep 10; launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null; } \
+      || launchctl load "$PLIST"
     sleep 2
     if alive; then echo "org-relay: daemonized under launchd ($LABEL), db=$BOX_DB"; else echo "org-relay: daemon failed; see ${TMPDIR:-/tmp}/org-relay.$PORT.log" >&2; exit 1; fi
     ;;
@@ -92,8 +96,10 @@ EOF
   status)
     if alive; then
       echo "org-relay: serving on :$PORT"
-      curl -s -m 5 "http://127.0.0.1:$PORT/mcp" -X POST -H 'Content-Type: application/json' \
-        -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay_status","arguments":{}}}' 2>/dev/null
+      # 1.0: rmcp streamable HTTP needs an MCP handshake per session, so the
+      # CLI reads the plain GET /status mirror instead (same payload as the
+      # relay_status tool, never guide-gated).
+      curl -s -m 5 "http://127.0.0.1:$PORT/status" 2>/dev/null
       echo
     else
       echo "org-relay: not running on :$PORT"; exit 1
