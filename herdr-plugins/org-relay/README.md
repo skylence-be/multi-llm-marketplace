@@ -33,10 +33,13 @@ that bypass the daemon.
 refuse until the session reads `relay://guide` (resources/read, or the
 `relay_guide` tool — both unlock). The guide IS the wake-plane contract
 (arm-as-last-call, inbox-first turn entry, consume-after-acting, nudge
-semantics); the refusal names the step. Acks persist 24h per client token
-(clientInfo name/version) in the relay db, keyed to the guide's content hash,
-so reconnects don't re-tax a session and any guide change re-arms the gate
-box-wide. `relay_status` and the observability tools are never gated.
+semantics); the refusal names the step. The gate is strictly PER-SESSION and
+in-memory, on purpose: the only durable key available (clientInfo
+name/version) is shared by every session of the same client build, so a
+persisted ack would let the first reader unlock the bus for sessions that
+never saw the contract. Every session — and every transport reconnect —
+reads the short guide once. `relay_status` and the observability tools are
+never gated.
 
 **Nudge watchdog (0.5.0, demoted to LAST RESORT by 1.0):** coverage can still
 die — an operator Esc inside the pre-background window, a timed-out task
@@ -73,6 +76,6 @@ Layout: `src/queue.rs` (data plane + awaiter registry + ack ledger),
 Status: 1.0.0 — compiled, `cargo test` green (gate transitions, pinned
 refusal text, nudge predicate incl. task-backed suppression, guide hash,
 tool-def deserialization), wire-smoked end to end (gate refusal → unlock →
-send → task handle → tasks/get result → ack-ledger reconnect → in-call
-timeout with retry:true). Deploy: `cargo build --release`, then re-run
+send → task handle → tasks/get result → gate re-arms for a fresh session →
+in-call timeout with retry:true). Deploy: `cargo build --release`, then re-run
 `sh relay-ctl install-daemon` so launchd runs the 1.0 binary.

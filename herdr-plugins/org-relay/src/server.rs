@@ -22,12 +22,12 @@ use rmcp::model::{
     ServerInfo, Tool, UpdateTaskParams,
 };
 use rmcp::service::RequestContext;
-use rmcp::task_manager::{TaskManager, TaskOptions};
+use rmcp::task_manager::{TaskExit, TaskManager, TaskOptions};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::{json, Value};
 
 use crate::guide::{guide_hash, GUIDE_GATE_REFUSAL, GUIDE_RESOURCE, GUIDE_URI, SERVER_INSTRUCTIONS};
-use crate::queue::{self, has_ack, record_ack, AWAIT_MAX_S};
+use crate::queue::{self, TaskCoverGuard, AWAIT_MAX_S};
 
 /// Tools that refuse until the session has read relay://guide. The guide is
 /// the wake-plane contract; status/observability tools stay ungated so a
@@ -66,10 +66,6 @@ impl RelayServer {
         }
         None
     }
-}
-
-fn client_token_of(context: &RequestContext<RoleServer>) -> Option<String> {
-    context.client_info().map(|i| format!("{}/{}", i.name, i.version))
 }
 
 fn ok_result(v: Value) -> CallToolResult {
@@ -222,13 +218,10 @@ impl ServerHandler for RelayServer {
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
-        context: RequestContext<RoleServer>,
+        _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
         if request.uri == GUIDE_URI {
             self.on_guide_read();
-            if let Some(t) = client_token_of(&context) {
-                record_ack(&t, &guide_hash());
-            }
             Ok(ReadResourceResult::new(vec![ResourceContents::TextResourceContents {
                 uri: GUIDE_URI.to_owned(),
                 mime_type: Some("text/markdown".to_owned()),
@@ -267,29 +260,19 @@ impl ServerHandler for RelayServer {
             .arguments
             .map(Value::Object)
             .unwrap_or_else(|| json!({}));
-        let client_token = client_token_of(&context);
-
-        // Guide gate, with the persisted-ack escape hatch: a client that
-        // acked THIS guide hash within 24h re-opens the gate silently, so a
-        // transport reconnect does not re-tax the session mid-org-work.
+        // Guide gate: strictly per-session and in-memory. No persisted ack —
+        // the client token (clientInfo name/version) is shared by every
+        // session of the same client build, so a durable ledger would let the
+        // first reader of the day unlock the bus for sessions that never saw
+        // the contract. A reconnect re-reads; the guide is short on purpose.
         if let Some(refusal) = self.guide_gate(&name) {
-            let acked = client_token
-                .as_deref()
-                .is_some_and(|t| has_ack(t, &guide_hash()));
-            if acked {
-                self.on_guide_read();
-            } else {
-                log_access(&name, &args, started, &refusal);
-                return Ok(refusal.into());
-            }
+            log_access(&name, &args, started, &refusal);
+            return Ok(refusal.into());
         }
 
         match name.as_str() {
             "relay_guide" => {
                 self.on_guide_read();
-                if let Some(t) = client_token.as_deref() {
-                    record_ack(t, &guide_hash());
-                }
                 let out = ok_result(json!({"guide": GUIDE_RESOURCE, "guide_hash": guide_hash()}));
                 log_access(&name, &args, started, &out);
                 Ok(out.into())
@@ -312,11 +295,22 @@ impl ServerHandler for RelayServer {
                             .with_ttl_ms((AWAIT_MAX_S + 3600) * 1000)
                             .with_poll_interval_ms(2_000)
                             .with_status_message(status),
-                        move |_ctx| {
+                        move |ctx| {
                             Box::pin(async move {
-                                match queue::op_await(&args).await {
-                                    Ok(v) => Ok(ok_result(v)),
-                                    Err(e) => Ok(err_result(e)),
+                                // Coverage for a task-backed hold is the
+                                // TaskCoverGuard, alive only while tasks/get
+                                // polls arrive — a dead session's orphan task
+                                // must not suppress the nudge (queue.rs).
+                                let _cover = args
+                                    .get("agent")
+                                    .and_then(|v| v.as_str())
+                                    .map(|a| TaskCoverGuard::new(ctx.task_id(), a));
+                                tokio::select! {
+                                    out = queue::op_await(&args, false) => match out {
+                                        Ok(v) => Ok(ok_result(v)),
+                                        Err(e) => Ok(err_result(e)),
+                                    },
+                                    _ = ctx.cancelled() => Err(TaskExit::Cancelled),
                                 }
                             })
                         },
@@ -324,7 +318,7 @@ impl ServerHandler for RelayServer {
                     return Ok(CallToolResponse::Task(CreateTaskResult::new(task)));
                 }
                 // In-call hold: the client (or its harness) owns backgrounding.
-                let out = match queue::op_await(&args).await {
+                let out = match queue::op_await(&args, true).await {
                     Ok(v) => ok_result(v),
                     Err(e) => err_result(e),
                 };
@@ -352,6 +346,9 @@ impl ServerHandler for RelayServer {
         request: GetTaskParams,
         _: RequestContext<RoleServer>,
     ) -> Result<GetTaskResult, ErrorData> {
+        // A poll is proof of life: it keeps the task's coverage entry fresh
+        // so the nudge watchdog treats this recipient as listened-for.
+        queue::touch_task_cover(&request.task_id);
         tasks().get_task(&request.task_id).map(GetTaskResult::new)
     }
 
@@ -425,7 +422,7 @@ mod tests {
     fn refusal_text_pinned_verbatim() {
         assert_eq!(
             GUIDE_GATE_REFUSAL,
-            "guide-gate: this session has not read relay://guide. Call relay_guide (or resources/read uri relay://guide; server name is usually `relay`), then retry this exact call. Why: the wake plane is task-backed now (ONE long relay_await armed as the LAST call of a turn — never a 50s re-arm loop), turn entry is inbox-first, and consume comes only after acting; using the bus without this contract re-creates the 3h23m deaf-org stall. (recent same-client guide reads persist for 24h; seeing this means the ack expired or the guide changed — read again)",
+            "guide-gate: this session has not read relay://guide. Call relay_guide (or resources/read uri relay://guide; server name is usually `relay`), then retry this exact call. Why: the wake plane is task-backed now (ONE long relay_await armed as the LAST call of a turn — never a 50s re-arm loop), turn entry is inbox-first, and consume comes only after acting; using the bus without this contract re-creates the 3h23m deaf-org stall. (the gate is per-session and in-memory by design — every session, and every reconnect, reads the short guide once)",
             "GUIDE_GATE_REFUSAL drifted from pinned text"
         );
     }

@@ -26,6 +26,20 @@ jobs:
       - name: conduct harness self-test (stubbed, no LLM call)
         run: sh plugins/herdr-agent-org-claude/tests/conduct/run-conduct.sh --self-test
 
+  # The org-relay daemon is the org's message bus; a red crate here means the
+  # wake plane ships broken. Ubuntu is fine: rusqlite bundles sqlite and rmcp
+  # is platform-neutral; the macOS-only nuances (launchd, nudge-deliver) are
+  # shell, covered by the syntax job and the classify test below.
+  org-relay:
+    name: org-relay build + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo test
+        run: cargo test --manifest-path herdr-plugins/org-relay/Cargo.toml
+      - name: nudge-deliver classify suite
+        run: sh herdr-plugins/org-relay/test/nudge_deliver_classify.sh
+
   # macOS on purpose. The judge-hook suite is only ever verified on the platform
   # it ships to, and it leans on BSD/GNU fallbacks (stat -f vs -c, base64 -D vs
   # -d) that have never been exercised on Linux. Running it on ubuntu would be

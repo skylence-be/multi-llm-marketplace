@@ -9,7 +9,7 @@
 pub const GUIDE_URI: &str = "relay://guide";
 
 /// Sent in `initialize` as the server's instructions field.
-pub const SERVER_INSTRUCTIONS: &str = "Read relay://guide (resources/read, or the relay_guide tool) BEFORE using the messaging tools — relay_send / relay_inbox / relay_consume / relay_await refuse until this session has read it; relay_status and the observability tools are never gated. The guide is the org's wake-plane contract: task-backed awaiting (arm ONE long relay_await as the LAST call of a turn; never a 50s re-arm loop), inbox-first turn entry, consume ONLY after acting, and what a [RELAY-NUDGE] means. Recent same-client guide reads persist for 24h across reconnects.";
+pub const SERVER_INSTRUCTIONS: &str = "Read relay://guide (resources/read, or the relay_guide tool) BEFORE using the messaging tools — relay_send / relay_inbox / relay_consume / relay_await refuse until this session has read it; relay_status and the observability tools are never gated. The guide is the org's wake-plane contract: task-backed awaiting (arm ONE long relay_await as the LAST call of a turn; never a 50s re-arm loop), inbox-first turn entry, consume ONLY after acting, and what a [RELAY-NUDGE] means. The gate is per-session by design — every session reads the contract once; it is short on purpose.";
 
 pub const GUIDE_RESOURCE: &str = r#"# org-relay guide — the org's message bus and wake plane
 
@@ -99,7 +99,7 @@ backgrounds it.
 /// Refusal returned for any messaging-tool call before this session has read
 /// relay://guide. Pinned verbatim by tests — change the text here and in the
 /// test together, deliberately.
-pub const GUIDE_GATE_REFUSAL: &str = "guide-gate: this session has not read relay://guide. Call relay_guide (or resources/read uri relay://guide; server name is usually `relay`), then retry this exact call. Why: the wake plane is task-backed now (ONE long relay_await armed as the LAST call of a turn — never a 50s re-arm loop), turn entry is inbox-first, and consume comes only after acting; using the bus without this contract re-creates the 3h23m deaf-org stall. (recent same-client guide reads persist for 24h; seeing this means the ack expired or the guide changed — read again)";
+pub const GUIDE_GATE_REFUSAL: &str = "guide-gate: this session has not read relay://guide. Call relay_guide (or resources/read uri relay://guide; server name is usually `relay`), then retry this exact call. Why: the wake plane is task-backed now (ONE long relay_await armed as the LAST call of a turn — never a 50s re-arm loop), turn entry is inbox-first, and consume comes only after acting; using the bus without this contract re-creates the 3h23m deaf-org stall. (the gate is per-session and in-memory by design — every session, and every reconnect, reads the short guide once)";
 
 /// Stable content hash of the guide (FNV-1a 64). Persisted acks are valid
 /// only for this exact hash — any guide change re-arms the gate box-wide.

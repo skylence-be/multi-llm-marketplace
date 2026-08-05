@@ -65,13 +65,78 @@ impl Drop for AwaitGuard {
     }
 }
 
+// ── Task-backed coverage (SEP-2663 holds) ───────────────────────────────────
+// A task-backed hold runs SERVER-side: the client session that spawned it can
+// die while the task keeps waiting, and a dead session must not suppress the
+// nudge for its recipient. Coverage from a task therefore requires liveness:
+// the task counts as a listener only while tasks/get polls keep arriving
+// (within TASK_POLL_LIVENESS_S of the last one). In-call holds need no such
+// check — a dead caller tears the HTTP request down and the guard drops.
+pub const TASK_POLL_LIVENESS_S: u64 = 120;
+
+struct TaskCover {
+    agent: String,
+    last_poll: Instant,
+}
+
+fn task_covers() -> &'static Mutex<HashMap<String, TaskCover>> {
+    static T: OnceLock<Mutex<HashMap<String, TaskCover>>> = OnceLock::new();
+    T.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// RAII cover for one task-backed hold; dropped when the task future settles
+/// (result, timeout, cancellation, panic), removing the entry.
+pub struct TaskCoverGuard(String);
+impl TaskCoverGuard {
+    pub fn new(task_id: &str, agent: &str) -> Self {
+        task_covers().lock().unwrap().insert(
+            task_id.to_string(),
+            TaskCover { agent: agent.to_string(), last_poll: Instant::now() },
+        );
+        TaskCoverGuard(task_id.to_string())
+    }
+}
+impl Drop for TaskCoverGuard {
+    fn drop(&mut self) {
+        task_covers().lock().unwrap().remove(&self.0);
+    }
+}
+
+/// Called from the tasks/get handler: a poll proves the client behind the
+/// task is still alive and listening.
+pub fn touch_task_cover(task_id: &str) {
+    if let Some(c) = task_covers().lock().unwrap().get_mut(task_id) {
+        c.last_poll = Instant::now();
+    }
+}
+
+fn task_cover_alive(c: &TaskCover) -> bool {
+    c.last_poll.elapsed().as_secs() <= TASK_POLL_LIVENESS_S
+}
+
 pub fn awaiter_active(agent: &str) -> bool {
-    awaiters().lock().unwrap().contains_key(agent)
+    if awaiters().lock().unwrap().contains_key(agent) {
+        return true;
+    }
+    task_covers()
+        .lock()
+        .unwrap()
+        .values()
+        .any(|c| c.agent == agent && task_cover_alive(c))
 }
 
 pub fn awaiting_names() -> Vec<String> {
     let mut v: Vec<String> = awaiters().lock().unwrap().keys().cloned().collect();
+    v.extend(
+        task_covers()
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|c| task_cover_alive(c))
+            .map(|c| c.agent.clone()),
+    );
     v.sort();
+    v.dedup();
     v
 }
 
@@ -100,7 +165,12 @@ pub fn notify_recipient(agent: &str) {
 }
 
 pub fn now_iso() -> String {
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    fmt_iso(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs())
+}
+
+/// Format an epoch-seconds instant as the second-precision ISO-8601 shape
+/// every row in this db uses. Pure so the prune cutoff can reuse it.
+pub fn fmt_iso(secs: u64) -> String {
     let days = secs / 86400;
     let (mut y, mut rem) = (1970i64, days as i64);
     loop {
@@ -155,13 +225,7 @@ pub fn open_db() -> rusqlite::Result<Connection> {
             body TEXT NOT NULL,
             consumed_at TEXT
         );
-        CREATE INDEX IF NOT EXISTS idx_inbox ON messages(recipient, consumed_at);
-        CREATE TABLE IF NOT EXISTS guide_acks (
-            token TEXT NOT NULL,
-            guide_hash TEXT NOT NULL,
-            acked_at INTEGER NOT NULL,
-            PRIMARY KEY (token, guide_hash)
-        );",
+        CREATE INDEX IF NOT EXISTS idx_inbox ON messages(recipient, consumed_at);",
     )?;
     Ok(conn)
 }
@@ -200,42 +264,20 @@ pub fn req_str(args: &Value, key: &str) -> Result<String, String> {
         .ok_or_else(|| format!("missing required string argument: {key}"))
 }
 
-// ── Guide-ack ledger (guide gate persistence) ───────────────────────────────
-// Keyed by client token (clientInfo name/version) + guide content hash, TTL
-// 24h: bounce-day relief, not a standing exemption. Any guide change re-arms
-// the gate for everyone; a fresh day re-reads. Lives in the relay db so it
-// survives daemon restarts with zero extra files.
-pub const ACK_TTL_SECS: u64 = 86_400;
-
-pub fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
-}
-
-/// TTL check against an explicit clock (testable core; clock skew backwards
-/// never invalidates).
-pub fn ack_valid(acked_at: u64, now: u64) -> bool {
-    now.saturating_sub(acked_at) <= ACK_TTL_SECS
-}
-
-pub fn record_ack(token: &str, guide_hash: &str) {
-    if let Ok(conn) = open_db() {
-        let _ = conn.execute(
-            "INSERT INTO guide_acks (token, guide_hash, acked_at) VALUES (?1, ?2, ?3)
-             ON CONFLICT(token, guide_hash) DO UPDATE SET acked_at = excluded.acked_at",
-            rusqlite::params![token, guide_hash, now_secs() as i64],
-        );
-    }
-}
-
-pub fn has_ack(token: &str, guide_hash: &str) -> bool {
-    let Ok(conn) = open_db() else { return false };
-    conn.query_row(
-        "SELECT acked_at FROM guide_acks WHERE token = ?1 AND guide_hash = ?2",
-        rusqlite::params![token, guide_hash],
-        |r| r.get::<_, i64>(0),
+// ── Retention ───────────────────────────────────────────────────────────────
+// Consumed rows are history, not state: the audit stream already carries the
+// lifecycle, so the queue only needs them long enough for forensics. ISO
+// second-precision strings compare lexicographically in timestamp order, so
+// the cutoff is a plain string comparison.
+pub fn prune_consumed(retain_days: u64) -> Result<usize, String> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_secs();
+    let cutoff = fmt_iso(now.saturating_sub(retain_days.saturating_mul(86_400)));
+    let conn = open_db().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM messages WHERE consumed_at IS NOT NULL AND consumed_at < ?1",
+        rusqlite::params![cutoff],
     )
-    .ok()
-    .is_some_and(|at| ack_valid(at as u64, now_secs()))
+    .map_err(|e| e.to_string())
 }
 
 // ── Observability streams ───────────────────────────────────────────────────
@@ -460,19 +502,21 @@ pub fn op_sync(name: &str, args: &Value) -> Result<Value, String> {
 }
 
 /// The await: hold until a message lands for `agent`, a timeout passes, or the
-/// caller goes away. Runs identically as an in-call hold (no tasks extension)
-/// and as the future backing a task (tasks extension declared) — the
-/// AwaitGuard registers the recipient as covered either way, which is what
-/// suppresses the nudge watchdog.
-pub async fn op_await(args: &Value) -> Result<Value, String> {
+/// caller goes away. Runs as an in-call hold (`direct_cover: true` — the
+/// AwaitGuard held here registers coverage) or as the future backing a task
+/// (`direct_cover: false` — the caller holds a TaskCoverGuard keyed by task
+/// id, so coverage tracks tasks/get poll liveness instead of this future's
+/// mere existence).
+pub async fn op_await(args: &Value, direct_cover: bool) -> Result<Value, String> {
     let agent = req_str(args, "agent")?;
     let timeout_s = args
         .get("timeout_s")
         .and_then(|v| v.as_u64())
         .unwrap_or(AWAIT_DEFAULT_S)
         .clamp(1, AWAIT_MAX_S);
-    let _guard = AwaitGuard::new(&agent);
-    log_event("audit", json!({"event":"await_start","agent":agent,"timeout_s":timeout_s}));
+    let _guard = direct_cover.then(|| AwaitGuard::new(&agent));
+    log_event("audit", json!({"event":"await_start","agent":agent,"timeout_s":timeout_s,
+        "mode": if direct_cover { "hold" } else { "task" }}));
     let notify = notifier_for(&agent);
     let started = Instant::now();
     let deadline = started + Duration::from_secs(timeout_s);
@@ -538,10 +582,15 @@ mod tests {
     }
 
     #[test]
-    fn ack_ttl_boundaries() {
-        assert!(ack_valid(100, 100), "same instant valid");
-        assert!(ack_valid(100, 100 + ACK_TTL_SECS), "exact TTL edge valid");
-        assert!(!ack_valid(100, 101 + ACK_TTL_SECS), "past TTL invalid — fresh day re-reads");
-        assert!(ack_valid(200, 100), "clock skew backwards never invalidates");
+    fn task_cover_tracks_poll_liveness() {
+        assert!(!awaiter_active("task-agent"));
+        {
+            let _c = TaskCoverGuard::new("task-1", "task-agent");
+            assert!(awaiter_active("task-agent"), "fresh task cover counts");
+            assert!(awaiting_names().contains(&"task-agent".to_string()));
+            touch_task_cover("task-1");
+            assert!(awaiter_active("task-agent"), "touched cover still counts");
+        }
+        assert!(!awaiter_active("task-agent"), "dropped cover deregisters");
     }
 }

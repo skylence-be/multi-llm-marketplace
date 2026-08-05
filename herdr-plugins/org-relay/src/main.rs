@@ -14,8 +14,11 @@
 //! `claude mcp add --transport http relay http://127.0.0.1:7431/mcp`
 //!
 //! Guide gate: messaging tools refuse until the session reads relay://guide
-//! (or calls relay_guide); acks persist 24h per client token in the relay db
-//! (guide.rs, server.rs). Nudge watchdog: unchanged from 0.5.0 — the NET for
+//! (or calls relay_guide); strictly per-session and in-memory — every
+//! session reads the short contract once (guide.rs, server.rs). Nudge
+//! watchdog: the NET for recipients with backlog and no live await coverage,
+//! where task-backed coverage requires tasks/get poll liveness (nudge.rs,
+//! queue.rs).
 //! recipients with backlog and no live await coverage (nudge.rs).
 
 mod guide;
@@ -111,6 +114,29 @@ async fn main() {
         nudge::spawn_nudge_watchdog(h);
     } else {
         eprintln!("org-relay: nudge watchdog OFF — helper nudge-deliver not found beside the crate (set ORG_RELAY_NUDGE_HELPER)");
+    }
+
+    // Retention: consumed rows are history the audit stream already carries.
+    // Daily prune, ORG_RELAY_RETAIN_DAYS (default 7, 0 disables).
+    let retain_days = std::env::var("ORG_RELAY_RETAIN_DAYS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(7);
+    if retain_days > 0 {
+        std::thread::spawn(move || loop {
+            match queue::prune_consumed(retain_days) {
+                Ok(n) if n > 0 => queue::log_event(
+                    "audit",
+                    serde_json::json!({"event":"prune","deleted":n,"retain_days":retain_days}),
+                ),
+                Ok(_) => {}
+                Err(e) => queue::log_event(
+                    "audit",
+                    serde_json::json!({"event":"prune-error","error":e}),
+                ),
+            }
+            std::thread::sleep(std::time::Duration::from_secs(86_400));
+        });
     }
 
     if let Err(e) = axum::serve(listener, build_router())
