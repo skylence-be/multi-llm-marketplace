@@ -101,10 +101,22 @@ case "${1:-status}" in
     ver_line=$("$BIN" --version 2>/dev/null) || { echo "org-relay: binary has no --version; rebuild" >&2; exit 1; }
     set -- $ver_line
     VERSION=${2:-unknown}; SHA=${3:-unknown}; DIRTYF=${4:-unknown}
-    if [ "$DIRTYF" != "clean" ] && [ "${ORG_RELAY_ALLOW_DIRTY:-}" != "1" ]; then
-      echo "org-relay: REFUSING install: binary built from a $DIRTYF tree ($ver_line)." >&2
+    # Gate semantics: "dirty" is uncommitted DEV drift — refuse. "unknown"
+    # splits by context: inside a git checkout it means broken attestation
+    # (refuse), but a consumer box's `herdr plugin install` snapshot has no
+    # .git at all, provenance is structurally unknowable, and the drift the
+    # gate exists to stop cannot occur — allow with a warning.
+    if [ "$DIRTYF" = "dirty" ] && [ "${ORG_RELAY_ALLOW_DIRTY:-}" != "1" ]; then
+      echo "org-relay: REFUSING install: binary built from a dirty tree ($ver_line)." >&2
       echo "  Commit first and rebuild, or force with ORG_RELAY_ALLOW_DIRTY=1." >&2
       exit 1
+    fi
+    if [ "$DIRTYF" = "unknown" ] && [ "${ORG_RELAY_ALLOW_DIRTY:-}" != "1" ]; then
+      if git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "org-relay: REFUSING install: this is a git checkout but the binary attests unknown provenance ($ver_line) — rebuild so build.rs can see git." >&2
+        exit 1
+      fi
+      echo "org-relay: non-repo install (consumer box): provenance unknown by design, proceeding." >&2
     fi
     mkdir -p "$LIBEXEC"
     SLOT="$LIBEXEC/org-relay-$VERSION+$SHA"

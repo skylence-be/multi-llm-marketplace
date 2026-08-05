@@ -56,6 +56,14 @@ esac
 HERDR_ORG_ROOT="$HOME/.herdr-org/$org"
 export HERDR_ORG_ROOT
 
+# TASK-BACKED AWAIT support (L6, org-relay 1.0+): a held relay_await must
+# outlive the harness's ~2min pre-background window, and the client's default
+# MCP idle timeout (300s) would abort long holds whose server sends no
+# progress. Export a generous bound into the claude process; an existing
+# operator export wins.
+CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT="${CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT:-1800000}"
+export CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT
+
 # Test for the board SHAPE, not bare directory existence: a root left behind by
 # an aborted init (directory present, todos/ missing) would otherwise skip
 # creation and start a session whose every board call fails with a misleading
