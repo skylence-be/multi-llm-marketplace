@@ -222,7 +222,20 @@ pane_id=$(printf '%s\n' "$split_json" | jq -r '.result.pane.pane_id // empty')
 # a short backoff instead of racing the shell prompt.
 tries=0
 while :; do
-  if [ -n "$EXTRA_ARGS" ]; then
+  # LAUNCH-ARG POINTER (claude kind, 2026-08-05): `claude "prompt"` starts
+  # the interactive TUI with the prompt auto-submitted as the first message
+  # (documented CLI behavior), so the pointer never touches the composer and
+  # the first-prompt swallow race (#126; measured 4/9 dispatches needing
+  # recovery in one program) cannot occur. Other kinds keep the composer
+  # send + verify ladder below.
+  if [ "$KIND" = "claude" ]; then
+    if [ -n "$EXTRA_ARGS" ]; then
+      # shellcheck disable=SC2086
+      start_out=$($HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- $EXTRA_ARGS "$PROMPT" 2>&1) && break
+    else
+      start_out=$($HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- "$PROMPT" 2>&1) && break
+    fi
+  elif [ -n "$EXTRA_ARGS" ]; then
     # shellcheck disable=SC2086
     start_out=$($HERDR agent start "$NAME" --kind "$KIND" --pane "$pane_id" --timeout "$TIMEOUT" -- $EXTRA_ARGS 2>&1) && break
   else
@@ -261,25 +274,33 @@ if [ -n "$WAKE_TARGET" ] && [ -x "$WCTL" ] && "$WCTL" present 2>/dev/null; then
   fi
 fi
 
-# Point the worker at the brief.
-$HERDR agent prompt "$NAME" "$PROMPT" >/dev/null
-
-# VERIFY-AFTER-SEND: a fresh agent can swallow its first prompt two ways --
-# typed into an already-drafted composer (recovered by an empty submit) or
-# typed before the input box exists and discarded entirely (recovered only
-# by re-sending the prompt; field data hit both variants live). Escalate
-# through wait, empty-submit, then a single re-send before giving up.
-SUBMIT="failed"
-if $HERDR agent wait "$NAME" --until working --timeout 4000 >/dev/null 2>&1; then
-  SUBMIT="clean"
+if [ "$KIND" = "claude" ]; then
+  # The pointer rode the launch args; there is nothing to type and nothing
+  # to recover. Confirm the session actually started processing it.
+  SUBMIT="launch-arg"
+  $HERDR agent wait "$NAME" --until working --timeout 15000 >/dev/null 2>&1 || SUBMIT="launch-arg-unconfirmed"
 else
-  $HERDR pane run "$pane_id" "" >/dev/null 2>&1 || true
-  if $HERDR agent wait "$NAME" --until working --timeout 8000 >/dev/null 2>&1; then
-    SUBMIT="recovered"
+  # Point the worker at the brief (composer path for kinds whose CLI has no
+  # documented launch-arg prompt).
+  $HERDR agent prompt "$NAME" "$PROMPT" >/dev/null
+
+  # VERIFY-AFTER-SEND: a fresh agent can swallow its first prompt two ways --
+  # typed into an already-drafted composer (recovered by an empty submit) or
+  # typed before the input box exists and discarded entirely (recovered only
+  # by re-sending the prompt; field data hit both variants live). Escalate
+  # through wait, empty-submit, then a single re-send before giving up.
+  SUBMIT="failed"
+  if $HERDR agent wait "$NAME" --until working --timeout 4000 >/dev/null 2>&1; then
+    SUBMIT="clean"
   else
-    $HERDR agent prompt "$NAME" "$PROMPT" >/dev/null 2>&1 || true
+    $HERDR pane run "$pane_id" "" >/dev/null 2>&1 || true
     if $HERDR agent wait "$NAME" --until working --timeout 8000 >/dev/null 2>&1; then
-      SUBMIT="reprompted"
+      SUBMIT="recovered"
+    else
+      $HERDR agent prompt "$NAME" "$PROMPT" >/dev/null 2>&1 || true
+      if $HERDR agent wait "$NAME" --until working --timeout 8000 >/dev/null 2>&1; then
+        SUBMIT="reprompted"
+      fi
     fi
   fi
 fi
