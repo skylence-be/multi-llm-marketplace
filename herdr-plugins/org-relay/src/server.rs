@@ -331,8 +331,17 @@ impl ServerHandler for RelayServer {
                         let peer = context.peer.clone();
                         let hold = queue::op_await(&args, true);
                         tokio::pin!(hold);
+                        // 20s cadence: resets the client's MCP idle timer well
+                        // inside its 300s bound. NOT a liveness probe: rmcp's
+                        // notification sink is fire-and-forget (`let _ =
+                        // try_send`), so a dead client's sends never surface an
+                        // error here — measured twice, 2026-08-05 (ghost
+                        // smokes v1/v2: 45s and 20s cadences, 150s and 420s
+                        // horizons, zero observable failures). Ghost holds are
+                        // instead filtered OUT of coverage views by the
+                        // watchdog's live-agent snapshot (queue.rs).
                         let mut tick =
-                            tokio::time::interval(std::time::Duration::from_secs(45));
+                            tokio::time::interval(std::time::Duration::from_secs(20));
                         tick.tick().await; // discard the immediate first tick
                         let mut beats = 0f64;
                         loop {

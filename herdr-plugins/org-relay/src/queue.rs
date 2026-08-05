@@ -35,31 +35,43 @@ pub const MAX_BACKUPS: u32 = 1;
 
 // ── Awaiter registry ────────────────────────────────────────────────────────
 // Recipients with a live await in this process — in-call holds AND task-backed
-// holds both register (the guard lives inside the spawned task future). The
-// nudge watchdog reads it; relay_status exposes it. Non-empty queues with an
-// empty awaiting list is the deaf-org shape the watchdog exists for.
-fn awaiters() -> &'static Mutex<HashMap<String, u32>> {
-    static A: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
+// holds both register (the guard lives inside the spawned task future). Each
+// hold records its start instant so status can expose hold AGE: a ghost hold
+// (client died mid-hold; measured 2026-08-05, survives to full timeout) is
+// indistinguishable from live coverage by name alone, but an old hold plus a
+// quiet client is the shape to distrust. The nudge watchdog reads this; the
+// in-call progress-tick liveness probe (server.rs) bounds ghost lifetime to
+// ~90s for token-bearing clients.
+fn awaiters() -> &'static Mutex<HashMap<String, Vec<Instant>>> {
+    static A: OnceLock<Mutex<HashMap<String, Vec<Instant>>>> = OnceLock::new();
     A.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 /// RAII guard so an await that returns, times out, errors, is cancelled, or
 /// panics always deregisters; a leaked entry would silently disable the nudge
 /// for that name.
-pub struct AwaitGuard(String);
+pub struct AwaitGuard {
+    agent: String,
+    at: Instant,
+}
 impl AwaitGuard {
     pub fn new(agent: &str) -> Self {
-        *awaiters().lock().unwrap().entry(agent.to_string()).or_insert(0) += 1;
-        AwaitGuard(agent.to_string())
+        let at = Instant::now();
+        awaiters().lock().unwrap().entry(agent.to_string()).or_default().push(at);
+        AwaitGuard { agent: agent.to_string(), at }
     }
 }
 impl Drop for AwaitGuard {
     fn drop(&mut self) {
         let mut m = awaiters().lock().unwrap();
-        if let Some(n) = m.get_mut(&self.0) {
-            *n = n.saturating_sub(1);
-            if *n == 0 {
-                m.remove(&self.0);
+        if let Some(v) = m.get_mut(&self.agent) {
+            if let Some(i) = v.iter().position(|t| *t == self.at) {
+                v.remove(i);
+            } else {
+                v.pop();
+            }
+            if v.is_empty() {
+                m.remove(&self.agent);
             }
         }
     }
@@ -114,15 +126,50 @@ fn task_cover_alive(c: &TaskCover) -> bool {
     c.last_poll.elapsed().as_secs() <= TASK_POLL_LIVENESS_S
 }
 
-pub fn awaiter_active(agent: &str) -> bool {
-    if awaiters().lock().unwrap().contains_key(agent) {
-        return true;
-    }
-    task_covers()
+// ── Live-agent snapshot (the ghost filter) ──────────────────────────────────
+// Ghost holds cannot be detected from inside the handler: rmcp neither
+// cancels a request future on client disconnect (session resumability) nor
+// surfaces notification-send failures (fire-and-forget sink) — both measured
+// 2026-08-05 (ghost smokes v1/v2). What the daemon CAN observe is herdr: the
+// watchdog publishes the live agent set each tick, and every coverage view
+// filters holds whose agent is provably gone. The orphan future itself runs
+// to timeout invisibly. A stale or absent snapshot (herdr down, watchdog
+// disabled) filters NOTHING — coverage is never dropped on missing evidence.
+const LIVE_SNAPSHOT_FRESH_S: u64 = 90;
+
+#[allow(clippy::type_complexity)]
+fn live_agents() -> &'static Mutex<Option<(std::collections::HashSet<String>, Instant)>> {
+    static L: OnceLock<Mutex<Option<(std::collections::HashSet<String>, Instant)>>> =
+        OnceLock::new();
+    L.get_or_init(|| Mutex::new(None))
+}
+
+/// Publish the watchdog's herdr view. `None` (herdr unreachable) clears the
+/// snapshot so filtering stops rather than acting on stale data.
+pub fn set_live_agents(names: Option<std::collections::HashSet<String>>) {
+    *live_agents().lock().unwrap() = names.map(|s| (s, Instant::now()));
+}
+
+/// Some(true/false) when a fresh snapshot can answer; None means no evidence.
+pub fn agent_is_live(name: &str) -> Option<bool> {
+    live_agents()
         .lock()
         .unwrap()
-        .values()
-        .any(|c| c.agent == agent && task_cover_alive(c))
+        .as_ref()
+        .filter(|(_, at)| at.elapsed().as_secs() <= LIVE_SNAPSHOT_FRESH_S)
+        .map(|(s, _)| s.contains(name))
+}
+
+/// Coverage for the nudge and status: a hold or live task cover exists AND
+/// the fresh snapshot does not prove the agent dead.
+pub fn awaiter_active(agent: &str) -> bool {
+    let held = awaiters().lock().unwrap().contains_key(agent)
+        || task_covers()
+            .lock()
+            .unwrap()
+            .values()
+            .any(|c| c.agent == agent && task_cover_alive(c));
+    held && agent_is_live(agent) != Some(false)
 }
 
 pub fn awaiting_names() -> Vec<String> {
@@ -135,9 +182,36 @@ pub fn awaiting_names() -> Vec<String> {
             .filter(|c| task_cover_alive(c))
             .map(|c| c.agent.clone()),
     );
+    v.retain(|n| agent_is_live(n) != Some(false));
     v.sort();
     v.dedup();
     v
+}
+
+/// Per-name hold detail for relay_status: hold count, oldest hold age, and
+/// what the live-agent snapshot says (null = no fresh evidence). Ghosts show
+/// here with `agent_live: false` for forensics even though the filtered
+/// `awaiting` list excludes them.
+pub fn awaiting_detail() -> Vec<Value> {
+    let mut out: Vec<Value> = awaiters()
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(agent, holds)| {
+            let oldest = holds.iter().map(|t| t.elapsed().as_secs()).max().unwrap_or(0);
+            json!({"agent": agent, "holds": holds.len(), "kind": "hold",
+                "oldest_age_s": oldest, "agent_live": agent_is_live(agent)})
+        })
+        .collect();
+    for c in task_covers().lock().unwrap().values() {
+        if task_cover_alive(c) {
+            out.push(json!({"agent": c.agent, "holds": 1, "kind": "task",
+                "oldest_age_s": c.last_poll.elapsed().as_secs(),
+                "agent_live": agent_is_live(&c.agent)}));
+        }
+    }
+    out.sort_by(|a, b| a["agent"].as_str().cmp(&b["agent"].as_str()));
+    out
 }
 
 // ── In-process send notification ────────────────────────────────────────────
@@ -464,6 +538,7 @@ pub fn op_sync(name: &str, args: &Value) -> Result<Value, String> {
                 .filter_map(Result::ok)
                 .collect();
             Ok(json!({"db": db_path(), "queues": rows, "awaiting": awaiting_names(),
+                      "awaiting_detail": awaiting_detail(),
                       "nudge": {"enabled": crate::nudge::nudge_enabled(),
                                 "helper": crate::nudge::nudge_helper().map(|p| p.to_string_lossy().into_owned())}}))
         }
@@ -592,5 +667,40 @@ mod tests {
             assert!(awaiter_active("task-agent"), "touched cover still counts");
         }
         assert!(!awaiter_active("task-agent"), "dropped cover deregisters");
+    }
+
+    /// Tests touching the live-agent snapshot serialize on this lock: the
+    /// snapshot is process-global, and a fresh Some(...) snapshot makes every
+    /// name outside it read as dead for any concurrently running test.
+    fn snapshot_lock() -> &'static Mutex<()> {
+        static L: OnceLock<Mutex<()>> = OnceLock::new();
+        L.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn ghost_filter_drops_dead_names_and_never_filters_without_evidence() {
+        let _serial = snapshot_lock().lock().unwrap();
+        let _g = AwaitGuard::new("ghost-filter-probe");
+        // No snapshot: no evidence, coverage stands.
+        set_live_agents(None);
+        assert!(awaiter_active("ghost-filter-probe"), "no snapshot must not filter");
+        assert!(awaiting_names().contains(&"ghost-filter-probe".to_string()));
+        // Fresh snapshot without the name: provably dead, filtered everywhere.
+        let mut s = std::collections::HashSet::new();
+        s.insert("someone-else".to_string());
+        set_live_agents(Some(s));
+        assert!(!awaiter_active("ghost-filter-probe"), "dead name must not count as coverage");
+        assert!(!awaiting_names().contains(&"ghost-filter-probe".to_string()));
+        let detail = awaiting_detail();
+        let row = detail.iter().find(|r| r["agent"] == "ghost-filter-probe")
+            .expect("detail keeps the ghost for forensics");
+        assert_eq!(row["agent_live"], false);
+        // Fresh snapshot WITH the name: coverage restored.
+        let mut s = std::collections::HashSet::new();
+        s.insert("ghost-filter-probe".to_string());
+        set_live_agents(Some(s));
+        assert!(awaiter_active("ghost-filter-probe"));
+        // Clear so parallel tests never see a filtering snapshot.
+        set_live_agents(None);
     }
 }
