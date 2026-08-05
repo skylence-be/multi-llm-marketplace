@@ -17,8 +17,9 @@ use std::sync::OnceLock;
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams,
     ContentBlock, CreateTaskResult, GetTaskParams, GetTaskResult, Implementation,
-    ListResourcesResult, ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams,
-    ReadResourceResponse, ReadResourceResult, Resource, ResourceContents, ServerCapabilities,
+    ListResourcesResult, ListToolsResult, PaginatedRequestParams, ProgressNotificationParam,
+    ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+    ResourceContents, ServerCapabilities,
     ServerInfo, Tool, UpdateTaskParams,
 };
 use rmcp::service::RequestContext;
@@ -318,7 +319,40 @@ impl ServerHandler for RelayServer {
                     return Ok(CallToolResponse::Task(CreateTaskResult::new(task)));
                 }
                 // In-call hold: the client (or its harness) owns backgrounding.
-                let out = match queue::op_await(&args, true).await {
+                // PROGRESS KEEPALIVE (probe-measured 2026-08-05): Claude Code
+                // idle-aborts a silent call at ~300s even after backgrounding
+                // it — rmcp's SSE keepalives do not reset its idle timer, but
+                // progress notifications do. Tick every 45s when the request
+                // carries a progressToken; without one, the client-side
+                // CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT export is the only
+                // defense (bootstrap doctrine).
+                let held = match context.meta.get_progress_token() {
+                    Some(token) => {
+                        let peer = context.peer.clone();
+                        let hold = queue::op_await(&args, true);
+                        tokio::pin!(hold);
+                        let mut tick =
+                            tokio::time::interval(std::time::Duration::from_secs(45));
+                        tick.tick().await; // discard the immediate first tick
+                        let mut beats = 0f64;
+                        loop {
+                            tokio::select! {
+                                out = &mut hold => break out,
+                                _ = tick.tick() => {
+                                    beats += 1.0;
+                                    let _ = peer
+                                        .notify_progress(ProgressNotificationParam::new(
+                                            token.clone(),
+                                            beats,
+                                        ))
+                                        .await;
+                                }
+                            }
+                        }
+                    }
+                    None => queue::op_await(&args, true).await,
+                };
+                let out = match held {
                     Ok(v) => ok_result(v),
                     Err(e) => err_result(e),
                 };
