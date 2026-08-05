@@ -11,12 +11,9 @@ fn git(args: &[&str]) -> Option<String> {
     if !out.status.success() {
         return None;
     }
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    // Empty stdout is a VALID answer (a clean tree's porcelain is empty);
+    // only command failure is None.
+    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 fn main() {
