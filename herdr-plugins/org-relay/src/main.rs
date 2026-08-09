@@ -46,7 +46,7 @@ fn build_info() -> serde_json::Value {
 }
 
 fn build_router() -> axum::Router {
-    use axum::routing::get;
+    use axum::routing::{get, post};
 
     // JSON with status:"ok" so relay-ctl's `grep -q ok` liveness probe keeps
     // matching while the payload self-attests version + sha.
@@ -72,6 +72,43 @@ fn build_router() -> axum::Router {
         .await
         .unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"));
         ([(axum::http::header::CONTENT_TYPE, "application/json")], body)
+    }
+    // Plain-HTTP mirror of relay_send for non-MCP producers on this box —
+    // CI notify steps, shell hooks — that have one message to drop and no
+    // business doing an MCP handshake. Loopback bind is the trust boundary,
+    // exactly as for /mcp (any local process can already speak the full tool
+    // surface); the guide gate is a session contract and sessions do not
+    // exist here. Same op layer as the tool: durable enqueue + audit event +
+    // in-process wake of a live awaiter.
+    async fn send(body: String) -> impl axum::response::IntoResponse {
+        let json_ct = [(axum::http::header::CONTENT_TYPE, "application/json")];
+        let args: serde_json::Value = match serde_json::from_str(&body) {
+            Ok(v) => v,
+            Err(e) => {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    json_ct,
+                    serde_json::json!({"error": format!("invalid JSON body: {e}")}).to_string(),
+                );
+            }
+        };
+        let (code, out) = tokio::task::spawn_blocking(move || {
+            match queue::op_sync("relay_send", &args) {
+                Ok(v) => (axum::http::StatusCode::OK, v.to_string()),
+                Err(e) => (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    serde_json::json!({"error": e}).to_string(),
+                ),
+            }
+        })
+        .await
+        .unwrap_or_else(|e| {
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("{{\"error\":\"{e}\"}}"),
+            )
+        });
+        (code, json_ct, out)
     }
     // SESSION KEEP-ALIVE (field-measured 2026-08-05, todo-app org debrief):
     // rmcp's default kills a session after 300s of bus inactivity, which is
@@ -103,6 +140,7 @@ fn build_router() -> axum::Router {
         .nest_service("/mcp", service)
         .route("/health", get(health))
         .route("/status", get(status))
+        .route("/send", post(send))
         .layer(tower_http::limit::RequestBodyLimitLayer::new(1024 * 1024))
 }
 
