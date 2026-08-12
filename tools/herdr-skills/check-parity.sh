@@ -126,15 +126,19 @@ need "$C/hooks/hooks.json" "UserPromptSubmit" "org-ack-submit" "startup|resume"
 need "$G/hooks/hooks.json" "startup|resume"
 
 # Claude-only surfaces (native advisor + opusplan, architect, reviewer
-# template): grok has no advisor flag, so these bind the claude side alone —
+# template, and the native ping plane — SendMessage/ListAgents exist only in
+# Claude Code, so no grok equivalent): these bind the claude side alone —
 # promoting one into `both` means porting the mechanism first, not the prose.
-need "$C/skills/orchestrator/SKILL.md" "PLAN MODE" "--advisor opus"
+need "$C/skills/orchestrator/SKILL.md" "PLAN MODE" "--advisor opus" \
+  "THE NATIVE PING" "NATIVE-ADDRESS HANDSHAKE" "PING FOLLOW-UP" "ListAgents"
+need "$C/skills/herdr-worker/SKILL.md" "INBOUND PINGS" "PING FOLLOW-UP"
+need "$C/skills/herdr-setup/SKILL.md" "S2c" "crossSessionInbound" "PING_OK"
 need "$C/skills/architect/SKILL.md" "TRANSCRIPTION-GRADE" "DRY-READ-CLEAN" "blueprint" "Base: <repo>@"
 need "$C/templates/reviewer-brief.md" "READY:" "CANNOT-VERIFY"
 need "$C/scripts/dispatch-worker" "ADVISOR_UP"
 need "$C/scripts/conduct" "opusplan"
 need "$C/scripts/orgclaude" "DEPRECATED shim"
-need "$C/skills/fleet/SKILL.md" "ORGS, not lanes" "REPORT-BACK CONTRACT" "board_deleted:false" "NOTHING TO DO IS NOT A QUESTION"
+need "$C/skills/fleet/SKILL.md" "ORGS, not lanes" "REPORT-BACK CONTRACT" "board_deleted:false" "NOTHING TO DO IS NOT A QUESTION" "NATIVE PING"
 need "$C/scripts/fleet-ctl" "board_is_empty" "already_running"
 need "$C/scripts/doorbell" "runtime" "acks"
 need "$C/hooks/org-ack-submit.sh" "UserPromptSubmit" "acks"
