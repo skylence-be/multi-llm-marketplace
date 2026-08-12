@@ -177,7 +177,10 @@ mod tests {
     #[test]
     fn task_backed_awaiter_suppresses_via_registry() {
         // A task-backed hold registers exactly like an in-call hold; the
-        // watchdog cannot tell them apart, by design.
+        // watchdog cannot tell them apart, by design. Shares the snapshot lock
+        // because awaiter_active reads the process-global live-agent snapshot.
+        let _serial = crate::queue::snapshot_lock().lock().unwrap();
+        set_live_agents(None);
         let _g = AwaitGuard::new("task-held");
         assert!(!nudge_due(awaiter_active("task-held"), 10_000, None, None, NUDGE_COOLDOWN_S));
     }
