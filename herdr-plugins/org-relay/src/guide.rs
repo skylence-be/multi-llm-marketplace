@@ -69,6 +69,24 @@ the net for sessions whose await died (crash, operator interrupt during the
 pre-background window, expired timeout never re-armed) — with a live await
 armed you will never see one.
 
+## Native pings (a WAKE accelerator, not the record)
+
+Claude sessions on this box can also reach each other with the client's own
+SendMessage / ListAgents tools (Claude Code >= 2.1.224): a message starts a
+turn in an idle peer with zero keystrokes. The org uses this ON TOP of the
+queue, never instead of it:
+
+- The QUEUE stays the record. relay_send is what is durable, audited, and
+  consumable; a ping carries only a pointer ("doorbell queued: board get
+  <slug>") and the recipient acts from relay_inbox, never from ping text.
+- A ping is the coverage-gap wake. With a live relay_await armed you are
+  already covered and need no ping; it helps a peer whose await lapsed, doing
+  the nudge net's job without the composer.
+- Pings are Claude-only and undurable: names auto-derive from a session's cwd
+  (resolve from a fresh ListAgents row), first contact needs the row's
+  "[ref]", and a non-Claude producer cannot deliver one. Everything the queue
+  guarantees, a ping does not.
+
 ## Tools
 
 - relay_send(sender, to, kind, body, lane?) — durable enqueue + in-process
@@ -101,8 +119,10 @@ backgrounds it.
 /// test together, deliberately.
 pub const GUIDE_GATE_REFUSAL: &str = "guide-gate: this session has not read relay://guide. Call relay_guide (or resources/read uri relay://guide; server name is usually `relay`), then retry this exact call. Why: the wake plane is task-backed now (ONE long relay_await armed as the LAST call of a turn — never a 50s re-arm loop), turn entry is inbox-first, and consume comes only after acting; using the bus without this contract re-creates the 3h23m deaf-org stall. (the gate is per-session and in-memory by design — every session, and every reconnect, reads the short guide once)";
 
-/// Stable content hash of the guide (FNV-1a 64). Persisted acks are valid
-/// only for this exact hash — any guide change re-arms the gate box-wide.
+/// Stable content hash of the guide (FNV-1a 64), surfaced for cache-busting
+/// and drift checks. The gate itself is per-session and in-memory — there is
+/// no persisted ack ledger (that was removed pre-1.0), so a guide change just
+/// means the next read serves new text, not a box-wide re-arm.
 pub fn guide_hash() -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in GUIDE_RESOURCE.as_bytes() {
@@ -132,6 +152,8 @@ mod tests {
             "INBOX FIRST",
             "CONSUME ONLY AFTER ACTING",
             "[RELAY-NUDGE]",
+            "WAKE accelerator",
+            "SendMessage",
             "io.modelcontextprotocol/tasks",
         ] {
             assert!(GUIDE_RESOURCE.contains(phrase), "guide must contain {phrase:?}");

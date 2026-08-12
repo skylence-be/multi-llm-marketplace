@@ -638,12 +638,25 @@ pub async fn op_await(args: &Value, direct_cover: bool) -> Result<Value, String>
     }
 }
 
+/// Shared serialization lock for tests that touch the process-global
+/// live-agent snapshot. A fresh `Some(...)` snapshot makes every name outside
+/// it read as dead (LIVE_SNAPSHOT_FRESH_S = 90s), so any test reading
+/// `awaiter_active` must hold this while a snapshot-setting test runs, or it
+/// flakes on the interleave. Crate-visible so nudge.rs tests share the one lock.
+#[cfg(test)]
+pub(crate) fn snapshot_lock() -> &'static Mutex<()> {
+    static L: OnceLock<Mutex<()>> = OnceLock::new();
+    L.get_or_init(|| Mutex::new(()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn await_guard_registers_and_clears() {
+        let _serial = snapshot_lock().lock().unwrap();
+        set_live_agents(None);
         assert!(!awaiter_active("guard-test"));
         {
             let _g = AwaitGuard::new("guard-test");
@@ -658,6 +671,8 @@ mod tests {
 
     #[test]
     fn task_cover_tracks_poll_liveness() {
+        let _serial = snapshot_lock().lock().unwrap();
+        set_live_agents(None);
         assert!(!awaiter_active("task-agent"));
         {
             let _c = TaskCoverGuard::new("task-1", "task-agent");
@@ -669,13 +684,8 @@ mod tests {
         assert!(!awaiter_active("task-agent"), "dropped cover deregisters");
     }
 
-    /// Tests touching the live-agent snapshot serialize on this lock: the
-    /// snapshot is process-global, and a fresh Some(...) snapshot makes every
-    /// name outside it read as dead for any concurrently running test.
-    fn snapshot_lock() -> &'static Mutex<()> {
-        static L: OnceLock<Mutex<()>> = OnceLock::new();
-        L.get_or_init(|| Mutex::new(()))
-    }
+    // (snapshot_lock is defined at module scope above so nudge.rs tests,
+    // which also read the live-agent snapshot, can share the same lock.)
 
     #[test]
     fn ghost_filter_drops_dead_names_and_never_filters_without_evidence() {
