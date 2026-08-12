@@ -75,6 +75,8 @@ herdr agent get reviewer
 
 `agent prompt --wait` waits for a settled `idle`, `done`, or `blocked` by default. A prompt from a non-working state that never advances the lifecycle returns `agent_prompt_stalled` within about 5s: that is your verify-after-send signal, not a transient.
 
+Messaging a live CLAUDE session: prefer the native ping (`SendMessage`, target resolved from a `ListAgents` row; CC >= 2.1.224) — it touches no composer, arrives attributed, and starts a turn in an idle session. `agent prompt` remains the path for non-Claude kinds, launch-time delivery, and lifecycle-coupled sends (`--wait` semantics); when each applies is orchestrator doctrine (L6/L11).
+
 Ordinary commands (tests, servers) go through the pane, not the agent:
 
 ```bash
@@ -101,7 +103,7 @@ Agent names match `[a-z][a-z0-9_-]{0,31}` and must be unique among live agents; 
 
 ## Safety
 
-- Classify the target's input line before ANY send (no-fusion law). `scripts/ghost-probe.sh` is the classifier; on Herdr use `live` then `probe`.
+- Classify the target's input line before ANY send (no-fusion law). `scripts/ghost-probe.sh` is the classifier; on Herdr use `live` then `probe`. Native `SendMessage` pings bypass the composer entirely and need no classification.
 - Use `--no-focus` for background work unless the operator asked to switch context.
 - Address `--current`, an explicit pane ID, or a unique agent name; never another client's focused pane.
 - Do not close workspaces, tabs, or panes you did not create unless asked.

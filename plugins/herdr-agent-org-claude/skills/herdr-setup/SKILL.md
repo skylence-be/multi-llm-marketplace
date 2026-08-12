@@ -1,6 +1,6 @@
 ---
 name: herdr-setup
-description: 'One-shot playbook to bootstrap a fresh macOS box from "herdr installed" to "org-ready": preflight, org-relay message-bus wiring (daemon + claude MCP connection), legacy org-waker wiring, optional ActivityWatch context (aw-context install + category sync), board bootstrap, ecosystem plugin picks, and an end-to-end verification checklist. Invoke when the operator says "set up herdr for the org".'
+description: 'One-shot playbook to bootstrap a fresh macOS box from "herdr installed" to "org-ready": preflight, org-relay message-bus wiring (daemon + claude MCP connection), native session-ping wiring (SendMessage/ListAgents, S2c), legacy org-waker wiring, optional ActivityWatch context (aw-context install + category sync), board bootstrap, ecosystem plugin picks, and an end-to-end verification checklist. Invoke when the operator says "set up herdr for the org".'
 ---
 
 # Herdr org bootstrap (one-shot)
@@ -113,6 +113,59 @@ for t in herdr-plugins/org-waker/test/*.sh; do sh "$t"; done
 Each suite prints its own `<name>.sh: OK` line at the end when every case passes (six suites as of waker 0.3.0: classify_composer, parked_retry, sent_no_resend, coalesce_hold, drain_sent_preserve, pasted_placeholder). Anything else means stop before dispatching: the wake mechanism's classification, dedup, or retry logic is broken, and lanes will hang silently or ring stale bursts instead of waking the orchestrator cleanly.
 
 **Consumer box (no repo checkout):** you cannot run those suites from a path that does not exist. Either clone `skylence-be/multi-llm-marketplace` long enough to run them from its root, or treat the doctor action above plus the S5 live probe as your gate. Do not invent a substitute shell check.
+
+## S2c Native session-ping wiring (Claude <-> Claude, the composer-free wake)
+
+Claude Code >= 2.1.224 (changelog 2026-08-07) ships `SendMessage` / `ListAgents`:
+local Claude sessions message each other by name over a per-session Unix socket,
+and a message STARTS A TURN in an idle session — the third-party turn-starter
+role the composer nudge used to hold. The org runs it as the PING plane on top
+of the relay (orchestrator L6: a ping is a wake, board + relay are the record).
+macOS/Linux only; 2.1.225 adds cross-machine initiation via Remote Control,
+which the org does not require.
+
+```bash
+claude --version   # >= 2.1.224, or skip this section: the org still runs whole on relay + nudge net
+```
+
+Wiring, measured on the reference box (2026-08-12, CC 2.1.228, macOS): NONE
+needed for the local plane — a probe ping to an idle `--permission-mode
+bypassPermissions` session DELIVERED and started its turn with zero
+keystrokes, no settings key anywhere, full round trip (ping -> probe turn ->
+attributed reply back) ~10s. The docs additionally describe a
+`crossSessionInbound` accept/hold/refuse rule
+(code.claude.com/docs/en/cross-session-messaging; precedence project > user >
+default, defaults documented as mode-dependent), so if the probe below shows
+a ping PARKING instead of delivering, set the rule explicitly in USER scope
+(`~/.claude/settings.json`) and re-probe:
+
+```json
+{ "crossSessionInbound": "accept" }
+```
+
+Footguns: the feature rides feature-flag evaluation, so a pane exporting
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`,
+`DO_NOT_TRACK`, or `DISABLE_GROWTHBOOK` silently loses it (research-grade;
+suspect it when a pane lists no peers). Native names AUTO-DERIVE from the
+session cwd (`scratchpad-72 [659f9a]`-style, measured), so the role skills
+resolve every address from a live `ListAgents` row and never from a herdr
+agent name. The FIRST send to a peer must carry the row's `name [ref]` — a
+bare name is refused with a confirm error (measured). An inbound message
+arrives wrapped `<cross-session-message from="uds:/tmp/cc-socks/<pid>.sock"
+from-name="..." from-mode="...">` and the reply address is that `from`
+attribute copied verbatim.
+
+Verify with two scratch sessions — prove the turn-start, not just the tool
+(this exact probe ran green on the reference box 2026-08-12):
+
+1. Open two Claude panes; in pane A run `ListAgents`. Pane B's row must appear.
+2. Let pane B settle idle, then from A: `SendMessage(to="<B's name [ref]>",
+   message="PING_OK — reply to this message's from address with PONG, then idle")`.
+3. Pane B must start a turn on its own, zero keystrokes, and the PONG must
+   arrive back in A as a `<cross-session-message>`. B idle-and-silent means
+   the ping parked HELD: wire `crossSessionInbound` accept as above (or find
+   the kill-switch env var in that pane), restart B, re-probe. Only a green
+   probe lets the role skills lean on pings.
 
 ## S2.5 ActivityWatch context (aw-context) — optional
 
@@ -267,6 +320,12 @@ curl -s http://127.0.0.1:7431/status    # queues + awaiting + nudge state, no ha
 # body=SETUP_PROBE); relay_inbox(agent=orchestrator) must list SETUP_PROBE;
 # relay_consume it. Send -> inbox -> consume round-trip = bus OK.
 ```
+
+Then the ping plane (S2c), on any box at CC >= 2.1.224: run the two-pane
+PING_OK probe from S2c once per box and note the observed zero-keystroke
+turn-start. A box that fails the probe still runs — relay + nudge net cover —
+it just keeps composer-era recovery for stalled Claude lanes, which is exactly
+what the ping plane retires.
 
 Then, ONLY if this box still runs pre-relay lanes, prove the legacy wake path. Dispatch a throwaway probe with `--wake-target` and an explicit `--prompt` (do not pass `--todo` for a nonexistent slug: the default pointer asks for `board get <slug>`, board side-effects fail, and the probe dead-ends):
 ```bash
