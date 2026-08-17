@@ -33,7 +33,13 @@ The waker in S2b remains only as legacy/crash tooling for pre-relay lanes.
 
 Pick ONE, matching the box:
 
-**Dev box** (repo checked out): `herdr plugin link <abs-path-to-repo>/herdr-plugins/org-relay`
+**Dev box** (repo checked out): confirm the checkout still exists BEFORE linking. A prior `plugin link` can point at a path a later reorg deleted or renamed; when that happens `herdr plugin list` keeps showing the plugin "enabled" with a silent `manifest unavailable` warning, and its launchd daemon keeps running against the dead path with NO error surfaced — `launchctl print` shows `spawn scheduled`, not a crash (measured 2026-08-16: the checkout was gone, the daemon looked supervised, nothing complained until `relay-ctl status` was run by hand). Check first:
+```bash
+herdr plugin list | grep -A1 org-relay      # "manifest unavailable" = checkout is gone
+ls -d <abs-path-to-repo>/herdr-plugins/org-relay
+```
+If the checkout is gone, re-clone it to the same path before linking. Then: `herdr plugin link <abs-path-to-repo>/herdr-plugins/org-relay`
+
 **Consumer box:** `herdr plugin install skylence-be/multi-llm-marketplace/herdr-plugins/org-relay --yes`
 
 Then daemonize and wire the client, from the installed plugin dir (`herdr plugin list` prints it; `relay-ctl` needs `cargo` on PATH for the first build):
@@ -110,7 +116,7 @@ Then the correctness gate, ALL suites, from the repo root (dev box with a checko
 ```bash
 for t in herdr-plugins/org-waker/test/*.sh; do sh "$t"; done
 ```
-Each suite prints its own `<name>.sh: OK` line at the end when every case passes (six suites as of waker 0.3.0: classify_composer, parked_retry, sent_no_resend, coalesce_hold, drain_sent_preserve, pasted_placeholder). Anything else means stop before dispatching: the wake mechanism's classification, dedup, or retry logic is broken, and lanes will hang silently or ring stale bursts instead of waking the orchestrator cleanly.
+Each suite prints its own `<name>.sh: OK` line at the end when every case passes. Don't hardcode a suite count or name list here — the set grows (8 suites measured 2026-08-16: ack_path, classify_composer, coalesce_hold, drain_sent_preserve, parked_retry, pasted_placeholder, sent_no_resend, verify_clear_gate, up from 6 at waker 0.3.0). Instead grep the run's combined output for `\.sh: (OK|FAIL)` and confirm every matched line says `OK`. Anything else means stop before dispatching: the wake mechanism's classification, dedup, or retry logic is broken, and lanes will hang silently or ring stale bursts instead of waking the orchestrator cleanly.
 
 **Consumer box (no repo checkout):** you cannot run those suites from a path that does not exist. Either clone `skylence-be/multi-llm-marketplace` long enough to run them from its root, or treat the doctor action above plus the S5 live probe as your gate. Do not invent a substitute shell check.
 
@@ -258,6 +264,12 @@ unset _horg
 
 That also puts `board`, `dispatch-worker`, `waker-ctl` and `build-slot` on `PATH` in the pane shell, so you can inspect a board without going through claude.
 
+**Verify it immediately, don't trust the paste.** A block that looks intact (markers present, no syntax error) can still be silently incomplete — e.g. missing the `typeset -a _horg=(...)` line that actually populates the glob, leaving the `(( ${#_horg} ))` conditional permanently false with no error at all (measured 2026-08-16: the block ran clean, PATH just never gained the entry). Confirm in a FRESH interactive shell, not the current one — rc files only apply to new shells:
+```bash
+zsh -ic 'which conduct board dispatch-worker waker-ctl'
+```
+All four must resolve. Any `not found` means re-diff the block against the snippet above line-by-line — don't assume the markers being present proves the body between them is complete.
+
 **Do NOT reimplement `conduct` as a shell function that warns on a missing board and starts claude anyway.** That was the original form and it cost ~25 minutes on 2026-07-30: the warning went to stderr microseconds before a full-screen TUI took the terminal, so the operator rarely saw it and the agent never did. From inside, the org simply had no board and every call fell back to `~/.herdr-org/default`. A typo'd org name was indistinguishable from a new one. Create the board or refuse to start; do not warn and continue.
 
 The equivalent by hand:
@@ -333,6 +345,8 @@ dispatch-worker --name probe --wake-target orchestrator \
   --prompt $'Reply with the single word PROBE_OK, then idle. Do not edit files.' \
   --cwd /abs/scratch-tree -- --permission-mode bypassPermissions
 ```
+
+Run this FROM a pane that is itself the registered `orchestrator` — a `conduct`-launched session carrying that identity — not standalone. `--wake-target orchestrator` addresses a specific registered name; if nothing is registered under it the ring can only land `held:composer:status=unknown` or `dropped:coalesced-*`, never `delivered`, which reads like a broken waker but is actually a probe fired at no target (measured 2026-08-16). If you're driving this probe through an MCP/daemon tool rather than a real pane shell (e.g. skyline's `run`), pass `HERDR_ENV`, `HERDR_PANE_ID`, `HERDR_WORKSPACE_ID`, and `HERDR_ORG_ROOT` explicitly via that tool's env parameter — such daemons run with their own stale/unset env regardless of the pane's actual state (same footgun as the ORIENT guard above). Also expect an agent-driven run of this step to trip Claude Code's own auto-mode permission classifier, since it dispatches a live worker; that's a normal approval prompt; approve it or don't automate past it silently.
 1. Confirm the settle ring arrives WITHOUT an operator pressing Enter; the orchestrator pane should receive the wake prompt on its own.
 2. Confirm the ring is logged with a truthful outcome:
    ```bash
@@ -347,4 +361,4 @@ dispatch-worker --name probe --wake-target orchestrator \
    then close or reap the probe's pane and agent as usual.
 4. If a pending wake existed for the probe at unregister time, expect a new `dropped:unregistered` line in `rings.jsonl`. Confirm it is there, not silently swallowed.
 
-5. Conductor model probe (once per box, after S3): launch `conduct probe-org --model opusplan --advisor opus` in a scratch pane, have it enter plan mode, produce a two-line plan for a trivial task, and exit plan mode. Confirm three things: (a) it proceeds past plan exit WITHOUT a human approval — bypassPermissions un-enforces plan-mode blocks, but ExitPlanMode-unattended is undocumented, so if the pane parks `blocked` here the operator gates every planning beat and must decide whether that is acceptable; (b) the statusline shows Opus during the plan phase and Sonnet after exit; (c) any advisor consultation appears in the transcript (advisor-during-plan-mode is likewise undocumented). The docs are silent on (a) and (c); this probe is the box's answer. Then clean up: remove `~/.herdr-org/probe-org` and close the scratch pane.
+5. Conductor model probe (once per box, after S3): launch `conduct probe-org --model opusplan --advisor opus` in a scratch pane, have it enter plan mode, produce a two-line plan for a trivial task, and exit plan mode. Known answer (measured 2026-08-16, CC 2.1.233, herdr 0.7.5 — reconfirm once per box, this can drift with CC updates): (a) it does NOT proceed past plan exit unattended — the pane parks `blocked` on the "Would you like to proceed?" dialog even under `conduct`'s injected opusplan/advisor flags, because those don't include `--permission-mode bypassPermissions`; an org that needs unattended planning must launch with bypassPermissions explicitly (`conduct <org> --permission-mode bypassPermissions`) and re-verify there, since that combination is itself unconfirmed. (b) confirmed: statusline model is Opus during the plan phase, Sonnet after exit — if a pane capture can't show the statusline clearly, just ask the agent directly ("what model are you running as right now?") and read its answer. (c) advisor consultation did not fire for a trivial two-line plan on the reference box — inconclusive whether it ever surfaces in the transcript at all; treat as still open, not confirmed-silent. Then clean up: remove `~/.herdr-org/probe-org` and close the scratch pane.
