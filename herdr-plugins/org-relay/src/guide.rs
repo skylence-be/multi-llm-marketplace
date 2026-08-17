@@ -9,7 +9,7 @@
 pub const GUIDE_URI: &str = "relay://guide";
 
 /// Sent in `initialize` as the server's instructions field.
-pub const SERVER_INSTRUCTIONS: &str = "Read relay://guide (resources/read, or the relay_guide tool) BEFORE using the messaging tools — relay_send / relay_inbox / relay_consume / relay_await refuse until this session has read it; relay_status and the observability tools are never gated. The guide is the org's wake-plane contract: task-backed awaiting (arm ONE long relay_await as the LAST call of a turn; never a 50s re-arm loop), inbox-first turn entry, consume ONLY after acting, and what a [RELAY-NUDGE] means. The gate is per-session by design — every session reads the contract once; it is short on purpose.";
+pub const SERVER_INSTRUCTIONS: &str = "Read relay://guide (resources/read, or the relay_guide tool) BEFORE using the messaging tools — relay_send / relay_inbox / relay_consume / relay_await refuse until this session has read it (enforced on sessionful transports; a stateless SEP-2567 client is trusted to read it first); relay_status and the observability tools are never gated. The guide is the org's wake-plane contract: task-backed awaiting (arm ONE long relay_await as the LAST call of a turn; never a 50s re-arm loop), inbox-first turn entry, consume ONLY after acting, and what a [RELAY-NUDGE] means. The gate is per-session by design — every session reads the contract once; it is short on purpose.";
 
 pub const GUIDE_RESOURCE: &str = r#"# org-relay guide — the org's message bus and wake plane
 

@@ -3,6 +3,16 @@
 //! and SEP-2663 task wiring. Transport is rmcp streamable HTTP behind axum
 //! (see main.rs), the same stack binary-skyline ships.
 //!
+//! Guide gate and transport statefulness: rmcp keeps ONE RelayServer per
+//! session only for the legacy lifecycle (protocol < 2026-07-28, client
+//! echoes Mcp-Session-Id). SEP-2567 (2026-07-28) removed sessions; rmcp then
+//! serves every POST statelessly through a FRESH RelayServer from the
+//! factory, so a per-session "guide read" flag can never be observed set and
+//! the gate would refuse forever (field-reproduced 2026-08-17: relay_guide ok,
+//! then 5x "has not read relay://guide"). The gate therefore applies ONLY to
+//! session-routed requests; a stateless client is trusted to follow the
+//! server instructions and read the guide first.
+//!
 //! Wake plane in one paragraph: `relay_await` from a tasks-capable client
 //! returns a task handle IMMEDIATELY (CreateTaskResult) and the hold runs as
 //! a task; from any other client it holds in-call (Claude Code >= 2.1.212
@@ -24,6 +34,7 @@ use rmcp::model::{
 };
 use rmcp::service::RequestContext;
 use rmcp::task_manager::{TaskExit, TaskManager, TaskOptions};
+use rmcp::transport::common::http_header::HEADER_SESSION_ID;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::{json, Value};
 
@@ -46,8 +57,19 @@ pub struct RelayServer {
     /// GUIDE-GATE condition: set once relay://guide has been read this
     /// session (resource read or relay_guide tool). One RelayServer exists
     /// per HTTP session (LocalSessionManager builds them via the closure in
-    /// main.rs).
+    /// main.rs) — and one per REQUEST on the stateless path, where this flag
+    /// is meaningless and the gate is skipped (see module doc).
     guide_read: AtomicBool,
+}
+
+/// Whether the request rides an rmcp session: the transport injects the
+/// http request Parts into extensions, and session-routed requests always
+/// carry Mcp-Session-Id (a legacy-lifecycle request without it is rejected
+/// before dispatch unless it is `initialize`). Stateless SEP-2567 requests
+/// never carry it.
+fn extensions_carry_session(ext: &rmcp::model::Extensions) -> bool {
+    ext.get::<axum::http::request::Parts>()
+        .is_some_and(|p| p.headers.contains_key(HEADER_SESSION_ID))
 }
 
 impl RelayServer {
@@ -60,9 +82,10 @@ impl RelayServer {
     }
 
     /// Refusal for gated tools while the guide is unread. Stateless: an
-    /// identical retry after the read succeeds.
-    fn guide_gate(&self, tool: &str) -> Option<CallToolResult> {
-        if GATED_TOOLS.contains(&tool) && !self.guide_read.load(Ordering::Relaxed) {
+    /// identical retry after the read succeeds. `sessionful` false means the
+    /// request has no session to remember a read in, so no gate applies.
+    fn guide_gate(&self, tool: &str, sessionful: bool) -> Option<CallToolResult> {
+        if sessionful && GATED_TOOLS.contains(&tool) && !self.guide_read.load(Ordering::Relaxed) {
             return Some(CallToolResult::error(vec![ContentBlock::text(GUIDE_GATE_REFUSAL)]));
         }
         None
@@ -266,7 +289,9 @@ impl ServerHandler for RelayServer {
         // session of the same client build, so a durable ledger would let the
         // first reader of the day unlock the bus for sessions that never saw
         // the contract. A reconnect re-reads; the guide is short on purpose.
-        if let Some(refusal) = self.guide_gate(&name) {
+        // Stateless (SEP-2567) requests have no session: no gate (module doc).
+        let sessionful = extensions_carry_session(&context.extensions);
+        if let Some(refusal) = self.guide_gate(&name, sessionful) {
             log_access(&name, &args, started, &refusal);
             return Ok(refusal.into());
         }
@@ -432,11 +457,32 @@ mod tests {
         assert!(tools.iter().any(|t| t.name == "relay_guide"));
     }
 
+    fn parts_with_headers(headers: &[(&str, &str)]) -> axum::http::request::Parts {
+        let mut b = axum::http::Request::builder();
+        for (k, v) in headers {
+            b = b.header(*k, *v);
+        }
+        b.body(()).unwrap().into_parts().0
+    }
+
+    #[test]
+    fn session_detection_reads_mcp_session_id_from_injected_parts() {
+        let mut with = rmcp::model::Extensions::new();
+        with.insert(parts_with_headers(&[("mcp-session-id", "abc")]));
+        assert!(extensions_carry_session(&with));
+
+        let mut without = rmcp::model::Extensions::new();
+        without.insert(parts_with_headers(&[("mcp-protocol-version", "2026-07-28")]));
+        assert!(!extensions_carry_session(&without), "stateless request has no session");
+
+        assert!(!extensions_carry_session(&rmcp::model::Extensions::new()), "no parts, no session");
+    }
+
     #[test]
     fn guide_gate_refuses_each_messaging_tool_when_unread() {
         let srv = RelayServer::new();
         for tool in ALL_GATED {
-            let r = srv.guide_gate(tool);
+            let r = srv.guide_gate(tool, true);
             assert!(r.is_some(), "guide_gate must refuse {tool}");
             assert_eq!(r.unwrap().is_error, Some(true));
         }
@@ -446,18 +492,28 @@ mod tests {
     fn guide_gate_never_blocks_status_or_observability() {
         let srv = RelayServer::new();
         for tool in NEVER_GATED {
-            assert!(srv.guide_gate(tool).is_none(), "{tool} must never be gated");
+            assert!(srv.guide_gate(tool, true).is_none(), "{tool} must never be gated");
         }
     }
 
     #[test]
     fn guide_gate_opens_after_read_and_refusal_is_stateless() {
         let srv = RelayServer::new();
-        assert!(srv.guide_gate("relay_send").is_some(), "first call unread");
-        assert!(srv.guide_gate("relay_send").is_some(), "second call unread");
+        assert!(srv.guide_gate("relay_send", true).is_some(), "first call unread");
+        assert!(srv.guide_gate("relay_send", true).is_some(), "second call unread");
         srv.on_guide_read();
         for tool in ALL_GATED {
-            assert!(srv.guide_gate(tool).is_none(), "gate must open for {tool}");
+            assert!(srv.guide_gate(tool, true).is_none(), "gate must open for {tool}");
+        }
+    }
+
+    #[test]
+    fn guide_gate_skipped_for_stateless_requests() {
+        // SEP-2567: a fresh RelayServer per request, guide never observed
+        // read — the gate must not apply or it refuses forever.
+        let srv = RelayServer::new();
+        for tool in ALL_GATED {
+            assert!(srv.guide_gate(tool, false).is_none(), "{tool} must pass without a session");
         }
     }
 

@@ -15,11 +15,13 @@
 //!
 //! Guide gate: messaging tools refuse until the session reads relay://guide
 //! (or calls relay_guide); strictly per-session and in-memory — every
-//! session reads the short contract once (guide.rs, server.rs). Nudge
-//! watchdog: the NET for recipients with backlog and no live await coverage,
-//! where task-backed coverage requires tasks/get poll liveness (nudge.rs,
-//! queue.rs).
-//! recipients with backlog and no live await coverage (nudge.rs).
+//! session reads the short contract once (guide.rs, server.rs). Sessions
+//! exist only for the legacy lifecycle (protocol < 2026-07-28); SEP-2567
+//! clients are served statelessly with a fresh RelayServer per request, so
+//! for them the gate is skipped rather than permanently shut (server.rs).
+//! Nudge watchdog: the NET for recipients with backlog and no live await
+//! coverage, where task-backed coverage requires tasks/get poll liveness
+//! (nudge.rs, queue.rs).
 
 mod guide;
 mod nudge;
